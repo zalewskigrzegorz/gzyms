@@ -340,3 +340,36 @@ private func onWithBanner(_ verbs: Verbs = Verbs()) -> KeyNav {
     for (key, want) in cases { #expect(n.handle(.key(key), now: 0) == (true, want), "\(key)") }
     for k in [NavKey.letter("x"), .letter("c"), .modified, .other] { #expect(n.handle(.key(k), now: 0) == (false, [])) }
 }
+
+@Test func mousePopupKeysTakeTheModeOn() {
+    for (key, want) in [(NavKey.letter("j"), [NavAction.move(1)]), (.left, [.side(-1)]), (.letter("x"), [.remove]), (.esc, [.back])] {
+        var n = KeyNav()
+        play(&n, [.popup("widget:audio", three)])
+        let r = n.handle(.key(key), now: 5)
+        #expect(r.swallow && r.actions == want, "\(key)")
+        #expect(n.on, "\(key)")
+    }
+    var n = KeyNav()
+    play(&n, [.popup("widget:audio", three), .key(.letter("j"))])
+    #expect(n.popup == "widget:audio")
+    #expect(n.handle(.key(.enter), now: 9).actions == [.choose, .exit])
+    #expect(!n.on && n.mouse == nil)
+}
+
+@Test func mousePopupLeavesOtherKeysAlone() {
+    var n = KeyNav()
+    play(&n, [.popup("widget:audio", three)])
+    #expect(!n.handle(.key(.letter("q")), now: 5).swallow)
+    #expect(!n.handle(.key(.modified), now: 5).swallow)
+    #expect(!n.on)
+    play(&n, [.popup(nil, three)])
+    #expect(!n.handle(.key(.letter("j")), now: 9).swallow)
+    play(&n, [.popup("bell", three), .off])
+    #expect(!n.handle(.key(.letter("j")), now: 20).swallow)
+}
+
+@Test func mousePopupIdlesOut() {
+    var n = KeyNav(idleTimeout: 30)
+    play(&n, [.popup("bell", three), .key(.letter("j"))])
+    #expect(n.on && !n.expired(now: 20) && n.expired(now: 31))
+}

@@ -52,6 +52,8 @@ public enum NavEvent: Equatable, Sendable {
     case banner(up: Bool)
     /// The clock, for a snooze waiting to settle.
     case tick
+    /// A popup opened (or closed, nil) outside the mode, by the mouse; the targets are its bar's.
+    case popup(String?, [HintTarget])
 }
 
 /// Who the keys are for: the bar (the leader's mode), or a window that takes a few of them while it is up,
@@ -98,6 +100,9 @@ public struct KeyNav: Sendable {
     public private(set) var typed = ""
     /// The open popup's target id; nil = the bar's level.
     public private(set) var popup: String?
+    /// A popup the mouse opened while the mode was off: its keys turn the mode on there (Greg, 2026-11-02).
+    public private(set) var mouse: String?
+    private var mouseTargets: [HintTarget] = []
     private var targets: [HintTarget] = []
     private var pending: [HintTarget] = []
     private var held = false
@@ -143,8 +148,12 @@ public struct KeyNav: Sendable {
             if !on { enter(t); lastAt = now }
             return (false, [])
         case .off:
-            zs = 0
+            zs = 0; mouse = nil
             return (false, on ? exit() : [])
+        case .popup(let id, let t):
+            // The mode's own popups echo back here; while it is on, the mode owns the popup.
+            if !on { mouse = id; mouseTargets = t }
+            return (false, [])
         case .banner(let up):
             bannerUp = up
             if !up { zs = 0 }  // a snooze is for the banner it was typed on
@@ -175,6 +184,10 @@ public struct KeyNav: Sendable {
                 // Held alone, the modifier is someone else's shortcut, except for the banner's verbs.
                 guard bannerUp, case .letter(let c) = k, let a = banner(c, now: now) else { return (false, []) }
                 return (true, a.actions)
+            }
+            if !on, let id = mouse, isPopupKey(k) {
+                enter(mouseTargets)
+                popup = id
             }
             // Modified keys go to the apps and, not being for us, do not keep the mode alive.
             guard on, k != .modified else { return (false, []) }
@@ -248,6 +261,15 @@ public struct KeyNav: Sendable {
         }
     }
 
+    /// The keys `inPopup` acts on.
+    private func isPopupKey(_ k: NavKey) -> Bool {
+        switch k {
+        case .letter("j"), .letter("k"), .letter("h"), .letter("l"), .down, .up, .left, .right, .enter, .esc: true
+        case .letter(let c): c == verbs.dismiss || c == verbs.alt || c == verbs.open
+        default: false
+        }
+    }
+
     private mutating func inPopup(_ k: NavKey) -> [NavAction] {
         switch k {
         case .letter("j"), .down: return [.move(1)]
@@ -268,7 +290,7 @@ public struct KeyNav: Sendable {
     }
 
     private mutating func exit() -> [NavAction] {
-        on = false; hints = [:]; typed = ""; popup = nil; targets = []; usedWhileHeld = false; zs = 0
+        on = false; hints = [:]; typed = ""; popup = nil; targets = []; usedWhileHeld = false; zs = 0; mouse = nil
         return [.exit]
     }
 

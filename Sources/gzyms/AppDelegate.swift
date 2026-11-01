@@ -426,16 +426,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RunLoop.main.add(t, forMode: .common)
     }
 
-    /// The focused screen's bar (HyprMac's focus, else the screen under the pointer) and what is on it.
+    /// The bar with an open popup, else the focused screen's (HyprMac's focus, else the screen under the pointer),
+    /// and what is on it.
     private func pushTargets() {
         guard model.nav == nil else { return }
         let mouse = NSEvent.mouseLocation
         let screen = model.state == nil ? NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } : focusedScreen()
         let visible = panels.values.filter(\.isVisible)
-        let p = visible.first { $0.screenFrame == screen?.frame } ?? visible.first
+        let p = visible.first { $0.popups.open != nil } ?? visible.first { $0.screenFrame == screen?.frame } ?? visible.first
         navPanel = p
         let t = p?.hintTargets() ?? []
         if t != navOrder { navOrder = t; chords.navTargets = t }
+    }
+
+    /// A popup opened by the mouse: the mode's keys must land on its bar (`pushTargets` picks it).
+    private func popupChanged(_ id: String?) {
+        pushTargets()
+        chords.popup(id)
     }
 
     private func applyNav(_ shown: NavSnapshot?, _ actions: [NavAction]) {
@@ -1251,6 +1258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let screen = screensByID[id] else { continue }
             let p = BarPanel(screen: screen, model: model)
             p.onSpots = { [weak self] in self?.pushTargets() }
+            p.popups.onChange = { [weak self] id in self?.popupChanged(id) }
             panels[id] = p
         }
         for id in plan.keep { if let screen = screensByID[id] { panels[id]?.fit(to: screen) } }

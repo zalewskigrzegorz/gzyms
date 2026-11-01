@@ -6,7 +6,9 @@ import SwiftUI
 @Observable @MainActor
 public final class PopupState {
     /// The target id: "widget:audio", "app:<bundle id>", "bell", "plugin:<folder>:<key>".
-    public var open: String? { didSet { if open != oldValue { row = 0 } } }
+    public var open: String? { didSet { if open != oldValue { row = 0; onChange(open) } } }
+    /// Every change of `open`, mouse or keyboard.
+    @ObservationIgnored public var onChange: (String?) -> Void = { _ in }
     public var row = 0
     /// A row that was asked for a second action it does not have; it says so for a moment.
     public private(set) var noAlt: Int?

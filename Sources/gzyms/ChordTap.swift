@@ -64,6 +64,9 @@ final class ChordTap {
     /// From outside the tap: `gzyms keys on|off`, an app switch, sleep, a screen change.
     func nav(on: Bool) { core.navEvent(on ? .on(navTargets) : .off) }
 
+    /// A bar's popup opened or closed (nil); outside the mode that is the mouse, and its keys then take the mode on.
+    func popup(_ id: String?) { core.navEvent(.popup(id, navTargets)) }
+
     /// Called again once Accessibility is granted, so no restart is needed.
     func start() {
         guard !started else { return }
@@ -231,7 +234,7 @@ final class TapCore: Sendable {
             if s.leaderHeld { flags.remove(mine) }
         default: break
         }
-        guard type == .keyDown, s.nav.on || s.leaderHeld else { return false }
+        guard type == .keyDown, s.nav.on || s.leaderHeld || s.nav.mouse != nil else { return false }
         var k = navKey(keyCode, flags: flags)
         // Held without the mode, the modifier takes the stack's letters only while banners wait.
         if s.leaderHeld, !s.nav.on, !s.queued, case .letter(let c) = k, ["j", "k", s.verbs.next, s.verbs.prev].contains(c) { k = .modified }
