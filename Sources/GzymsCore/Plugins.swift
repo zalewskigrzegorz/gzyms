@@ -1,0 +1,296 @@
+import Foundation
+import TOMLDecoder
+
+/// `plugin.toml`: what a plugin folder says about itself.
+public struct PluginManifest: Equatable, Sendable {
+    /// The folder's name: the id in config (`[plugins.<folder>]`) and on the CLI.
+    public var folder: String
+    public var name: String
+    /// Run with `/bin/sh -c` inside the folder.
+    public var command: String
+    public var description: String
+    public var icon: String?
+    /// The settings it declares (`[[option]]`); Settings draws a form from them, no UI code in the plugin.
+    public var options: [PluginOption]
+
+    public init(folder: String, name: String, command: String, description: String = "", icon: String? = nil, options: [PluginOption] = []) {
+        self.folder = folder; self.name = name; self.command = command; self.description = description; self.icon = icon
+        self.options = options
+    }
+}
+
+/// One `[[option]]` of a manifest. The value lives in config.toml as `[plugins.<folder>] <key> = …`.
+public struct PluginOption: Equatable, Sendable {
+    public enum Kind: String, CaseIterable, Sendable { case toggle, choice, text, number, list }
+    public var key: String, title: String, kind: Kind
+    public var defaultValue: TOMLValue?
+    public var choices: [String]
+    public var note: String?
+    public init(key: String, title: String, kind: Kind, defaultValue: TOMLValue? = nil, choices: [String] = [], note: String? = nil) {
+        self.key = key; self.title = title; self.kind = kind; self.defaultValue = defaultValue; self.choices = choices; self.note = note
+    }
+
+    /// What the plugin sees in `GZYMS_OPT_<KEY>`: a list one item per line, the rest as written.
+    public static func envText(_ v: TOMLValue) -> String {
+        switch v {
+        case .bool(let b): b ? "true" : "false"
+        case .int(let i): String(i)
+        case .double(let d): String(d)
+        case .string(let s): s
+        case .ints(let a): a.map(String.init).joined(separator: "\n")
+        case .strings(let a): a.joined(separator: "\n")
+        }
+    }
+}
+
+extension TOMLValue: Decodable {
+    /// Whatever a TOML value is: a plugin's option default, or the value config.toml holds for it.
+    public init(from decoder: Decoder) throws {
+        // TOMLDecoder hands arrays out only as unkeyed containers, and a failed element decode still moves its index,
+        // so each element type gets a fresh container and the whole array.
+        func all<T: Decodable>(_: T.Type) throws -> [T] {
+            var a = try decoder.unkeyedContainer()
+            var out: [T] = []
+            while !a.isAtEnd { out.append(try a.decode(T.self)) }
+            return out
+        }
+        if let s = try? all(String.self) { self = .strings(s); return }
+        if let i = try? all(Int.self) { self = .ints(i); return }
+        let c = try decoder.singleValueContainer()
+        if let b = try? c.decode(Bool.self) { self = .bool(b) }
+        else if let i = try? c.decode(Int.self) { self = .int(i) }
+        else if let d = try? c.decode(Double.self) { self = .double(d) }
+        else if let s = try? c.decode(String.self) { self = .string(s) }
+        else { throw DecodingError.dataCorruptedError(in: c, debugDescription: "not a value Gzyms keeps") }
+    }
+
+    /// JSON for `GZYMS_OPTIONS`.
+    var json: Any {
+        switch self {
+        case .bool(let b): b
+        case .int(let i): i
+        case .double(let d): d
+        case .string(let s): s
+        case .ints(let a): a
+        case .strings(let a): a
+        }
+    }
+}
+
+public func pluginManifest(toml: String, folder: String) -> Result<PluginManifest, NotifyArgsError> {
+    struct RawOption: Decodable {
+        var key: String?; var title: String?; var type: String?; var `default`: TOMLValue?; var choices: [String]?; var note: String?
+    }
+    struct Raw: Decodable { var name: String?; var command: String?; var description: String?; var icon: String?; var option: [RawOption]? }
+    guard let raw = try? TOMLDecoder().decode(Raw.self, from: Data(toml.utf8)) else {
+        return .failure(.init(message: "\(folder)/plugin.toml could not be read"))
+    }
+    guard let command = raw.command, !command.trimmingCharacters(in: .whitespaces).isEmpty else {
+        return .failure(.init(message: "\(folder)/plugin.toml has no command"))
+    }
+    var options: [PluginOption] = []
+    for (n, o) in (raw.option ?? []).enumerated() {
+        guard let key = o.key, key.wholeMatch(of: /[a-z][a-z0-9_]*/) != nil else {
+            return .failure(.init(message: "\(folder)/plugin.toml: option \(n + 1) needs a key of lowercase letters, digits and _"))
+        }
+        guard key != "enabled" else { return .failure(.init(message: "\(folder)/plugin.toml: \"enabled\" is Gzyms' own key")) }
+        guard let kind = PluginOption.Kind(rawValue: o.type ?? "text") else {
+            return .failure(.init(message: "\(folder)/plugin.toml: option \(key) has type \(o.type ?? ""), not toggle, choice, text, number or list"))
+        }
+        options.append(PluginOption(key: key, title: o.title ?? key, kind: kind, defaultValue: o.default, choices: o.choices ?? [], note: o.note))
+    }
+    return .success(PluginManifest(folder: folder, name: raw.name ?? folder, command: command,
+                                   description: raw.description ?? "", icon: raw.icon, options: options))
+}
+
+/// The environment a plugin starts with: each option as `GZYMS_OPT_<KEY>` (the user's value, else the default)
+/// and all of them as one JSON object in `GZYMS_OPTIONS`.
+public func pluginEnvironment(_ m: PluginManifest, values: [String: TOMLValue]) -> [String: String] {
+    var env = ["GZYMS_PLUGIN": m.folder]
+    var all: [String: Any] = [:]
+    for o in m.options {
+        guard let v = values[o.key] ?? o.defaultValue else { continue }
+        env["GZYMS_OPT_" + o.key.uppercased()] = PluginOption.envText(v)
+        all[o.key] = v.json
+    }
+    let data = (try? JSONSerialization.data(withJSONObject: all, options: [.sortedKeys])) ?? Data("{}".utf8)
+    env["GZYMS_OPTIONS"] = String(decoding: data, as: UTF8.self)
+    return env
+}
+
+/// A pill a plugin puts on the bar.
+public struct PluginItem: Equatable, Sendable {
+    public var id: String
+    public var text: String
+    /// An SF Symbol name.
+    public var icon: String?
+    /// A theme colour name (green, peach, red, …) or a hex.
+    public var color: String?
+    public var tooltip: String?
+    /// Rows of the list a click opens; nil = a click goes straight to the plugin.
+    public var menu: [PluginRow]?
+    public init(id: String, text: String, icon: String? = nil, color: String? = nil, tooltip: String? = nil, menu: [PluginRow]? = nil) {
+        self.id = id; self.text = text; self.icon = icon; self.color = color; self.tooltip = tooltip; self.menu = menu
+    }
+}
+
+/// One row of a plugin's list: a coloured tag on the left, the text, a detail on the right. A click (left or right)
+/// goes back to the plugin with the row's id; a row without an id is a label, `separator` a line.
+public struct PluginRow: Equatable, Sendable {
+    public var id: String?
+    public var text: String
+    public var tag: String?
+    public var color: String?
+    public var detail: String?
+    public var separator: Bool
+    public init(id: String? = nil, text: String = "", tag: String? = nil, color: String? = nil, detail: String? = nil, separator: Bool = false) {
+        self.id = id; self.text = text; self.tag = tag; self.color = color; self.detail = detail; self.separator = separator
+    }
+}
+
+/// A pill on the bar with the plugin it belongs to (clicks go back to that plugin).
+public struct PluginPill: Equatable, Sendable {
+    public var plugin: String
+    public var item: PluginItem
+    public init(plugin: String, item: PluginItem) { self.plugin = plugin; self.item = item }
+    /// Two plugins may both call a pill "status".
+    public var key: String { "\(plugin)/\(item.id)" }
+}
+
+/// A plugin folder as Settings lists it.
+public struct PluginStatus: Equatable, Sendable {
+    public var folder: String, name: String, description: String
+    public var enabled: Bool, running: Bool
+    /// Why it does not run (a broken manifest, it keeps dying); nil = fine.
+    public var problem: String?
+    /// The form Settings draws for it.
+    public var options: [PluginOption]
+    public init(folder: String, name: String, description: String, enabled: Bool, running: Bool, problem: String? = nil,
+                options: [PluginOption] = []) {
+        self.folder = folder; self.name = name; self.description = description; self.enabled = enabled; self.running = running
+        self.problem = problem; self.options = options
+    }
+}
+
+/// One line a plugin wrote on stdout.
+public enum PluginMessage: Equatable, Sendable {
+    case item(PluginItem)
+    case removeItem(String)
+    case notify(GzymsNotification)
+}
+
+/// nil = not a message (a half line, garbage, a field missing); the host logs it.
+public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMessage? {
+    struct Row: Decodable { var id, text, tag, color, detail: String?; var separator: Bool? }
+    struct Item: Decodable {
+        var id: String?; var text: String?; var icon: String?; var color: String?; var tooltip: String?; var remove: Bool?; var menu: [Row]?
+    }
+    struct Notify: Decodable {
+        var id: String?, title: String?, subtitle: String?, body: String?, level: String?, sound: String?, link: String?
+    }
+    struct Raw: Decodable { var item: Item?; var notify: Notify? }
+    guard let raw = try? JSONDecoder().decode(Raw.self, from: Data(line.utf8)) else { return nil }
+    if let i = raw.item, let id = i.id, !id.isEmpty {
+        if i.remove == true { return .removeItem(id) }
+        guard let text = i.text else { return nil }
+        let menu = i.menu.map { rows in
+            rows.map { PluginRow(id: $0.id, text: $0.text ?? "", tag: $0.tag, color: $0.color, detail: $0.detail, separator: $0.separator ?? false) }
+        }
+        return .item(PluginItem(id: id, text: text, icon: i.icon, color: i.color, tooltip: i.tooltip, menu: menu))
+    }
+    if let n = raw.notify, let title = n.title, !title.isEmpty {
+        let level = n.level.flatMap(NotifyLevel.init(rawValue:)) ?? .info
+        // A plugin's own id updates its earlier notification. Namespaced with ":", which a folder name cannot hold,
+        // so plugin "log" can never pass for "log-watcher".
+        let id = "plugin:\(plugin):" + (n.id ?? UUID().uuidString)
+        return .notify(GzymsNotification(id: id, app: nil, level: level, title: title, subtitle: n.subtitle, body: n.body,
+                                         link: n.link, altLink: nil, sound: n.sound, at: now))
+    }
+    return nil
+}
+
+/// What Gzyms writes on a plugin's stdin: `click` / `right_click` on a pill or a row, `open` when its list opens,
+/// `notify_open` when someone opens one of its notifications that has no link (the id is the plugin's own).
+public enum PluginEvent: String, CaseIterable, Sendable { case click, rightClick = "right_click", open, notifyOpen = "notify_open" }
+
+/// A plugin's text in pieces: `:name:` with an SF Symbol name inside is that symbol, the rest stays text.
+/// A name that is no symbol (`12:30:00`, `:nope:`) stays text as written.
+public enum TextPiece: Equatable, Sendable { case text(String), symbol(String) }
+
+public func textPieces(_ s: String, isSymbol: (String) -> Bool) -> [TextPiece] {
+    var out: [TextPiece] = [], rest = s[...]
+    func add(_ t: Substring) {
+        guard !t.isEmpty else { return }
+        if case .text(let prev)? = out.last { out[out.count - 1] = .text(prev + t) } else { out.append(.text(String(t))) }
+    }
+    while let m = rest.firstMatch(of: /:([a-z][a-z0-9]*(?:\.[a-z0-9]+)*):/) {
+        if isSymbol(String(m.1)) {
+            add(rest[..<m.range.lowerBound])
+            out.append(.symbol(String(m.1)))
+            rest = rest[m.range.upperBound...]
+        } else {  // keep this colon as text, look again from the next one
+            let next = rest.index(after: m.range.lowerBound)
+            add(rest[..<next])
+            rest = rest[next...]
+        }
+    }
+    add(rest)
+    return out
+}
+
+/// The plugin behind a notification id and the id it gave it. Only plugins post such ids: Gzyms drops them from outside.
+public func pluginNoteOwner(_ noteID: String, plugins: [String]) -> (plugin: String, id: String)? {
+    let parts = noteID.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+    guard parts.count == 3, parts[0] == "plugin", plugins.contains(String(parts[1])) else { return nil }
+    return (String(parts[1]), String(parts[2]))
+}
+
+public func pluginEventLine(_ e: PluginEvent, id: String) -> String {
+    let data = (try? JSONEncoder().encode(["event": e.rawValue, "id": id])) ?? Data()
+    return String(decoding: data, as: UTF8.self)
+}
+
+/// `gzyms plugin new <folder>`: a working click counter in bash that shows the whole protocol.
+public func pluginScaffold(folder: String) -> (manifest: String, script: String) {
+    let manifest = """
+    # A Gzyms plugin. The whole protocol: gzyms skill plugins
+    name = "\(folder)"
+    description = "Counts clicks on its pill. Edit plugin.sh to make it yours."
+    command = "./plugin.sh"
+    icon = "puzzlepiece.extension"
+
+    # Settings → Plugins draws a form from these; the plugin reads GZYMS_OPT_<KEY> (all of them: GZYMS_OPTIONS, JSON).
+    # type = toggle | choice (with choices = [...]) | text | number | list. A change restarts the plugin.
+    [[option]]
+    key = "label"
+    title = "Pill label"
+    type = "text"
+    default = "clicked"
+    note = "the word before the count"
+
+    """
+    let script = #"""
+    #!/bin/bash
+    # Gzyms plugin protocol, one JSON object per line (all of it, menus included: gzyms skill plugins):
+    #   you -> Gzyms (stdout): {"item":{"id":"x","text":"…","icon":"<SF Symbol>","color":"green"}}
+    #                          {"item":{"id":"x","remove":true}}
+    #                          {"notify":{"title":"…","body":"…","level":"info|warning|error|critical","sound":"success"}}
+    #   Gzyms -> you (stdin):  {"event":"click","id":"x"}
+    # When stdin ends, Gzyms is gone: exit. Print only on change, Gzyms redraws on every line.
+    # Gzyms starts this once: after editing it, turn the plugin off and on (Settings → Plugins) to run the new code.
+    n=0
+    label="${GZYMS_OPT_LABEL:-clicked}"  # the "Pill label" option from plugin.toml
+    pill() { echo "{\"item\":{\"id\":\"counter\",\"text\":\"$label $n\",\"icon\":\"hand.tap\",\"color\":\"green\"}}"; }
+    pill
+    while read -r line; do
+      case "$line" in
+        *'"click"'*)
+          n=$((n + 1)); pill
+          if [ $((n % 5)) -eq 0 ]; then echo "{\"notify\":{\"title\":\"$n clicks\",\"body\":\"from the example plugin\",\"sound\":\"success\"}}"; fi
+          ;;
+      esac
+    done
+
+    """#
+    return (manifest, script)
+}

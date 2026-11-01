@@ -1,0 +1,179 @@
+import AppKit
+import GzymsCore
+import GzymsUI
+import SwiftUI
+
+/// The banner's window: drops from the top edge, centred, so on a notch screen it reads as the notch growing down.
+@MainActor
+final class IslandPanel: NSPanel {
+    var onOpen: () -> Void = {}
+    var onRight: () -> Void = {}
+    var onDismiss: () -> Void = {}
+    var onHover: (Bool) -> Void = { _ in }
+    /// Scroll over the banner: +1 next, -1 previous.
+    var onStep: (Int) -> Void = { _ in }
+    private var scrolled: CGFloat = 0
+    private var lastScroll: TimeInterval = 0
+    private var edges: CGFloat = 0
+    private(set) var shown: GzymsNotification?
+    private var inset: CGFloat = 0
+    /// The edge the island hangs from (the notch or the bar's lower edge). It grows down from here and folds back
+    /// into it, never above it: a monitor stacked on top would show it otherwise (Greg, 2026-10-31).
+    private var top: CGFloat = 0
+    /// Set when the icon flies to the bar: the island then fades where it is, so the eye follows one movement.
+    var fadeNextHide = false
+    /// `[appearance] animations` / Reduce motion: off = the island appears and goes without unrolling.
+    var animate = true
+    /// Where the app icon sits on screen, so it can fly from there to the bar.
+    var avatarRect: NSRect { NSRect(x: frame.minX + 14, y: frame.midY + edges / 2 - (inset - 2) / 2 - 18, width: 36, height: 36) }
+    private let host = NSHostingView(rootView: AnyView(EmptyView()))
+
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)  // over the bar
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        isReleasedWhenClosed = false
+        contentView = host
+        // The window's size is ours alone: SwiftUI pushing its own while the frame animates made the small
+        // and the full island flicker over each other (Greg, 2026-10-31).
+        host.sizingOptions = []
+        host.addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    /// A new notification while one is up swaps the content in place; only an empty island slides.
+    /// Called again on hover, so the countdown restarts from the store's `remaining` or stands still.
+    func show(_ n: GzymsNotification, icon: NSImage?, theme: Theme, on screen: NSScreen, total: Double?, remaining: Double?, running: Bool, hints: ChordHints?, queue: [GzymsNotification] = []) {
+        let wasShown = shown != nil
+        if shown?.id != n.id { log("island: show \(n.id)") }
+        alphaValue = 1
+        fadeNextHide = false  // a new banner took the place: nothing hides
+        shown = n
+        // With a notch the island grows out of it; without one it hangs from the bar's lower edge (Greg: no fake notch).
+        let notch = screen.auxiliaryTopLeftArea != nil
+        inset = notch ? screen.safeAreaInsets.top : 0
+        let total = n.reminder ? nil : total
+        edges = n.compact ? 0 : CGFloat(BannerView.edges(queue.count)) * (BannerView.edgeHeight + BannerView.edgeGap)
+        let banner = BannerView(n: n, icon: icon, remaining: remaining, total: total, running: running, hints: hints, topInset: inset, queue: queue)
+            .themed(theme)
+        let size = NSHostingView(rootView: banner).fittingSize
+        // Centred at the top: while the window grows from the small island, it uncovers the full one from the middle.
+        host.rootView = AnyView(banner.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
+        let f = screen.frame
+        top = notch ? f.maxY : f.maxY - BarPanel.height
+        let rest = NSRect(x: f.midX - size.width / 2, y: top - size.height, width: size.width, height: size.height)
+        // A pending icon growing into the full banner (or any swap) animates like the prototype.
+        guard animate else { setFrame(rest, display: true); orderFrontRegardless(); return }
+        if wasShown { slide(to: rest, duration: 0.45, timing: CAMediaTimingFunction(controlPoints: 0.3, 0.9, 0.3, 1.1)); return }
+        setFrame(folded(rest), display: false)
+        orderFrontRegardless()
+        // The prototype's entry: 0.35 s with a little overshoot, unrolling down from the edge.
+        slide(to: rest, duration: 0.35, timing: CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.2))
+    }
+
+    func hide() {
+        guard let gone = shown else { return }
+        log("island: hide \(gone.id) (animate \(animate), fade \(fadeNextHide))")
+        shown = nil
+        guard animate else { fadeNextHide = false; orderOut(nil); return }
+        if fadeNextHide {
+            fadeNextHide = false
+            NSAnimationContext.runAnimationGroup { c in
+                c.duration = 0.2
+                animator().alphaValue = 0
+            } completionHandler: {
+                MainActor.assumeIsolated {
+                    guard self.shown == nil else { self.alphaValue = 1; return }
+                    self.orderOut(nil)
+                    self.alphaValue = 1
+                }
+            }
+            return
+        }
+        slide(to: folded(frame)) { [weak self] in
+            guard let self, shown == nil else { return }
+            orderOut(nil)
+        }
+    }
+
+    /// The island rolled up into its edge: full width, one point tall.
+    private func folded(_ r: NSRect) -> NSRect { NSRect(x: r.minX, y: top - 1, width: r.width, height: 1) }
+
+    private func slide(to rect: NSRect, duration: Double = 0.18, timing: CAMediaTimingFunction = CAMediaTimingFunction(name: .easeIn),
+                       done: (@MainActor () -> Void)? = nil) {
+        NSAnimationContext.runAnimationGroup { c in
+            c.duration = duration
+            c.timingFunction = timing
+            animator().setFrame(rect, display: true)
+        } completionHandler: { MainActor.assumeIsolated { done?() } }
+    }
+
+    // Clicks are taken here, before SwiftUI: left = open, middle (wheel) = dismiss, right = the second action.
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown: log("island: click on \(shown?.id ?? "nothing")"); onOpen()
+        case .rightMouseDown: onRight()
+        case .otherMouseDown where event.buttonNumber == 2: onDismiss()
+        case .scrollWheel: scroll(event)
+        default: super.sendEvent(event)
+        }
+    }
+
+    /// A trackpad (events with a phase): one step per 40 pt of finger travel, so a long swipe goes further, and the
+    /// glide after the fingers lift never steps. A mouse wheel has no phase (Apple: legacy scroll events), even with
+    /// precise deltas from smoothing (Logi sends 100+ pt per event): one step per turn, at most every 0.25 s, any size.
+    /// Down = next, by the hand's movement (natural scrolling flips the sign).
+    private func scroll(_ e: NSEvent) {
+        let dy = e.scrollingDeltaY
+        guard dy != 0 || !e.phase.isEmpty else { return }
+        func step(_ dy: CGFloat) { onStep((e.isDirectionInvertedFromDevice ? dy > 0 : dy < 0) ? 1 : -1) }
+        if e.phase.isEmpty {
+            guard e.momentumPhase.isEmpty, e.timestamp - lastScroll >= 0.25 else { return }
+            lastScroll = e.timestamp
+            step(dy)
+            return
+        }
+        if e.phase.contains(.began) || e.phase.contains(.mayBegin) { scrolled = 0 }
+        scrolled += dy
+        guard abs(scrolled) >= 40 else { return }
+        step(scrolled)
+        scrolled = 0
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover(true) }
+    override func mouseExited(with event: NSEvent) { onHover(false) }
+}
+
+/// The app icon flying from a hiding banner into its place on the bar (the prototype's "lot do ikony").
+@MainActor
+enum FlyToIcon {
+    static func run(image: NSImage, from: NSRect, to target: NSRect, done: @escaping @MainActor () -> Void) {
+        let p = NSPanel(contentRect: from, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.hasShadow = false
+        p.ignoresMouseEvents = true
+        p.isReleasedWhenClosed = false
+        let view = NSImageView(image: image)
+        view.imageScaling = .scaleProportionallyUpOrDown
+        p.contentView = view
+        p.orderFrontRegardless()
+        let side = from.width * 0.3
+        let end = NSRect(x: target.midX - side / 2, y: target.midY - side / 2, width: side, height: side)
+        NSAnimationContext.runAnimationGroup { c in
+            c.duration = 0.52
+            c.timingFunction = CAMediaTimingFunction(controlPoints: 0.5, 0, 0.3, 1)
+            p.animator().setFrame(end, display: true)
+            p.animator().alphaValue = 0.6
+        } completionHandler: {
+            MainActor.assumeIsolated {
+                p.orderOut(nil)
+                done()
+            }
+        }
+    }
+}
