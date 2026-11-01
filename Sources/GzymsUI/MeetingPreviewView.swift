@@ -63,6 +63,8 @@ public struct MeetingPreviewView: View {
             }
             Text("The mic and speakers become the macOS defaults. The meeting app picks its own camera.")
                 .font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+            Text("Works when your meeting app uses the system default device.")
+                .font(.system(size: 11)).foregroundStyle(theme[\.overlay])
             HStack(spacing: 8) {
                 Spacer()
                 KeyCap("esc")
