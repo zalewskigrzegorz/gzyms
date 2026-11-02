@@ -1,3 +1,4 @@
+import GzymsCore
 import SwiftUI
 
 public struct Metric: Equatable, Sendable {
@@ -25,7 +26,7 @@ public struct HUDStats: Equatable, Sendable {
     }
 }
 
-public enum HUDTab: Sendable { case stats, logs }
+public enum HUDTab: Sendable { case stats, logs, queues }
 
 public struct LogLine: Equatable, Sendable {
     public var source: String
@@ -48,12 +49,15 @@ public struct HUDView: View {
     @Binding var tab: HUDTab
     let logs: [LogLine]
     @Binding var filter: LogFilter
+    /// The same rows as `gzyms notifications`.
+    let queues: [NotificationRow]
+    let now: Date
     let onHide: () -> Void
     @Environment(\.theme) private var theme
 
     public init(stats: HUDStats, tab: Binding<HUDTab>, logs: [LogLine], filter: Binding<LogFilter>,
-                onHide: @escaping () -> Void = {}) {
-        self.stats = stats; _tab = tab; self.logs = logs; _filter = filter; self.onHide = onHide
+                queues: [NotificationRow] = [], now: Date = Date(), onHide: @escaping () -> Void = {}) {
+        self.stats = stats; _tab = tab; self.logs = logs; _filter = filter; self.queues = queues; self.now = now; self.onHide = onHide
     }
 
     public var body: some View {
@@ -63,6 +67,7 @@ public struct HUDView: View {
                 Spacer()
                 tabButton("Stats", .stats)
                 tabButton("Logs", .logs)
+                tabButton("Queues", .queues)
                 Text("hide 30 s").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
                     .padding(.leading, 4).onTapGesture(perform: onHide)
             }
@@ -70,7 +75,11 @@ public struct HUDView: View {
                 Text("bar not answering").font(.system(size: 11, weight: .bold)).foregroundStyle(theme[\.base])
                     .frame(maxWidth: .infinity).padding(3).background(theme[\.red], in: RoundedRectangle(cornerRadius: 4))
             }
-            if tab == .stats { statsBody } else { logsBody }
+            switch tab {
+            case .stats: statsBody
+            case .logs: logsBody
+            case .queues: queuesBody
+            }
             Spacer(minLength: 0)
         }
         .font(.system(size: 11).monospaced())
@@ -130,6 +139,47 @@ public struct HUDView: View {
             Text(line.text).lineLimit(1).truncationMode(.tail)
                 .foregroundStyle(line.level == "error" ? theme[\.red] : theme[\.text])
                 .font(.system(size: 10).monospaced())
+        }
+    }
+
+    /// Columns: position, level, how long ago it came, ♪ = its sound played, title, source.
+    @ViewBuilder private var queuesBody: some View {
+        let stack = queues.filter { $0.place == .stack }, waiting = queues.filter { $0.place == .waiting }
+        Text("stack · \(stack.count) of 4, 1 on screen").foregroundStyle(theme[\.overlay])
+        if stack.isEmpty { Text("empty").foregroundStyle(theme[\.overlay]) }
+        ForEach(stack) { queueRow($0) }
+        Text("waiting for room · \(waiting.count)").foregroundStyle(theme[\.overlay]).padding(.top, 4)
+        ForEach(waiting.prefix(8)) { queueRow($0) }
+        if waiting.count > 8 { Text("+\(waiting.count - 8) more").foregroundStyle(theme[\.overlay]) }
+        plain("in the lists", "\(queues.filter { $0.place == .list }.count)").padding(.top, 4)
+        plain("snoozed", "\(queues.filter { $0.place == .snoozed }.count)")
+    }
+
+    private func queueRow(_ r: NotificationRow) -> some View {
+        let color = switch r.level {
+        case .armageddon, .critical, .error: theme[\.red]
+        case .warning: theme[\.peach]
+        case .info: theme[\.overlay]
+        }
+        return HStack(spacing: 5) {
+            Text(r.position.map(String.init) ?? "").frame(width: 12, alignment: .trailing)
+            Text(["error": "err", "critical": "crit", "armageddon": "arma"][r.level.rawValue] ?? r.level.rawValue.prefix(4)).foregroundStyle(color).frame(width: 30, alignment: .leading)
+            Text(Self.ago(now.timeIntervalSince(r.at))).frame(width: 28, alignment: .trailing)
+            Text(r.heard == true ? "♪" : " ").frame(width: 10)
+            Text(r.title.isEmpty ? "–" : r.title).lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 4)
+            Text(r.source.split(separator: ".").last.map(String.init) ?? r.source).foregroundStyle(theme[\.overlay]).lineLimit(1)
+        }
+        .font(.system(size: 10).monospaced())
+    }
+
+    static func ago(_ s: Double) -> String {
+        let s = max(0, s)
+        return switch s {
+        case ..<60: "\(Int(s))s"
+        case ..<3600: "\(Int(s / 60))m"
+        case ..<86_400: "\(Int(s / 3600))h"
+        default: "\(Int(s / 86_400))d"
         }
     }
 }

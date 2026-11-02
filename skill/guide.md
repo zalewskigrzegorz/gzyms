@@ -34,6 +34,19 @@ It prints the notification's id. Gzyms has to be running, else it exits 1 with a
 
 Short forms: `-t` `-s` `-b` `-l` `-i` `-a` `-c` `-r`. `--sound`, `--screen`, `--link` and `--alt-link` have none. `gzyms help notify` lists them side by side.
 
+## Reading notifications: gzyms notifications
+
+Run `gzyms notifications --json` before you guess what the user sees: when they mention "that notification", a banner, a waiting one, or ask why something did not show. It works with the bar off.
+
+```sh
+gzyms notifications            # grouped, the text cut to one line
+gzyms notifications --json     # every field in full
+gzyms notifications dismiss <id>
+gzyms notifications clear      # empties every list; banners in the stack stay
+```
+
+Each row has `id`, `source` (an app's bundle id, `plugin:<folder>`, `meeting`, or `bell` for one with no app), `level`, `title`, `subtitle`, `body`, `at`, `place` and `position`. `place` is `stack` (position 1 is on screen, the rest wait in the stack), `waiting` (no room in the stack yet, in the order they come up), `list` (in its app's list) or `snoozed` (`back` says when it returns). `heard` says whether its sound played. `dnd` is set while Do Not Disturb is on. The small app-icon island that shows before a text arrives is never listed. The text is the user's private data: do not quote it outside the conversation, and dismiss or clear only when they ask. `gzyms hud` shows the same stack and waiting line on its Queues tab.
+
 ## Settings: gzyms set and gzyms unset
 
 ```sh

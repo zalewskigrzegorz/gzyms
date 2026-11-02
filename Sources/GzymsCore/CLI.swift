@@ -20,6 +20,8 @@ public let cliTable: [CLICommand] = [
     .init(name: "settings", usage: "[tab]", summary: "Open the settings panel, on a tab when given.", words: []),
     .init(name: "keys", usage: "on|off", summary: "Turn the keyboard mode on or off.", words: ["on", "off"]),
     .init(name: "dnd", usage: "on [minutes]|off", summary: "Turn Do Not Disturb on or off.", words: ["on", "off"]),
+    .init(name: "notifications", usage: "[--json] | dismiss <id> | clear", summary: "List the notifications Gzyms holds, dismiss one or clear the lists.",
+          words: ["--json", "dismiss", "clear"]),
     .init(name: "hud", usage: "", summary: "Open the usage HUD, a second call closes it.", words: []),
     .init(name: "report", usage: "", summary: "Put a zip for a bug report on the Desktop.", words: []),
     .init(name: "plugin", usage: "list|new <name>|add <name>|remove <name>", summary: "Manage plugins.", words: ["list", "new", "add", "remove"]),

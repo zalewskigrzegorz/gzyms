@@ -11,12 +11,17 @@ enum DNDCommand {
             FileHandle.standardError.write(Data("gzyms dnd: on [minutes] or off\n".utf8))
             exit(1)
         }
-        let skip = [ProcessInfo.processInfo.processIdentifier, InstanceLock.holderPid(path: HUD.pidFile.path)]
-        guard NSRunningApplication.runningApplications(withBundleIdentifier: "dev.gzyms").contains(where: { !skip.contains($0.processIdentifier) }) else {
+        guard barRunning() else {
             FileHandle.standardError.write(Data("gzyms dnd: Gzyms is not running\n".utf8))
             exit(1)
         }
         DistributedNotificationCenter.default().postNotificationName(dndName, object: message, userInfo: nil, deliverImmediately: true)
         exit(0)
+    }
+
+    /// A bar other than this command and the HUD (same bundle id).
+    static func barRunning() -> Bool {
+        let skip = [ProcessInfo.processInfo.processIdentifier, InstanceLock.holderPid(path: HUD.pidFile.path)]
+        return NSRunningApplication.runningApplications(withBundleIdentifier: "dev.gzyms").contains { !skip.contains($0.processIdentifier) }
     }
 }

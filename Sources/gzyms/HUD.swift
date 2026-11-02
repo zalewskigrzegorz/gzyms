@@ -57,6 +57,8 @@ final class HUDModel {
     var tab: HUDTab = .stats
     var filter: LogFilter = .all
     var logs: [LogLine] = []
+    var queues: [NotificationRow] = []
+    var now = Date()
     var theme = HUDModel.configTheme()
 
     /// The same file the bar reads; its problems are the bar's to log.
@@ -69,7 +71,7 @@ struct HUDRoot: View {
     @Bindable var model: HUDModel
     let onHide: () -> Void
     var body: some View {
-        HUDView(stats: model.stats, tab: $model.tab, logs: model.logs, filter: $model.filter, onHide: onHide)
+        HUDView(stats: model.stats, tab: $model.tab, logs: model.logs, filter: $model.filter, queues: model.queues, now: model.now, onHide: onHide)
             .themed(model.theme)
             // isMovableByWindowBackground ignores SwiftUI content, so the drag has to come from SwiftUI.
             .gesture(WindowDragGesture())
@@ -177,6 +179,11 @@ final class HUDController: NSObject, NSApplicationDelegate {
         stats.lagSeries = lag.values
         model.stats = stats
         if model.tab == .logs { model.logs = LogTail.read() }
+        // The file the bar writes after every change, the one `gzyms notifications` reads.
+        if model.tab == .queues {
+            model.queues = ((try? NotificationStore.Saved.read(NotificationsCommand.file)) ?? nil)?.rows ?? []
+            model.now = Date()
+        }
     }
 }
 

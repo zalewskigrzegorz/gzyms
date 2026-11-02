@@ -316,7 +316,10 @@ public struct NotificationStore: Sendable {
         snoozed.append((takeShown(now: now), now + Double(minutes) * 60))
     }
 
-    public mutating func remove(_ id: String, now: Double) { _ = open(id, now: now) }
+    public mutating func remove(_ id: String, now: Double) {
+        _ = open(id, now: now)
+        snoozed.removeAll { $0.n.id == id }
+    }
     public mutating func clearAll(_ app: String?) {
         inboxes[app]?.forEach { toPhone[$0.id] = nil }
         inboxes[app] = nil
@@ -340,18 +343,33 @@ public struct NotificationStore: Sendable {
         public var snoozed: [Snooze]
         public var dnd: Date?
         public var queued: [Queued]?
+        /// What `gzyms notifications` and the HUD show: the stack (on screen first, meetings too) and the ones waiting
+        /// for room, in order. Never read back by `restore`.
+        public var live: [Live]? = nil
+        public struct Live: Codable, Equatable, Sendable { public var n: GzymsNotification; public var waiting: Bool; public var heard: Bool }
+
+        /// For readers other than the bar: nil when there is none yet. A broken file throws and stays where it is.
+        public static func read(_ url: URL) throws -> Saved? {
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            return try JSONDecoder().decode(Saved.self, from: data)
+        }
     }
 
     public func saved(now: Double, wall: Date) -> Saved {
         var copy = self
         // A meeting comes back from the calendar; a pending icon was never a row.
-        let line = (stack.isEmpty ? [] : stack[cursor...] + stack[..<cursor]).filter { $0.n.meetingStart == nil && !$0.n.compact }
-            + overflow.sorted(by: Self.order)
+        let shown = (stack.isEmpty ? [] : Array(stack[cursor...] + stack[..<cursor])).filter { !$0.n.compact }
+        // Opened or cleared from its list never comes up; the rest come up as their list's newest version.
+        let waiting = overflow.sorted(by: Self.order).compactMap { e in
+            inboxes[e.n.app]?.first { $0.id == e.n.id }.map { Saved.Live(n: $0, waiting: true, heard: e.heard) }
+        }
+        let line = shown.filter { $0.n.meetingStart == nil } + overflow.sorted(by: Self.order)
         for e in stack where e.n.meetingStart == nil { copy.file(e.n) }
         // Sorted by app: the same lists always give the same bytes, so an unchanged store is not written again.
         return Saved(inbox: copy.inboxes.sorted { ($0.key ?? "") < ($1.key ?? "") }.flatMap(\.value),
                      snoozed: snoozed.map { .init(n: $0.n, at: wall + ($0.at - now)) }, dnd: dnd,
-                     queued: line.map { .init(id: $0.n.id, heard: $0.heard, reminder: $0.n.reminder) })
+                     queued: line.map { .init(id: $0.n.id, heard: $0.heard, reminder: $0.n.reminder) },
+                     live: shown.map { .init(n: $0.n, waiting: false, heard: $0.heard) } + waiting)
     }
 
     /// A snooze whose time passed while the bar was off comes back on the next tick. The ones in line come up in

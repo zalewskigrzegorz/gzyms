@@ -279,7 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cpuTicks = now
     }
 
-    private static var notesFile: URL { VitalsWriter.url.deletingLastPathComponent().appendingPathComponent("notifications.json") }
+    private static var notesFile: URL { NotificationsCommand.file }
     private var notesSaved: Data?
 
     /// After every change, only when something kept on disk moved (hover and ticks leave the bytes alone).
@@ -291,6 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var dndObserver: NSObjectProtocol?
+    private var notesCLIObserver: NSObjectProtocol?
     private var dndTimer: Timer?
 
     /// From the moon pill or `gzyms dnd`; nil turns it off.
@@ -323,6 +324,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { [weak self] in
                 guard let arg, let until = dndUntil(arg, now: Date()) else { return }
                 self?.setDND(until)
+            }
+        }
+        // `gzyms notifications dismiss <id>` and `clear`. Nothing of the text goes to the log.
+        notesCLIObserver = DistributedNotificationCenter.default().addObserver(forName: notificationsName, object: nil, queue: .main) { note in
+            let arg = note.object as? String
+            MainActor.assumeIsolated { [weak self] in
+                guard let self, let arg else { return }
+                if arg == "clear" {
+                    for app in Array(notes.inboxes.keys) { notes.clearAll(app) }
+                } else if arg.hasPrefix("dismiss:") {
+                    notes.remove(String(arg.dropFirst("dismiss:".count)), now: ProcessInfo.processInfo.systemUptime)
+                } else { return }
+                log("notifications: \(arg == "clear" ? "lists cleared" : "one dismissed") from the CLI")
+                notesChanged()
             }
         }
         model.onOpenNote = { [weak self] in self?.open($0) }
