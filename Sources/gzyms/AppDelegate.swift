@@ -493,6 +493,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let b = notes.banner else { return }
             if b.meetingStart != nil, let m = meetings.first(where: { "meeting-\($0.id)" == b.id }) {
                 meetingClock.snooze(m, now: Date().timeIntervalSince1970)
+                saveMeetings()
                 notes.remove(b.id, now: ProcessInfo.processInfo.systemUptime)
                 meetingShown = nil
                 logNote(b, "snoozed to the next point")
@@ -803,6 +804,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var configLoadedOnce = false
 
     private func startCalendar() {
+        if let data = try? Data(contentsOf: Self.meetingsFile), let s = try? JSONDecoder().decode(MeetingClock.Saved.self, from: data) {
+            meetingClock.restore(s)  // unreadable: start empty, the worst case is one reminder again
+        }
         let c = CalendarSource { [weak self] found, calendars in
             guard let self else { return }
             if model.calendars != calendars { model.calendars = calendars }
@@ -877,9 +881,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("calendar: \(m.id) check before joining")
     }
 
+    private static var meetingsFile: URL { notesFile.deletingLastPathComponent().appendingPathComponent("meetings.json") }
+
+    /// Joined, dismissed and snoozed meetings, so a restart (install, update, crash) does not bring a reminder back.
+    private func saveMeetings() {
+        guard let data = try? JSONEncoder().encode(meetingClock.saved(now: Date().timeIntervalSince1970)) else { return }
+        do { try data.write(to: Self.meetingsFile, options: .atomic) } catch { log("calendar: could not save meetings.json (\(error))") }
+    }
+
     private func finishMeeting(_ n: GzymsNotification) {
         let id = String(n.id.dropFirst("meeting-".count))
         meetingClock.finish(id)
+        saveMeetings()
         if meetingShown == id { meetingShown = nil }
         meetingsChanged()
     }

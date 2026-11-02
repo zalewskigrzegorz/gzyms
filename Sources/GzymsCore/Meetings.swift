@@ -82,6 +82,20 @@ public struct MeetingClock: Sendable {
         if Self.ladder.contains(where: { $0 < p }) { snoozedAt[m.id] = p } else { finish(m.id) }
     }
 
+    /// What survives a bar restart (meetings.json): a meeting joined at 10:00 stays quiet after a 10:03 restart.
+    public struct Saved: Codable, Equatable, Sendable {
+        public var done: [String]
+        public var snoozedAt: [String: Int]
+    }
+
+    /// Ids end in "@<start>": an occurrence that started over a day ago never reminds again, so it is dropped.
+    public func saved(now: Double) -> Saved {
+        let fresh = { (id: String) in id.split(separator: "@").last.flatMap { Double($0) }.map { $0 > now - 86400 } ?? false }
+        return Saved(done: done.filter(fresh).sorted(), snoozedAt: snoozedAt.filter { fresh($0.key) })
+    }
+
+    public mutating func restore(_ s: Saved) { done = Set(s.done); snoozedAt = s.snoozedAt }
+
     /// The points that can still bring this meeting up: its own, or after a snooze the ladder steps below it.
     private func steps(_ m: Meeting) -> [Int] {
         snoozedAt[m.id].map { s in Self.ladder.filter { $0 < s } } ?? points

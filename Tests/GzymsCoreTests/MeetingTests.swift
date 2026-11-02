@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import GzymsCore
 
@@ -84,6 +85,26 @@ private func meeting(_ id: String = "a", start: Double = m0) -> Meeting {
 @Test func wakingPastSeveralPointsShowsTheLastOnly() {
     let c = MeetingClock(points: [5, 3, 0, -3])
     #expect(c.due([meeting()], now: m0 + 120)?.point == 0)  // slept 9:50–10:02
+}
+
+@Test func joinedSnoozedAndDismissedSurviveARestart() throws {
+    let a = meeting("evt@\(Int(m0))"), b = meeting("other@\(Int(m0))")
+    var c = MeetingClock(points: [3, 0, -3])
+    c.finish(a.id)
+    c.snooze(b, now: m0 - 170)
+    let data = try JSONEncoder().encode(c.saved(now: m0))
+    var restarted = MeetingClock(points: [3, 0, -3])
+    restarted.restore(try JSONDecoder().decode(MeetingClock.Saved.self, from: data))
+    #expect(restarted.due([a], now: m0 + 180) == nil)  // 14:33 on 2026-11-02: joined, then the bar restarted
+    #expect(restarted.due([b], now: m0 - 60) == nil)
+    #expect(restarted.due([b], now: m0)?.point == 0)
+}
+
+@Test func savedDropsOccurrencesThatStartedOverADayAgo() {
+    var c = MeetingClock()
+    c.finish("old@\(Int(m0))")
+    c.finish("new@\(Int(m0 + 86400))")
+    #expect(c.saved(now: m0 + 86400 + 60).done == ["new@\(Int(m0 + 86400))"])
 }
 
 @Test func nextCheckIsTheNextPoint() {
