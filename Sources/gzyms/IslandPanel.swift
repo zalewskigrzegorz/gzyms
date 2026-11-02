@@ -77,7 +77,15 @@ final class IslandPanel: NSPanel {
         guard let gone = shown else { return }
         log("island: hide \(gone.id) (animate \(animate), fade \(fadeNextHide))")
         shown = nil
-        guard animate else { fadeNextHide = false; orderOut(nil); return }
+        guard animate else {
+            fadeNextHide = false
+            // Out of the click's own event, like the animated path: an orderOut inside it can leave the window on screen.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, shown == nil else { return }
+                orderOut(nil)
+            }
+            return
+        }
         if fadeNextHide {
             fadeNextHide = false
             NSAnimationContext.runAnimationGroup { c in
@@ -111,11 +119,13 @@ final class IslandPanel: NSPanel {
     }
 
     // Clicks are taken here, before SwiftUI: left = open, middle (wheel) = dismiss, right = the second action.
+    // On the button's release: an orderOut while it is still held on this window leaves the window on screen.
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
-        case .leftMouseDown: log("island: click on \(shown?.id ?? "nothing")"); onOpen()
-        case .rightMouseDown: onRight()
-        case .otherMouseDown where event.buttonNumber == 2: onDismiss()
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown: break
+        case .leftMouseUp: log("island: click on \(shown?.id ?? "nothing")"); onOpen()
+        case .rightMouseUp: onRight()
+        case .otherMouseUp where event.buttonNumber == 2: onDismiss()
         case .scrollWheel: scroll(event)
         default: super.sendEvent(event)
         }
