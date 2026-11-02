@@ -36,17 +36,23 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>LSUIElement</key><true/>
   <key>NSCameraUsageDescription</key><string>Gzyms shows your camera in the check before a meeting.</string>
   <key>NSCalendarsFullAccessUsageDescription</key><string>Gzyms reminds you of meetings that have a video link.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Your Gzyms plugins can control other apps.</string>
   <key>NSMicrophoneUsageDescription</key><string>Gzyms shows a live mic level in the microphone popup.</string>
   <key>SUFeedURL</key><string>$feed</string>
   <key>SUPublicEDKey</key><string>kJAN3IJiKfJDXN05aHu6YvjqCSgFaEEOIhnPt/28Qtw=</string>
   <key>SUEnableAutomaticChecks</key><true/>
 </dict></plist>
 EOF
-# Inside out: Sparkle's helpers, the framework, then the app. A stable identity keeps macOS grants across updates.
+# Inside out, no --deep (sparkle-project.org/documentation/sandboxing): Sparkle's helpers, the framework, then the app.
+# One identity for dev and release keeps macOS grants across rebuilds, updates and dev <-> release.
+# GZYMS_SIGN_ID="Gzyms Dev" (scripts/make-dev-cert.sh) on a Mac without the Developer ID; install-dev.sh skips the
+# secure timestamp (GZYMS_TIMESTAMP=--timestamp=none) so it builds offline.
+sign_id="${GZYMS_SIGN_ID:-Developer ID Application: Grzegorz Zalewski (AM4DX85G8P)}"
+sign=(codesign --force --options runtime "${GZYMS_TIMESTAMP:---timestamp}" --sign "$sign_id")
 fw="$app/Contents/Frameworks/Sparkle.framework"
-codesign --force --sign "Gzyms Dev" "$fw/Versions/B/Autoupdate"
-codesign --force --sign "Gzyms Dev" "$fw/Versions/B/Updater.app"
-codesign --force --sign "Gzyms Dev" "$fw"
-codesign --force --sign "Gzyms Dev" --identifier "$label" "$app"
+"${sign[@]}" "$fw/Versions/B/Autoupdate"
+"${sign[@]}" "$fw/Versions/B/Updater.app"
+"${sign[@]}" "$fw"
+"${sign[@]}" --identifier "$label" --entitlements scripts/Gzyms.entitlements "$app"
 codesign --verify --deep --strict "$app"
 echo "bundled Gzyms $version at $app (feed $feed)"

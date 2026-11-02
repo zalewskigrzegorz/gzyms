@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Build release, put it in ~/Applications/Gzyms.app signed as "Gzyms Dev", run it at login via launchd.
-# Needs scripts/make-dev-cert.sh once per Mac.
+# Build release, put it in ~/Applications/Gzyms.app signed like a release (see bundle.sh), run it at login via launchd.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -10,7 +9,7 @@ plist="$HOME/Library/LaunchAgents/$label.plist"
 logs="$HOME/Library/Logs/Gzyms"
 
 mkdir -p "$logs"
-bash scripts/bundle.sh "$app"
+GZYMS_TIMESTAMP=--timestamp=none bash scripts/bundle.sh "$app"
 
 cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
