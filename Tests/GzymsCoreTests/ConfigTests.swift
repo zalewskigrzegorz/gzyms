@@ -142,12 +142,13 @@ import Testing
     #expect(bad.problems.count == 2)
 }
 
-@Test func verbsAreSixDifferentLettersOutsideHJKLF() {
+@Test func verbsAreSevenDifferentLettersOutsideHJKLF() {
     #expect(GzymsConfig.defaults.verbs == Verbs())
-    let load = loadConfig(toml: "[keys.verbs]\nopen = \"e\"\nsnooze = \"s\"\nnext = \"m\"\n")
+    let load = loadConfig(toml: "[keys.verbs]\nopen = \"e\"\nsnooze = \"s\"\nnext = \"m\"\nclear = \"c\"\n")
     #expect(load.problems == [])
-    #expect(load.config.verbs == Verbs(open: "e", snooze: "s", next: "m"))
-    for bad in ["next = \"o\"", "prev = \"n\"", "open = \"x\"", "open = \"oo\"", "open = \"j\"", "open = \"f\"", "open = \"1\""] {
+    #expect(load.config.verbs == Verbs(open: "e", snooze: "s", next: "m", clear: "c"))
+    for bad in ["next = \"o\"", "prev = \"n\"", "open = \"x\"", "open = \"oo\"", "open = \"j\"", "open = \"f\"", "open = \"1\"",
+                "clear = \"x\"", "open = \"d\""] {
         let load = loadConfig(toml: "[keys.verbs]\n" + bad)
         #expect(load.config.verbs == Verbs(), "\(bad)")
         #expect(load.problems.count == 1 && load.problems[0].hasPrefix("keys.verbs"), "\(bad): \(load.problems)")
@@ -157,7 +158,7 @@ import Testing
 
 @Test func hintCharsLeaveRemappedVerbsOut() {
     let load = loadConfig(toml: "[keys]\nhint_chars = \"bcde\"\n\n[keys.verbs]\nopen = \"e\"\n")
-    #expect(load.config.hintChars == "bcd")
+    #expect(load.config.hintChars == "bc")  // e is open, d is clear
     #expect(load.problems.count == 1)
 }
 
@@ -258,7 +259,7 @@ import Testing
 @Test func keysHintCharsDropVerbs() {
     #expect(GzymsConfig.defaults.hintChars == KeyNav.defaultHintChars)
     let some = loadConfig(toml: "[keys]\nhint_chars = \"asdfgqwer\"")
-    #expect(some.config.hintChars == "sdgqwer")
+    #expect(some.config.hintChars == "sgqwer")
     #expect(some.problems.contains { $0.contains("keys.hint_chars") })
     let short = loadConfig(toml: "[keys]\nhint_chars = \"hjkx\"")
     #expect(short.config.hintChars == KeyNav.defaultHintChars)

@@ -325,17 +325,17 @@ public func loadConfig(toml: String?) -> ConfigLoad {
     return ConfigLoad(config: config, problems: problems)
 }
 
-/// Six different letters a to z; h j k l f move and show hints whatever the verbs say.
+/// Seven different letters a to z; h j k l f move and show hints whatever the verbs say.
 private func parseVerbs(_ l: RawLetters, path: String, _ problems: inout [String]) -> Verbs? {
     let v = Verbs(open: l.open ?? "o", dismiss: l.dismiss ?? "x", alt: l.alt ?? "a", snooze: l.snooze ?? "z",
-                  next: l.next ?? "n", prev: l.prev ?? "p")
+                  next: l.next ?? "n", prev: l.prev ?? "p", clear: l.clear ?? "d")
     let used = v.all.map(\.letter)
     if !used.allSatisfy({ $0.count == 1 && ("a"..."z").contains($0) && !KeyNav.fixedVerbs.contains($0) }) {
-        problems.append("\(path): each must be one letter a to z, not h j k l f, kept o x z a n p")
+        problems.append("\(path): each must be one letter a to z, not h j k l f, kept o x z a n p d")
         return nil
     }
     if Set(used).count < used.count {
-        problems.append("\(path): two actions share a letter (\(used.joined(separator: " "))), kept o x z a n p")
+        problems.append("\(path): two actions share a letter (\(used.joined(separator: " "))), kept o x z a n p d")
         return nil
     }
     return v
@@ -543,9 +543,9 @@ private struct RawAppRule: Decodable {
 }
 
 private struct RawLetters: Decodable {
-    var open: String?, dismiss: String?, snooze: String?, alt: String?, next: String?, prev: String?
+    var open: String?, dismiss: String?, snooze: String?, alt: String?, next: String?, prev: String?, clear: String?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case open, dismiss, snooze, alt, next, prev }
+    enum CodingKeys: String, CodingKey { case open, dismiss, snooze, alt, next, prev, clear }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         // `[keys.verbs]` or the old `[notifications.letters]`: the same keys.
@@ -556,7 +556,8 @@ private struct RawLetters: Decodable {
         alt = lenient(c, .alt, p + "alt", &unknown)
         next = lenient(c, .next, p + "next", &unknown)
         prev = lenient(c, .prev, p + "prev", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["open", "dismiss", "snooze", "alt", "next", "prev"], prefix: p)
+        clear = lenient(c, .clear, p + "clear", &unknown)
+        unknown += try unknownKeys(in: decoder, known: ["open", "dismiss", "snooze", "alt", "next", "prev", "clear"], prefix: p)
     }
 }
 

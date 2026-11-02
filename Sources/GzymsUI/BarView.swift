@@ -456,6 +456,9 @@ struct InboxPopover: ViewModifier {
             // Without notifications the click falls through to the workspace (on an app icon) instead.
             .gesture(TapGesture().onEnded { popups.binding(id).wrappedValue.toggle() }, including: notes.isEmpty ? .subviews : .all)
             .onChange(of: notes.isEmpty) { if notes.isEmpty, popups.open == id { popups.open = nil } }
+            // dd does what Clear all does, on the list as it is now.
+            .onChange(of: notes.map(\.id), initial: true) { popups.clears[id] = { [notes, onRemove] in notes.forEach { onRemove($0.id) } } }
+            .onDisappear { popups.clears[id] = nil }
             .popover(isPresented: popups.binding(id), arrowEdge: .bottom) {
                 InboxList(notes: notes, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove)
                     .environment(\.theme, theme).environment(\.popups, popups)
@@ -469,6 +472,7 @@ public struct InboxList: View {
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
     @Environment(\.onAltNote) private var onAlt
+    @Environment(\.clearVerb) private var clearVerb
     @Environment(\.theme) private var theme
     @Environment(\.fixedNow) private var fixedNow
     private static let ago: RelativeDateTimeFormatter = {
@@ -506,7 +510,10 @@ public struct InboxList: View {
             HStack {
                 Text("\(notes.count) unread").foregroundStyle(theme[\.overlay])
                 Spacer()
-                PopupRow(action: { notes.forEach { onRemove($0.id) } }) { Text("Clear all").foregroundStyle(theme[\.red]) }
+                PopupRow(action: { notes.forEach { onRemove($0.id) } }) {
+                    Text("Clear all").foregroundStyle(theme[\.red])
+                    Text(clearVerb + clearVerb).foregroundStyle(theme[\.overlay])
+                }
                     .fixedSize()
             }
         }

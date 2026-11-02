@@ -18,7 +18,7 @@ private func on(_ targets: [HintTarget] = three) -> KeyNav {
 @Test func tapTurnsModeOnAndKeepsIt() {
     let n = on()
     #expect(n.on)
-    #expect(n.hints == ["ws:1": "b", "widget:audio": "c", "bell": "d"])
+    #expect(n.hints == ["ws:1": "b", "widget:audio": "c", "bell": "e"])  // d is the clear verb
     #expect(n.popup == nil)
 }
 
@@ -123,9 +123,52 @@ private func on(_ targets: [HintTarget] = three) -> KeyNav {
 @Test func labelsNeverUseVerbs() {
     for count in [1, 15, 16, 60, 300] {
         for l in KeyNav.labels(count: count, chars: KeyNav.defaultHintChars) {
-            #expect(l.allSatisfy { !"hjklxazfonp".contains($0) })
+            #expect(l.allSatisfy { !"hjklxazfonpd".contains($0) })
         }
     }
+    #expect(!KeyNav.hintChars("bcde", verbs: Verbs()).contains("d"))
+}
+
+@Test func ddInAPopupClearsAll() {
+    var n = on()
+    play(&n, [.key(.letter("e"))])  // the bell's list
+    let first = n.handle(.key(.letter("d")), now: 5)
+    #expect(first.swallow && first.actions.isEmpty)
+    #expect(n.handle(.key(.letter("d")), now: 5.5).actions == [.clearAll])
+    #expect(n.on && n.popup == "bell")
+    #expect(n.handle(.key(.letter("d")), now: 5.6).actions.isEmpty, "a third d starts over")
+}
+
+@Test func ddNeedsTwoQuickDsInARow() {
+    var slow = on()
+    play(&slow, [.key(.letter("e"))])
+    #expect(play(&slow, [.key(.letter("d")), .key(.letter("d"))], from: 5) == [.clearAll], "one second apart is still in time")
+    var late = on()
+    play(&late, [.key(.letter("e"))])
+    #expect(play(&late, [.key(.letter("d"))], from: 5).isEmpty)
+    #expect(late.handle(.key(.letter("d")), now: 6.2).actions.isEmpty)
+    var broken = on()
+    play(&broken, [.key(.letter("e"))])
+    #expect(play(&broken, [.key(.letter("d")), .key(.letter("j")), .key(.letter("d"))], from: 5) == [.move(1)])
+}
+
+@Test func ddTakesTheConfiguredLetter() {
+    var n = KeyNav(verbs: Verbs(clear: "q"))
+    play(&n, [.leaderDown(three), .leaderUp])
+    play(&n, [.key(.letter(n.hints["bell"]!))])
+    #expect(play(&n, [.key(.letter("q")), .key(.letter("q"))], from: 5) == [.clearAll])
+}
+
+@Test func dIsNotABannerVerb() {
+    var n = onWithBanner()
+    #expect(play(&n, [.key(.letter("d")), .key(.letter("d"))], from: 5).isEmpty)
+    #expect(n.on)
+}
+
+@Test func ddWorksInAPopupTheMouseOpened() {
+    var n = KeyNav()
+    play(&n, [.popup("bell", three)])
+    #expect(play(&n, [.key(.letter("d")), .key(.letter("d"))], from: 5) == [.clearAll])
 }
 
 @Test func modifiedKeysPassAndDoNotResetTheIdleClock() {

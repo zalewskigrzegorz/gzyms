@@ -139,6 +139,7 @@ struct PanelRoot: View {
         .environment(\.reportIconFrame, onIconFrame)
         .environment(\.popups, popups)
         .environment(\.popupMaxHeight, popupMaxHeight)
+        .environment(\.clearVerb, model.config.verbs.clear)
         .environment(\.reportHint, onHint)
         .environment(\.dockBadges, model.dockBadges)
         .environment(\.animate, model.animate)

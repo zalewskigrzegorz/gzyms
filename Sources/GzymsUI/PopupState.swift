@@ -1,3 +1,4 @@
+import GzymsCore
 import Observation
 import SwiftUI
 
@@ -14,6 +15,8 @@ public final class PopupState {
     public private(set) var noAlt: Int?
     /// What Enter and x do on each row, by index. Filled by the rows of the open popup as they draw.
     @ObservationIgnored public var rows: [Int: Row] = [:]
+    /// What dd does, by popup id: only the notification lists have one.
+    @ObservationIgnored public var clears: [String: () -> Void] = [:]
 
     public struct Row {
         var owner: UUID
@@ -37,6 +40,8 @@ public final class PopupState {
     }
 
     public func choose() { rows[row]?.choose() }
+    /// The open popup's Clear all; nothing in a popup without one.
+    public func clearAll() { open.flatMap { clears[$0] }?() }
     /// true = the row had a second action and ran it; otherwise the row shows "No second action".
     public func alt() -> Bool {
         if let a = rows[row]?.alt { a(); return true }
@@ -59,6 +64,8 @@ extension EnvironmentValues {
     @Entry public var onAltNote: (String) -> Void = { _ in }
     /// The tallest a popup's list grows before it scrolls; each bar sets it from its screen.
     @Entry public var popupMaxHeight: CGFloat = 600
+    /// The `clear` verb, shown doubled next to Clear all.
+    @Entry public var clearVerb = Verbs().clear
 }
 
 /// A keyboard row's place in its popup's scroll, so the highlight can be scrolled into view.

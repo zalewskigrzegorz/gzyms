@@ -462,6 +462,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .move(let by): p.popups.move(by)
             case .choose: p.popups.choose()
             case .remove: p.popups.remove()
+            case .clearAll: p.popups.clearAll()
             case .alt: if p.popups.alt() { chords.nav(on: false) }
             case .side(let by):
                 let ids = navOrder.filter(\.popup).map(\.id)

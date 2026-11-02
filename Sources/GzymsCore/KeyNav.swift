@@ -28,16 +28,18 @@ public struct HintTarget: Equatable, Sendable {
 public enum ChordAction: Equatable, Sendable { case open, dismiss, alt, snooze(minutes: Int), next, previous }
 
 /// The banner's letters (`[keys.verbs]`, formerly `[notifications.letters]`). In an open popup `open` also chooses
-/// a row and `dismiss` removes one. j and k always step through the waiting banners too.
+/// a row and `dismiss` removes one; `clear` twice (dd) clears a notification list. j and k always step through the
+/// waiting banners too.
 public struct Verbs: Equatable, Sendable {
-    public var open = "o", dismiss = "x", alt = "a", snooze = "z", next = "n", prev = "p"
-    public init(open: String = "o", dismiss: String = "x", alt: String = "a", snooze: String = "z", next: String = "n", prev: String = "p") {
-        self.open = open; self.dismiss = dismiss; self.alt = alt; self.snooze = snooze; self.next = next; self.prev = prev
+    public var open = "o", dismiss = "x", alt = "a", snooze = "z", next = "n", prev = "p", clear = "d"
+    public init(open: String = "o", dismiss: String = "x", alt: String = "a", snooze: String = "z", next: String = "n", prev: String = "p",
+                clear: String = "d") {
+        self.open = open; self.dismiss = dismiss; self.alt = alt; self.snooze = snooze; self.next = next; self.prev = prev; self.clear = clear
     }
 
     /// Every letter by its config key.
     public var all: [(key: String, letter: String)] {
-        [("open", open), ("dismiss", dismiss), ("snooze", snooze), ("alt", alt), ("next", next), ("prev", prev)]
+        [("open", open), ("dismiss", dismiss), ("snooze", snooze), ("alt", alt), ("next", next), ("prev", prev), ("clear", clear)]
     }
 }
 
@@ -65,6 +67,8 @@ public enum NavAction: Equatable, Sendable {
     /// In an open popup: the highlighted row moves, is chosen, is removed, takes its second action;
     /// `side` goes to the neighbouring pill's popup.
     case move(Int), choose, remove, alt, side(Int)
+    /// dd in an open popup: its Clear all, if it has one.
+    case clearAll
     /// The popup closes, the hints stay.
     case back
     case banner(ChordAction)
@@ -82,8 +86,8 @@ public enum NavAction: Equatable, Sendable {
 /// the mode on or off, and held it takes nothing but the banner's verbs while a banner is up (the old Ctrl chords).
 /// Pure: the tap feeds it events and acts on what comes back.
 public struct KeyNav: Sendable {
-    /// Letters that are never verbs (h j k l o x a z f, and n p of the banner stack).
-    public static let defaultHintChars = "bcdegimqrstuvwy"
+    /// Letters that are never verbs (h j k l o x a z f d, and n p of the banner stack).
+    public static let defaultHintChars = "bcegimqrstuvwy"
     /// Keys with a job in the mode whatever the verbs say.
     public static let fixedVerbs = "hjklf"
     /// The default verbs and the fixed ones; never a hint.
@@ -92,6 +96,8 @@ public struct KeyNav: Sendable {
     public static let snoozeMinutes = [3, 5, 10, 30]
     /// How long after the last z the snooze settles, when no held leader settles it.
     public static let snoozeSettle = 0.7
+    /// The second d of a dd must come this soon after the first.
+    public static let clearWindow = 1.0
 
     public private(set) var on = false
     /// Target id → its hint.
@@ -110,6 +116,8 @@ public struct KeyNav: Sendable {
     private var lastAt = 0.0
     private var bannerUp = false
     private var zs = 0, zAt = 0.0
+    /// When the first d of a dd came; nil = none waiting.
+    private var dAt: Double?
     private let chars: String
     private let idleTimeout: Double
     private let verbs: Verbs
@@ -192,7 +200,8 @@ public struct KeyNav: Sendable {
             // Modified keys go to the apps and, not being for us, do not keep the mode alive.
             guard on, k != .modified else { return (false, []) }
             lastAt = now
-            return (true, popup == nil ? bar(k, now: now) : inPopup(k))
+            if popup == nil { dAt = nil; return (true, bar(k, now: now)) }
+            return (true, inPopup(k, now: now))
         }
     }
 
@@ -224,7 +233,8 @@ public struct KeyNav: Sendable {
         }
     }
 
-    private func isBannerVerb(_ c: String) -> Bool { c == "j" || c == "k" || verbs.all.contains { $0.letter == c } }
+    /// `clear` is for an open list only.
+    private func isBannerVerb(_ c: String) -> Bool { c == "j" || c == "k" || (c != verbs.clear && verbs.all.contains { $0.letter == c }) }
 
     /// A banner verb: what it does, and whether it ends the mode. A z only counts; it settles later.
     /// Any other verb drops a pending snooze.
@@ -265,13 +275,18 @@ public struct KeyNav: Sendable {
     private func isPopupKey(_ k: NavKey) -> Bool {
         switch k {
         case .letter("j"), .letter("k"), .letter("h"), .letter("l"), .down, .up, .left, .right, .enter, .esc: true
-        case .letter(let c): c == verbs.dismiss || c == verbs.alt || c == verbs.open
+        case .letter(let c): c == verbs.dismiss || c == verbs.alt || c == verbs.open || c == verbs.clear
         default: false
         }
     }
 
-    private mutating func inPopup(_ k: NavKey) -> [NavAction] {
+    private mutating func inPopup(_ k: NavKey, now: Double) -> [NavAction] {
+        let armed = dAt.map { now - $0 <= Self.clearWindow } ?? false
+        dAt = nil
         switch k {
+        case .letter(verbs.clear):
+            guard armed else { dAt = now; return [] }
+            return [.clearAll]
         case .letter("j"), .down: return [.move(1)]
         case .letter("k"), .up: return [.move(-1)]
         case .letter("h"), .left: return [.side(-1)]
@@ -285,12 +300,12 @@ public struct KeyNav: Sendable {
     }
 
     private mutating func enter(_ t: [HintTarget]) {
-        on = true; targets = t; typed = ""; popup = nil
+        on = true; targets = t; typed = ""; popup = nil; dAt = nil
         hints = Dictionary(uniqueKeysWithValues: zip(t.map(\.id), Self.labels(count: t.count, chars: chars)))
     }
 
     private mutating func exit() -> [NavAction] {
-        on = false; hints = [:]; typed = ""; popup = nil; targets = []; usedWhileHeld = false; zs = 0; mouse = nil
+        on = false; hints = [:]; typed = ""; popup = nil; targets = []; usedWhileHeld = false; zs = 0; mouse = nil; dAt = nil
         return [.exit]
     }
 

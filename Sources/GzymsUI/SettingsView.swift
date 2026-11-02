@@ -769,6 +769,7 @@ private struct ShortcutsTab: View {
                 LetterRow(title: "Second action", key: "alt", letter: config.verbs.alt, config: config, write: write)
                 LetterRow(title: "Next waiting banner", key: "next", letter: config.verbs.next, config: config, write: write)
                 LetterRow(title: "Previous waiting banner", key: "prev", letter: config.verbs.prev, config: config, write: write)
+                LetterRow(title: "Clear a list (press twice)", key: "clear", letter: config.verbs.clear, config: config, write: write)
             }
             Section(title: "Global") {
                 ShortcutRow(title: "Mute or unmute the microphone", shortcut: config.micShortcut, recording: recording) {
