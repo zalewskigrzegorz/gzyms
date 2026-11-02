@@ -40,6 +40,8 @@ private func blob(_ req: [String: Any]) throws -> Data {
     let off = try PropertyListSerialization.data(fromPropertyList: ["AppleSymbolicHotKeys": ["163": ["enabled": false]]], format: .binary, options: 0)
     #expect(ncSettingsWarnings(prefs: try prefs([("com.ok", 0x1280_3142)]), apps: seen, hotkeys: off) ==
             ["com.ok": "globe+N shortcut off"])
+    #expect(ncSettingsWarnings(prefs: try prefs([("com.apple.mail", 0x1280_3142)]), apps: ["com.apple.mail"], hotkeys: nil) ==
+            ["com.apple.mail": "macOS does not let you set notifications for Mail."])
     #expect(ncSettingsWarnings(prefs: Data("nope".utf8), apps: seen, hotkeys: nil) == nil)
 }
 

@@ -544,7 +544,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !opened { logNote(b, "link failed") }
         } else if let owner = pluginNoteOwner(b.id, plugins: model.plugins.map(\.folder)) {
             pluginHost.send(plugin: owner.plugin, .notifyOpen, id: owner.id)  // the plugin knows where it leads
-        } else if model.config.openOriginal, let uuid = ncRecordUUID(noteID: b.id), let app = b.app {
+        } else if model.config.openOriginal, let uuid = ncRecordUUID(noteID: b.id), let app = b.app, !ncOpenOriginalUnsupported.contains(app) {
             // The original in Notification Center knows the exact chat or thread; without it, just the app.
             NotificationClick.press(uuid: uuid) { pressed in if !pressed { Self.openApp(app) } }
         } else if let app = b.app {
@@ -1038,6 +1038,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let update = NSMenuItem(title: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
         update.target = updater
         menu.addItem(update)
+        let check = NSMenuItem(title: "Check Notification Settings…", action: #selector(menuCheckNotifications), keyEquivalent: "")
+        check.target = self
+        menu.addItem(check)
         let learn = NSMenuItem(title: "Learn Gzyms…", action: #selector(menuLearn), keyEquivalent: "")
         learn.target = self
         menu.addItem(learn)
@@ -1067,6 +1070,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func menuCheckNotifications() { toggleSettings(.apps) }  // the warnings sit next to each app
     @objc private func menuLearn() { NSWorkspace.shared.open(tutorialURL) }
     @objc private func menuQuit() { NSApp.terminate(nil) }
 

@@ -23,6 +23,9 @@ public func ncRecordUUID(noteID: String) -> String? {
     return UUID(uuidString: parts.joined(separator: "-"))?.uuidString
 }
 
+/// Apps whose original cannot be opened this way (Greg, 2026-11-02: Mail cannot be set up for it): a click opens just the app.
+public let ncOpenOriginalUnsupported: Set<String> = ["com.apple.mail"]
+
 /// Per app, what keeps opening the original in Notification Center from working (the warning sign in Settings → Apps),
 /// from macOS's per-app notification settings (`apps` in usernoted's group plist). `flags` read by flipping the boxes
 /// live on macOS 27: 0x1 = Notification Center off, 0x4 = Play sound on (Gzyms plays it), 0x8 = Desktop on.
@@ -38,6 +41,7 @@ public func ncSettingsWarnings(prefs: Data, apps: [String], hotkeys: Data?) -> [
     var out: [String: String] = [:]
     for a in list {
         guard let id = a["bundle-id"] as? String, apps.contains(id), let flags = a["flags"] as? Int else { continue }
+        if ncOpenOriginalUnsupported.contains(id) { out[id] = "macOS does not let you set notifications for Mail."; continue }
         var wrong: [String] = []
         if flags & 0x1 != 0 { wrong.append("Notification Center off") }
         if flags & 0x8 != 0 { wrong.append("Desktop on") }
