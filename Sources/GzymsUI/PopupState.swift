@@ -57,7 +57,12 @@ extension EnvironmentValues {
     @Entry public var popups = PopupState()
     /// A notification's second action (its alt link), by id; set once at the bar's root so the lists need no plumbing.
     @Entry public var onAltNote: (String) -> Void = { _ in }
+    /// The tallest a popup's list grows before it scrolls; each bar sets it from its screen.
+    @Entry public var popupMaxHeight: CGFloat = 600
 }
+
+/// A keyboard row's place in its popup's scroll, so the highlight can be scrolled into view.
+struct NavID: Hashable { let index: Int }
 
 /// A row the keyboard can land on: registers what Enter and x do, and shows the highlight.
 struct NavRow: ViewModifier {
@@ -72,6 +77,7 @@ struct NavRow: ViewModifier {
     func body(content: Content) -> some View {
         let lit = popups.open != nil && popups.row == index
         content
+            .id(NavID(index: index))
             .background(lit ? theme[\.gold].opacity(0.3) : .clear, in: RoundedRectangle(cornerRadius: 5))
             .overlay(alignment: .trailing) {
                 if lit && popups.noAlt == index {

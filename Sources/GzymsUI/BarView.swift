@@ -481,12 +481,6 @@ public struct InboxList: View {
     }
     public var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text("\(notes.count) unread").foregroundStyle(theme[\.overlay])
-                Spacer()
-                PopupRow(action: { notes.forEach { onRemove($0.id) } }) { Text("Clear all").foregroundStyle(theme[\.red]) }
-                    .fixedSize()
-            }
             ForEach(Array(notes.enumerated()), id: \.element.id) { i, n in
                 PopupRow(index: i, remove: { onRemove(n.id) }, alt: n.altLink == nil ? nil : { onAlt(n.id) }, action: { onOpen(n.id) }) {
                     if n.reminder { Image(systemName: "clock.fill").foregroundStyle(theme[\.gold]) }
@@ -507,11 +501,15 @@ public struct InboxList: View {
                 }
             }
         }
-        .font(.system(size: 12).monospacedDigit())
-        .foregroundStyle(theme[\.text])
-        .padding(10)
-        .frame(width: 320, alignment: .leading)
-        .background(theme[\.surface])
+        .popupStyle(theme, width: 320) {
+            // Outside the scroll: Clear all stays reachable however long the list is.
+            HStack {
+                Text("\(notes.count) unread").foregroundStyle(theme[\.overlay])
+                Spacer()
+                PopupRow(action: { notes.forEach { onRemove($0.id) } }) { Text("Clear all").foregroundStyle(theme[\.red]) }
+                    .fixedSize()
+            }
+        }
     }
 }
 
@@ -806,8 +804,6 @@ public struct PluginMenuView: View {
     public init(rows: [PluginRow], send: @escaping (PluginEvent, String) -> Void) { self.rows = rows; self.send = send }
 
     public var body: some View {
-        // No ScrollView: in a popover it reports its narrowest width and the rows get cut (Greg's screenshot).
-        // shortcut: a list taller than the screen is clipped; add a scroll with an explicit size if a plugin needs one.
         VStack(alignment: .leading, spacing: 1) {
             // Only rows with an id take the keyboard; they are numbered among themselves.
             let live = rows.indices.filter { rows[$0].id != nil && !rows[$0].separator }
@@ -1344,20 +1340,49 @@ struct DeviceList: View {
 
 extension View {
     /// `width` is the whole popup's, padding included: a wider one (a plugin's list) passes its own, or 220 cuts it.
-    func popupStyle(_ theme: Theme, width: CGFloat = 220) -> some View {
-        font(.system(size: 12).monospacedDigit())
-            .foregroundStyle(theme[\.text])
-            .padding(10)
-            .frame(width: width, alignment: .leading)
-            .background(theme[\.surface])
-            // The popover's own edge and arrow, and the system controls inside, follow the theme too.
-            .presentationBackground(theme[\.surface])
-            .preferredColorScheme(theme.isDark ? .dark : .light)
+    /// Taller than the screen allows (`popupMaxHeight`), the list scrolls; `header` stays above it.
+    func popupStyle(_ theme: Theme, width: CGFloat = 220) -> some View { popupStyle(theme, width: width) { EmptyView() } }
+
+    func popupStyle(_ theme: Theme, width: CGFloat = 220, @ViewBuilder header: () -> some View) -> some View {
+        modifier(PopupFrame(theme: theme, width: width, header: header()))
     }
 
     /// Every window's root: the theme for Gzyms' own colours, and light or dark for what macOS draws (Greg: all of it changes).
     public func themed(_ theme: Theme) -> some View {
         environment(\.theme, theme).preferredColorScheme(theme.isDark ? .dark : .light)
+    }
+}
+
+/// Every popup's frame: a fixed width outside the scroll (a ScrollView alone reports its narrowest width and cuts the rows),
+/// the height of its content up to `popupMaxHeight`, and the keyboard's row kept in view.
+private struct PopupFrame<Header: View>: ViewModifier {
+    let theme: Theme
+    let width: CGFloat
+    let header: Header
+    @Environment(\.popups) private var popups
+    @Environment(\.popupMaxHeight) private var maxHeight
+
+    func body(content: Content) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            header
+            ScrollViewReader { proxy in
+                ScrollView {
+                    content.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: maxHeight)
+                .fixedSize(horizontal: false, vertical: true)
+                .onChange(of: popups.row) { _, r in withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(NavID(index: r)) } }
+            }
+        }
+        .font(.system(size: 12).monospacedDigit())
+        .foregroundStyle(theme[\.text])
+        .padding(10)
+        .frame(width: width, alignment: .leading)
+        .background(theme[\.surface])
+        // The popover's own edge and arrow, and the system controls inside, follow the theme too.
+        .presentationBackground(theme[\.surface])
+        .preferredColorScheme(theme.isDark ? .dark : .light)
     }
 }
 

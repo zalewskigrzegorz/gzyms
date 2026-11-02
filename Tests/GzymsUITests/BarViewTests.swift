@@ -188,6 +188,19 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     #expect(width(1) == width(19))
 }
 
+/// 35 notifications ran off the screen and took Clear all with them (Greg, 2026-11-02): a popup stops at its cap and scrolls.
+@MainActor @Test func popupStopsAtItsMaxHeight() {
+    func size(_ n: Int) -> NSSize {
+        let notes = (0..<n).map { GzymsNotification(id: "\($0)", app: nil, level: .info, title: "t", subtitle: nil, body: nil,
+                                                    link: nil, altLink: nil, sound: nil, at: fixedNow) }
+        return NSHostingView(rootView: InboxList(notes: notes).environment(\.popupMaxHeight, 300)).fittingSize
+    }
+    #expect(size(50).height > 300 && size(50).height <= 300 + 60)  // the list's cap plus the header and padding
+    #expect(size(50).width == 320)
+    #expect(size(2).height < size(3).height)  // a short list keeps its own height
+    #expect(size(3).height < 300)
+}
+
 @MainActor @Test func batteryWidthIsFixedWithoutWarning() {
     let a = BatterySample(percent: 5, plugged: false, charging: false, adapterW: nil, systemW: nil, batteryW: -5)
     let b = BatterySample(percent: 100, plugged: true, charging: true, adapterW: 96, systemW: 20, batteryW: 30)

@@ -44,6 +44,8 @@ final class BarPanel: NSPanel {
         setFrame(NSRect(x: f.minX, y: f.maxY - Self.height, width: f.width, height: Self.height), display: true)
         // The background runs under the notch (it is black anyway); only content keeps out of it.
         host.rootView = PanelRoot(model: model, notch: Self.notchGap(on: screen), popups: popups, panel: ObjectIdentifier(self),
+                                  // Room for the bar, a popup's header, padding and arrow, and a gap above the Dock.
+                                  popupMaxHeight: screen.visibleFrame.height - 120,
                                   onHint: { [weak self] id, spot in self?.spots[id] = spot; self?.onSpots() }) { [weak self] id, r in self?.iconFrames[id] = r }
     }
 

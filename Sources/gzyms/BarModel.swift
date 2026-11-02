@@ -110,6 +110,7 @@ struct PanelRoot: View {
     let notch: NotchGap?
     var popups = PopupState()
     var panel: ObjectIdentifier?
+    var popupMaxHeight: CGFloat = 600
     var onHint: (String, HintSpot?) -> Void = { _, _ in }
     var onIconFrame: (String, CGRect) -> Void = { _, _ in }
 
@@ -137,6 +138,7 @@ struct PanelRoot: View {
         .themed(model.config.theme)
         .environment(\.reportIconFrame, onIconFrame)
         .environment(\.popups, popups)
+        .environment(\.popupMaxHeight, popupMaxHeight)
         .environment(\.reportHint, onHint)
         .environment(\.dockBadges, model.dockBadges)
         .environment(\.animate, model.animate)
