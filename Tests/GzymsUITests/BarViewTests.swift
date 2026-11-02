@@ -152,7 +152,9 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     let appIcon = fakeIcon
     preview(MusicView(np: np, artwork: nil, appIcon: appIcon, small: false) { _ in }.frame(width: 120), "music-pill-short")
     preview(MusicView(np: np, artwork: nil, appIcon: appIcon, small: false) { _ in }.frame(width: 50), "music-pill-icon")
-    preview(MusicDetailsView(np: np, artwork: nil) { _ in }, "music-popup")
+    var withFilm = np
+    withFilm.others = [MediaSource(app: "dev.vimma.browser", appName: "Vimma", title: "Art being a rizz master", playing: true)]
+    preview(MusicDetailsView(np: withFilm, artwork: nil) { _ in }, "music-popup")
     let awake = CaffeineState(until: fixedNow.addingTimeInterval(105 * 60))
     preview(HStack { CaffeineView(state: nil, now: fixedNow, small: false) { _ in }; CaffeineView(state: awake, now: fixedNow, small: false) { _ in } },
             "caffeine-pills")

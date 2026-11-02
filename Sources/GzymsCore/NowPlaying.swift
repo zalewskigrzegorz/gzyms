@@ -9,11 +9,15 @@ public struct NowPlaying: Equatable, Sendable {
     /// `elapsed` seconds were true at `at` (seconds since 1970); it runs on from there while playing.
     public var elapsed: Double, duration: Double, at: Double, rate: Double
     public var artworkID: String
+    /// The other apps with something to play (a film behind the music), for the popup. Empty from the osascript reader.
+    public var others: [MediaSource]
 
     public init(title: String, artist: String = "", album: String = "", app: String = "", appName: String = "", playing: Bool,
-                elapsed: Double = 0, duration: Double = 0, at: Double = 0, rate: Double = 1, artworkID: String = "") {
+                elapsed: Double = 0, duration: Double = 0, at: Double = 0, rate: Double = 1, artworkID: String = "",
+                others: [MediaSource] = []) {
         self.title = title; self.artist = artist; self.album = album; self.app = app; self.appName = appName; self.playing = playing
         self.elapsed = elapsed; self.duration = duration; self.at = at; self.rate = rate; self.artworkID = artworkID
+        self.others = others
     }
 
     /// "Artist – Title", or the title alone.
@@ -30,6 +34,19 @@ public struct NowPlaying: Equatable, Sendable {
     public func shown(now: Double) -> Bool { playing || now - at < Self.idleAfter }
 }
 
+/// An app with a media session that is not macOS's Now Playing. macOS steers only Now Playing, so this one can only
+/// be gone to.
+public struct MediaSource: Equatable, Sendable, Decodable {
+    public var app: String, appName: String, title: String, artist: String
+    public var playing: Bool
+
+    public init(app: String, appName: String, title: String, artist: String = "", playing: Bool) {
+        self.app = app; self.appName = appName; self.title = title; self.artist = artist; self.playing = playing
+    }
+
+    public var line: String { artist.isEmpty ? title : "\(artist) – \(title)" }
+}
+
 /// One line of the reader: a state, or nothing playing.
 public enum NowPlayingLine: Equatable, Sendable {
     case nothing
@@ -44,15 +61,17 @@ public func nowPlayingLine(_ json: String) -> NowPlayingLine? {
         var title, artist, album, app, appName, artId, artwork: String?
         var playing: Bool?
         var elapsed, duration, at, rate: Double?
+        var others: [MediaSource]?
     }
     guard let r = try? JSONDecoder().decode(Raw.self, from: Data(text.utf8)), let title = r.title, !title.isEmpty else { return nil }
     let np = NowPlaying(title: title, artist: r.artist ?? "", album: r.album ?? "", app: r.app ?? "", appName: r.appName ?? "",
                         playing: r.playing ?? false, elapsed: r.elapsed ?? 0, duration: r.duration ?? 0, at: r.at ?? 0,
-                        rate: r.rate ?? 1, artworkID: r.artId ?? "")
+                        rate: r.rate ?? 1, artworkID: r.artId ?? "", others: r.others ?? [])
     return .item(np, artwork: r.artwork.flatMap { Data(base64Encoded: $0) })
 }
 
-/// The reader, run by `/usr/bin/osascript -l JavaScript`. Since macOS 15.4 only Apple-signed processes may read
+/// The fallback reader, for when the native one (tools/media-reader in /usr/bin/perl) does not start: Now Playing
+/// alone, no other sources. Run by `/usr/bin/osascript -l JavaScript`. Since macOS 15.4 only Apple-signed processes may read
 /// MediaRemote, and osascript is one (checked on 27.0.1). It stays up and prints a JSON line on every change, so
 /// nothing is started per tick. shortcut: Apple can close this door; then the reader dies, the pill goes, the log says why.
 public let nowPlayingScript = #"""
@@ -68,11 +87,13 @@ let last = '', lastArt = '';
 while (true) {
   // Gzyms gone (killed, crashed): launchd adopts us, so do not linger.
   if ($.getppid() === 1) return;
-  const info = R.localNowPlayingItem.nowPlayingInfo;
+  // An override of Now Playing (or a stuck mediaremoted) leaves the item, the path or the client empty: read that
+  // as nothing playing instead of dying on it.
+  const item = R.localNowPlayingItem, info = item && item.nowPlayingInfo;
+  const path = R.localNowPlayingPlayerPath, c = path && path.client;
   let s = null;
-  if (info.js) {
+  if (info && info.js && c && c.js) {
     const v = k => { const o = info.objectForKey(K + k); return o.js === undefined ? null : ObjC.unwrap(o); };
-    const c = R.localNowPlayingPlayerPath.client;
     const at = v('Timestamp');
     s = { title: v('Title') || '', artist: v('Artist') || '', album: v('Album') || '',
           app: ObjC.unwrap(c.parentApplicationBundleIdentifier) || ObjC.unwrap(c.bundleIdentifier) || '',
@@ -99,3 +120,7 @@ while (true) {
 public enum MediaCommand: Int32, Sendable {
     case playPause = 16, next = 17, previous = 18
 }
+
+/// What the player's popup asks for: a media key (it reaches the last used player only), or going to an app's
+/// window that shows this title.
+public enum MusicAction: Sendable { case key(MediaCommand), jump(app: String, title: String) }

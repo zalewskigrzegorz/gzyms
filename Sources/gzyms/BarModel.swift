@@ -47,7 +47,7 @@ final class BarModel {
     var customLogo: NSImage?
     var nowPlaying: NowPlaying?
     var artwork: NSImage?
-    @ObservationIgnored var onMusic: (MediaCommand) -> Void = { _ in }
+    @ObservationIgnored var onMusic: (MusicAction) -> Void = { _ in }
     var pluginPills: [PluginPill] = []
     var caffeine: CaffeineState?
     @ObservationIgnored var onCaffeine: (Int??) -> Void = { _ in }

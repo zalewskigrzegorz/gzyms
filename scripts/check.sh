@@ -15,5 +15,10 @@ if ! swift test >"$log" 2>&1; then
   echo "TESTS FAILED (full log: $log)"
   exit 1
 fi
-rm -f "$log"
+if ! clang -fobjc-arc -Wall -Werror -dynamiclib -framework Foundation -o "$log.dylib" tools/media-reader/reader.m >"$log" 2>&1; then
+  cat "$log"
+  echo "MEDIA READER FAILED"
+  exit 1
+fi
+rm -f "$log" "$log.dylib"
 echo "ALL GREEN"

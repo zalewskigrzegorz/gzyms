@@ -30,3 +30,13 @@ import Testing
     #expect(!paused.shown(now: 1000 + 300))
     #expect(NowPlaying(title: "x", playing: true, at: 0).shown(now: 99_999))
 }
+
+@Test func readerLineCarriesTheOtherSources() throws {
+    let json = #"{"title":"Film","app":"dev.vimma.browser","appName":"Vimma","playing":false,"others":[{"app":"rocks.spotifast.Spotifast","appName":"Spotifast","title":"Song","artist":"Band","playing":true}]}"#
+    guard case .item(let np, _) = try #require(nowPlayingLine(json)) else { Issue.record("not an item"); return }
+    #expect(np.others == [MediaSource(app: "rocks.spotifast.Spotifast", appName: "Spotifast", title: "Song", artist: "Band", playing: true)])
+    #expect(np.others.first?.line == "Band – Song")
+    // The osascript reader sends none.
+    guard case .item(let alone, _) = try #require(nowPlayingLine(#"{"title":"Song","playing":true}"#)) else { return }
+    #expect(alone.others.isEmpty)
+}

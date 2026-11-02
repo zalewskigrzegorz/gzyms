@@ -216,7 +216,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onCPUPopup = { [weak self] open in self?.cpuPopup(open) }
         model.onAudioChange = { [weak self] in self?.refreshAudio() }
         model.onMicMute = { [weak self] in self?.micMute.toggle(self?.model.audio) }
-        model.onMusic = { MusicSource.send($0) }
+        model.onMusic = { action in
+            switch action {
+            case .key(let c): MusicSource.send(c)
+            case .jump(let app, let title): MusicSource.jump(to: app, title: title)
+            }
+        }
         model.onCaffeine = { [weak self] command in
             guard let self else { return }
             if let minutes = command { caffeine.start(minutes: minutes, display: model.config.caffeineDisplay) } else { caffeine.stop() }

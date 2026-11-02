@@ -121,7 +121,7 @@ public struct BarView: View {
     let logo: NSImage?
     let nowPlaying: NowPlaying?
     let artwork: NSImage?
-    var onMusic: (MediaCommand) -> Void = { _ in }
+    var onMusic: (MusicAction) -> Void = { _ in }
     let pluginPills: [PluginPill]
     let caffeine: CaffeineState?
     /// .some(minutes) starts (nil minutes = until turned off), nil stops.
@@ -201,7 +201,7 @@ public struct BarView: View {
                 onRemoveNote: @escaping (String) -> Void = { _ in }, onMenu: @escaping () -> Void = {},
                 grantWarning: Bool = false, onGrantWarning: @escaping () -> Void = {}, secureInput: Bool = false,
                 meetingPill: String? = nil, onMeetingPill: @escaping () -> Void = {}, logo: NSImage? = nil,
-                nowPlaying: NowPlaying? = nil, artwork: NSImage? = nil, onMusic: @escaping (MediaCommand) -> Void = { _ in },
+                nowPlaying: NowPlaying? = nil, artwork: NSImage? = nil, onMusic: @escaping (MusicAction) -> Void = { _ in },
                 pluginPills: [PluginPill] = [], onPluginEvent: @escaping (String, PluginEvent, String) -> Void = { _, _, _ in },
                 caffeine: CaffeineState? = nil, onCaffeine: @escaping (Int??) -> Void = { _ in },
                 dnd: Date? = nil, onDND: @escaping (Date?) -> Void = { _ in },
@@ -878,10 +878,10 @@ public struct MusicView: View {
     /// The playing app's icon, for when there is no room for the title.
     let appIcon: NSImage?
     let small: Bool
-    let onCommand: (MediaCommand) -> Void
+    let onCommand: (MusicAction) -> Void
     @Environment(\.popups) private var popups
     @Environment(\.theme) private var theme
-    public init(np: NowPlaying, artwork: NSImage?, appIcon: NSImage? = nil, small: Bool, onCommand: @escaping (MediaCommand) -> Void) {
+    public init(np: NowPlaying, artwork: NSImage?, appIcon: NSImage? = nil, small: Bool, onCommand: @escaping (MusicAction) -> Void) {
         self.np = np; self.artwork = artwork; self.appIcon = appIcon; self.small = small; self.onCommand = onCommand
     }
 
@@ -919,9 +919,9 @@ public struct MusicView: View {
 public struct MusicDetailsView: View {
     let np: NowPlaying
     let artwork: NSImage?
-    let onCommand: (MediaCommand) -> Void
+    let onCommand: (MusicAction) -> Void
     @Environment(\.theme) private var theme
-    public init(np: NowPlaying, artwork: NSImage?, onCommand: @escaping (MediaCommand) -> Void) {
+    public init(np: NowPlaying, artwork: NSImage?, onCommand: @escaping (MusicAction) -> Void) {
         self.np = np; self.artwork = artwork; self.onCommand = onCommand
     }
 
@@ -959,14 +959,29 @@ public struct MusicDetailsView: View {
                 button("forward.fill", .next, 2)
                 Spacer()
             }
+            row("arrow.up.forward.app", "Go to \(np.appName.isEmpty ? "the player" : np.appName)", .jump(app: np.app, title: np.title), 3)
+            // The keys and buttons above reach only this one (macOS's rule); the rest can be gone to.
+            if !np.others.isEmpty {
+                Divider()
+                ForEach(Array(np.others.enumerated()), id: \.offset) { i, o in
+                    row(o.playing ? "play.fill" : "pause.fill", "\(o.appName): \(o.line)", .jump(app: o.app, title: o.title), 4 + i)
+                }
+            }
         }
         .popupStyle(theme, width: 280)
     }
 
     private func button(_ symbol: String, _ c: MediaCommand, _ index: Int) -> some View {
         Image(systemName: symbol).font(.system(size: 15)).frame(width: 30, height: 26)
-            .contentShape(Rectangle()).onTapGesture { onCommand(c) }
-            .navRow(index, choose: { onCommand(c) })
+            .contentShape(Rectangle()).onTapGesture { onCommand(.key(c)) }
+            .navRow(index, choose: { onCommand(.key(c)) })
+    }
+
+    private func row(_ symbol: String, _ text: String, _ a: MusicAction, _ index: Int) -> some View {
+        Label(text, systemImage: symbol).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle()).onTapGesture { onCommand(a) }
+            .navRow(index, choose: { onCommand(a) })
     }
 
     static func clock(_ s: Double) -> String {
@@ -1351,7 +1366,9 @@ extension View {
     func popupStyle(_ theme: Theme, width: CGFloat = 220) -> some View { popupStyle(theme, width: width) { EmptyView() } }
 
     func popupStyle(_ theme: Theme, width: CGFloat = 220, @ViewBuilder header: () -> some View) -> some View {
-        modifier(PopupFrame(theme: theme, width: width, header: header()))
+        // Gzyms never becomes the active app, so the popover's window is not key: without this the first click only
+        // activates it, and after every action (a media key, a Go to) the next click did nothing (Greg, 2026-11-02).
+        modifier(PopupFrame(theme: theme, width: width, header: header())).allowsWindowActivationEvents()
     }
 
     /// Every window's root: the theme for Gzyms' own colours, and light or dark for what macOS draws (Greg: all of it changes).

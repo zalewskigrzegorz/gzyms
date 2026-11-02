@@ -20,6 +20,8 @@ cp .build/release/gzyms "$app/Contents/MacOS/gzyms"
 cp .build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cp -R assets/sounds "$app/Contents/Resources/"  # the Gzyms cat (ElevenLabs sound effects)
 ditto .build/release/Sparkle.framework "$app/Contents/Frameworks/Sparkle.framework"  # ditto keeps the framework's symlinks
+# The music reader: loaded into /usr/bin/perl, which may read MediaRemote (see tools/media-reader/reader.m).
+clang -fobjc-arc -O2 -dynamiclib -framework Foundation -o "$app/Contents/Resources/media-reader.dylib" tools/media-reader/reader.m
 # Gzyms is not sandboxed, so Sparkle's XPC services are not needed (sparkle-project.org/documentation/sandboxing).
 rm -rf "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" "$app/Contents/Frameworks/Sparkle.framework/XPCServices"
 cat > "$app/Contents/Info.plist" <<EOF
@@ -53,6 +55,7 @@ fw="$app/Contents/Frameworks/Sparkle.framework"
 "${sign[@]}" "$fw/Versions/B/Autoupdate"
 "${sign[@]}" "$fw/Versions/B/Updater.app"
 "${sign[@]}" "$fw"
+"${sign[@]}" "$app/Contents/Resources/media-reader.dylib"
 "${sign[@]}" --identifier "$label" --entitlements scripts/Gzyms.entitlements "$app"
 codesign --verify --deep --strict "$app"
 echo "bundled Gzyms $version at $app (feed $feed)"
