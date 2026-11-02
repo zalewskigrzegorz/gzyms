@@ -62,6 +62,7 @@ The key is the dotted name as in `~/.config/gzyms/config.toml` (or `$XDG_CONFIG_
 - `gzyms settings [tab]` opens the settings panel, on a tab when given (a wrong tab lists them). In it `h`/`l` switch tabs, `j`/`k` walk the switches and menus, Enter or `o` flips one, Esc closes; a text field keeps its keys.
 - `gzyms keys on|off` turns the keyboard mode on or off: hints over the bar, then j/k, Enter, x, a (second action) and Esc in a popup. Its own leader is `[keys] leader`.
 - `gzyms dnd on [minutes]|off` turns Do Not Disturb on (for good, or for that many minutes) or off, the same as the moon pill on the bar. Banners then go quietly to their lists and counts, the phone push still works. `[dnd] breaks_through` lists what still shows: `armageddon`, `meetings` (the default pair) and `critical`.
+- The banner stack holds one on screen and three waiting. More wait in their app's list (counted at once) and come up in order as room frees. A banner sounds when it enters the stack. `[notifications] priority` lists what sounds at once even while it waits: `armageddon`, `critical` (the default pair) and `meetings`.
 
 ## Keyboard: [keys]
 

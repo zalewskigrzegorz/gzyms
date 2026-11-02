@@ -1082,10 +1082,17 @@ private struct NotificationsTab: View {
         }
         Section(title: "Sound") {
             Row(title: "Sounds") { Switch(on: config.notificationSounds) { write("sounds", .bool($0), .table(["notifications"])) } }
+            Row(title: "Sound at once", note: "The rest sounds when it gets into the stack. With a full stack it waits in its list.") {
+                HStack(spacing: 4) {
+                    ForEach(DNDBreak.allCases, id: \.self) { b in
+                        breakChip(b, config.priority, DNDBreak.priorityDefaults, key: "priority", table: "notifications")
+                    }
+                }
+            }
         }
         Section(title: "Do Not Disturb") {
             Row(title: "Still shows", note: "Turn it on with the moon on the bar. The rest waits in its list.") {
-                HStack(spacing: 4) { ForEach(DNDBreak.allCases, id: \.self) { b in dndChip(b) } }
+                HStack(spacing: 4) { ForEach(DNDBreak.allCases, id: \.self) { b in breakChip(b, config.dndBreaks, DNDBreak.defaults, key: "breaks_through", table: "dnd") } }
             }
         }
         Section(title: "Not answered on the Mac") {
@@ -1179,12 +1186,12 @@ private struct NotificationsTab: View {
         .frame(width: 260)
     }
 
-    /// Click to add or take out a level. Back at critical and armageddon, the line leaves the file.
-    private func dndChip(_ b: DNDBreak) -> some View {
-        chip(b.rawValue, on: config.dndBreaks.contains(b)) {
-            var set = config.dndBreaks
+    /// Click to add or take out a kind. Back at the defaults, the line leaves the file.
+    private func breakChip(_ b: DNDBreak, _ current: Set<DNDBreak>, _ defaults: Set<DNDBreak>, key: String, table: String) -> some View {
+        chip(b.rawValue, on: current.contains(b)) {
+            var set = current
             if set.contains(b) { set.remove(b) } else { set.insert(b) }
-            write("breaks_through", set == DNDBreak.defaults ? nil : .strings(DNDBreak.allCases.filter(set.contains).map(\.rawValue)), .table(["dnd"]))
+            write(key, set == defaults ? nil : .strings(DNDBreak.allCases.filter(set.contains).map(\.rawValue)), .table([table]))
         }
     }
 

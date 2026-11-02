@@ -39,13 +39,13 @@ func note(_ id: String, _ title: String = "t", app: String? = "com.app", level: 
     #expect(s.count("com.app") == 0)
 }
 
-@Test func burstKeepsTheFirstOnScreenAndTheLastThreeWaiting() {
+@Test func burstKeepsTheFirstOnScreenAndTheNextThreeWaiting() {
     var s = NotificationStore()
     for i in 0..<20 { s.post(note("n\(i)", "\(i)"), now: Double(i) / 20) }
     #expect(s.banner?.title == "0")
     #expect(s.waiting == 3)
-    #expect(s.count("com.app") == 16)
-    #expect(s.inbox("com.app").first?.id == "n16")
+    #expect(s.count("com.app") == 16)  // the rest waits in the list for room
+    #expect(s.inbox("com.app").first?.id == "n19")
 }
 
 @Test func sameIdUpdatesBanner() {
@@ -327,16 +327,18 @@ private func meeting(_ id: String) -> GzymsNotification {
     #expect(s.nextDeadline == 18)
 }
 
-@Test func limitThreeFilesTheLowestOldest() {
+@Test func limitThreeLetsTheLowestNewestWait() {
     var s = NotificationStore()
     s.post(note("top", level: .critical), now: 0)
     s.post(note("w1", level: .warning), now: 1)
     s.post(note("i1"), now: 2)
     s.post(note("i2"), now: 3)
-    s.post(note("w2", level: .warning), now: 4)  // fourth waiting: the oldest info goes
+    s.post(note("w2", level: .warning), now: 4)  // fourth waiting: the newest info waits in the list
     #expect(s.waiting == 3)
-    #expect(s.inbox("com.app").map(\.id) == ["i1"])
+    #expect(s.inbox("com.app").map(\.id) == ["i2"])
     #expect(s.banner?.id == "top")
+    s.dismiss(now: 5)
+    #expect(s.stacked.map(\.id) == ["w1", "w2", "i1", "i2"])
 }
 
 @Test func meetingIsNotPushedOutByLower() {

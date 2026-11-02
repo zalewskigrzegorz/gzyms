@@ -174,9 +174,17 @@ extension GzymsNotification {
 /// come back, and an inbox per app (newest first). A higher level jumps in at once, the rest waits its turn.
 public struct NotificationStore: Sendable {
     /// Waiting ones keep `left` (nil = the full time of their level), so only the banner on screen runs out.
-    private struct Entry: Sendable { var n: GzymsNotification; var seq: Int; var left: Double? }
+    /// `heard`: its sound played already, so coming back into the stack stays quiet.
+    private struct Entry: Sendable { var n: GzymsNotification; var seq: Int; var left: Double?; var heard = true }
     /// By rank, then arrival. Entries never move: next and previous move the cursor, so each keeps its place.
     private var stack: [Entry] = []
+    /// No room in the stack: they wait in their list (so the count is right at once) and come up in order when room frees.
+    /// Opened or cleared from the list meanwhile, they never come up.
+    private var overflow: [Entry] = []
+    /// What entered the stack (or a priority one that has to wait) since the app last asked: it plays their sounds.
+    private var sounds: [GzymsNotification] = []
+    /// `[notifications] priority`: these sound at once even while they wait outside the stack.
+    public var priority = DNDBreak.priorityDefaults
     private var cursor = 0
     private var seq = 0
     public static let maxWaiting = 3
@@ -201,11 +209,13 @@ public struct NotificationStore: Sendable {
 
     /// During Do Not Disturb everything else goes quietly to its list (and to the phone, as always).
     public func quiet(_ n: GzymsNotification) -> Bool {
-        guard dnd != nil else { return false }
-        let through = (n.level == .armageddon && breaksThrough.contains(.armageddon))
-            || (n.meetingStart != nil && breaksThrough.contains(.meetings))
-            || (n.level == .critical && breaksThrough.contains(.critical))
-        return !through
+        dnd != nil && !breaksThrough.covers(n)
+    }
+
+    /// The notifications to sound since the last call, each once.
+    public mutating func takeSounds() -> [GzymsNotification] {
+        defer { sounds = [] }
+        return sounds
     }
 
     /// Turning it on files what is on screen and waiting; turning it off brings nothing back, the lists keep it.
@@ -216,10 +226,8 @@ public struct NotificationStore: Sendable {
         let filed = stack.filter { quiet($0.n) }.map(\.seq)
         for e in stack where filed.contains(e.seq) { file(e.n) }
         stack.removeAll { filed.contains($0.seq) }
-        if let i = stack.firstIndex(where: { $0.n.id == shown }) { cursor = i; return }
-        cursor = 0
-        clearClock()
-        if !stack.isEmpty { start(now: now) }
+        overflow = overflow.filter { !quiet($0.n) }  // already in their lists
+        refill(keep: shown, now: now)
     }
 
     public var banner: GzymsNotification? { stack.isEmpty ? nil : stack[cursor].n }
@@ -284,7 +292,7 @@ public struct NotificationStore: Sendable {
         if let i = stack.firstIndex(where: { $0.n.id == id }) {
             let keep = banner?.id
             let e = stack.remove(at: i)
-            cursor = stack.firstIndex { $0.n.id == keep } ?? 0
+            refill(keep: keep, now: now)
             return e.n
         }
         for (app, list) in inboxes {
@@ -361,6 +369,7 @@ public struct NotificationStore: Sendable {
         if quiet(n) { file(n); arm(n, now: now); return }  // a pending icon is not filed: it just never shows
         // A pending icon shows only on an empty stack, and a full banner takes its place without filing it.
         if n.compact { guard banner?.compact ?? true else { return }; stack = [] }
+        let replacesIcon = !n.compact && banner?.compact == true && banner?.app == n.app
         if banner?.compact == true { stack = []; clearClock() }
         arm(n, now: now)
         let shown = banner
@@ -368,15 +377,41 @@ public struct NotificationStore: Sendable {
         if jumps, shown != nil { stack[cursor].left = remaining(now: now) }
         seq += 1
         stack.append(Entry(n: n, seq: seq, left: nil))
-        stack.sort { ($0.n.rank, -$0.seq) > ($1.n.rank, -$1.seq) }
+        stack.sort(by: Self.order)
         let on = jumps ? n.id : shown!.id
-        // Over the limit: the lowest level, the oldest of them, quietly to its inbox. Never the one on screen.
-        while waiting > Self.maxWaiting, let out = stack.filter({ $0.n.id != on }).min(by: { ($0.n.rank, $0.seq) < ($1.n.rank, $1.seq) }) {
+        // Over the limit: the lowest level, the newest of them, waits in its list. Never the one on screen.
+        while waiting > Self.maxWaiting, var out = stack.filter({ $0.n.id != on }).min(by: { ($0.n.rank, -$0.seq) < ($1.n.rank, -$1.seq) }) {
             stack.removeAll { $0.seq == out.seq }
+            if out.seq == seq { out.heard = priority.covers(n) }
             file(out.n)
+            overflow.append(out)
         }
+        // A text replacing its own app's icon stays quiet: the icon already played the sound.
+        if stack.contains(where: { $0.seq == seq }) ? !replacesIcon : priority.covers(n) { sounds.append(n) }
         cursor = stack.firstIndex { $0.n.id == on } ?? 0
         if jumps { start(now: now) }
+    }
+
+    private static func order(_ a: Entry, _ b: Entry) -> Bool { (a.n.rank, -a.seq) > (b.n.rank, -b.seq) }
+
+    /// Room in the stack: the waiting ones come up in order, each with the newest version of its row.
+    /// Keeps `keep` on screen when it is still in the stack, else the top one starts its clock.
+    private mutating func refill(keep: String?, now: Double) {
+        overflow.sort(by: Self.order)
+        while stack.count <= Self.maxWaiting, !overflow.isEmpty {
+            var e = overflow.removeFirst()
+            guard let i = inboxes[e.n.app]?.firstIndex(where: { $0.id == e.n.id }) else { continue }  // opened or cleared from its list
+            let reminder = e.n.reminder
+            e.n = inboxes[e.n.app]!.remove(at: i)
+            e.n.reminder = reminder
+            if !e.heard { e.heard = true; sounds.append(e.n) }
+            stack.append(e)
+        }
+        stack.sort(by: Self.order)
+        if let i = stack.firstIndex(where: { $0.n.id == keep }) { cursor = i; return }
+        cursor = 0
+        clearClock()
+        if !stack.isEmpty { start(now: now) }
     }
 
     private mutating func step(_ by: Int, now: Double) {
@@ -391,9 +426,7 @@ public struct NotificationStore: Sendable {
     /// The banner on screen leaves the stack; the highest waiting one comes up with the time it had left.
     private mutating func takeShown(now: Double) -> GzymsNotification {
         let n = stack.remove(at: cursor).n
-        cursor = 0
-        clearClock()
-        if !stack.isEmpty { start(now: now) }
+        refill(keep: nil, now: now)
         return n
     }
 
@@ -428,6 +461,15 @@ public struct NotificationStore: Sendable {
 public enum DNDBreak: String, CaseIterable, Sendable {
     case armageddon, meetings, critical
     public static let defaults: Set<DNDBreak> = [.armageddon, .meetings]
+    /// `[notifications] priority`: what sounds at once even while it waits for room in the stack (Greg: critical, armageddon).
+    public static let priorityDefaults: Set<DNDBreak> = [.armageddon, .critical]
+}
+
+extension Set where Element == DNDBreak {
+    public func covers(_ n: GzymsNotification) -> Bool {
+        (n.level == .armageddon && contains(.armageddon)) || (n.meetingStart != nil && contains(.meetings))
+            || (n.level == .critical && contains(.critical))
+    }
 }
 
 /// "Until tomorrow" in the Do Not Disturb popup: the next 8:00.

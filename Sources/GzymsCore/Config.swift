@@ -27,6 +27,8 @@ public struct GzymsConfig: Equatable, Sendable {
     public var caffeineBatteryBelow = 0
     /// `[dnd] breaks_through`: what still shows during Do Not Disturb. Turning it on and off is the pill's, not the config's.
     public var dndBreaks = DNDBreak.defaults
+    /// `[notifications] priority`: what sounds at once even while it waits for room in the stack.
+    public var priority = DNDBreak.priorityDefaults
     public var anomalies = true
     /// Global, in every app (`[shortcuts] mic_mute`, "off" = none).
     public var micShortcut = Shortcut("ctrl+alt+m")
@@ -241,6 +243,11 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         if bad.isEmpty { config.dndBreaks = Set(names.compactMap(DNDBreak.init(rawValue:))) }
         else { problems.append("dnd.breaks_through: \(bad.joined(separator: ", ")) must be \(DNDBreak.allCases.map(\.rawValue).joined(separator: ", ")), kept armageddon and meetings") }
     }
+    if let names = raw.notifications?.priority {
+        let bad = names.filter { DNDBreak(rawValue: $0) == nil }
+        if bad.isEmpty { config.priority = Set(names.compactMap(DNDBreak.init(rawValue:))) }
+        else { problems.append("notifications.priority: \(bad.joined(separator: ", ")) must be \(DNDBreak.allCases.map(\.rawValue).joined(separator: ", ")), kept armageddon and critical") }
+    }
     if let k = raw.bar?.menu_bar_key {
         if let m = MenuBarKey(rawValue: k) { config.menuBarKey = m }
         else { problems.append("bar.menu_bar_key: \"\(k)\" must be \(MenuBarKey.allCases.map(\.rawValue).joined(separator: ", ")), kept cmd") }
@@ -445,8 +452,9 @@ private struct RawNotifications: Decodable {
     var apps: RawApps?
     var letters: RawLetters?
     var phone: RawPhone?
+    var priority: [String]?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case sounds, keys, hold, levels, apps, letters, phone }
+    enum CodingKeys: String, CodingKey { case sounds, keys, hold, levels, apps, letters, phone, priority }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         sounds = lenient(c, .sounds, "notifications.sounds", &unknown)
@@ -456,7 +464,8 @@ private struct RawNotifications: Decodable {
         apps = lenient(c, .apps, "notifications.apps", &unknown)
         letters = lenient(c, .letters, "notifications.letters", &unknown)
         phone = lenient(c, .phone, "notifications.phone", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone"], prefix: "notifications.")
+        priority = lenient(c, .priority, "notifications.priority", &unknown)
+        unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone", "priority"], prefix: "notifications.")
         unknown += (levels?.unknown ?? []) + (apps?.unknown ?? []) + (letters?.unknown ?? []) + (phone?.unknown ?? [])
     }
 }

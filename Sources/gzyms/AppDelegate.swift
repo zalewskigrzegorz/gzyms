@@ -388,7 +388,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// From `gzyms notify` or from another app through Notification Center.
     private func post(_ n: GzymsNotification) {
         if let app = n.app, !n.compact { remember(app) }
-        let before = notes.banner?.id, wasIn = notes.contains(n.id)
         notes.post(n, now: ProcessInfo.processInfo.systemUptime)
         logNote(n, "posted")
         var loud = n
@@ -396,10 +395,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if loud.level == .armageddon, !n.compact, !notes.quiet(loud) {
             // Its own sound, every 1.5 s until clicked; a later notification goes under it, not over.
             armageddon.show(loud, theme: model.config.theme, calm: !model.animate)
-        } else if !wasIn, notes.contains(n.id), before != n.app.map({ "pending-\($0)" }) {
-            // Heard when it enters the stack, on screen or waiting. An update (same id) stays quiet: progress updates would beep every time.
-            // So does the text replacing its own app's icon: the icon already played the sound.
-            play(n)
         }
         notesChanged()
     }
@@ -575,6 +570,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The tap decides on its own thread, from these two values.
         chords.bannerUp = notes.banner != nil
         chords.queued = notes.waiting > 0
+        // Heard when it enters the stack, on screen or waiting, whatever let it in. An armageddon plays its own.
+        for n in notes.takeSounds() where n.level != .armageddon { play(n) }
         syncInboxes()
         saveNotes()
         if model.dnd != notes.dnd { model.dnd = notes.dnd }
@@ -607,7 +604,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         due.forEach { sendToPhone($0) }
         // After a tick the banner can only have expired (left the stack), or a snooze came back into it.
         if let b = before, !notes.contains(b.id) { flyToIcon(b); logNote(b, "expired") }
-        for r in notes.stacked where !was.contains(r.id) { logNote(r, "reminder"); play(r) }
+        for r in notes.stacked where !was.contains(r.id) { logNote(r, r.reminder ? "reminder" : "in from the queue") }
         notesChanged()
     }
 
@@ -738,6 +735,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notes.appRules = load.config.appRules
         notes.phone = load.config.phone
         notes.breaksThrough = load.config.dndBreaks
+        notes.priority = load.config.priority
         sounds = [:]  // a file may have changed under the same path
         applyMotion()
         if notes.banner != nil { notesChanged() }  // a banner on screen takes the new theme too
