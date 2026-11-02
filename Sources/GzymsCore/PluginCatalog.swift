@@ -229,7 +229,8 @@ private let agents = CatalogPlugin(
 
     prev=""   # what the last check saw: id, state, needs you, working since (s)
     rows=""   # id, session, state, needs you, name, message
-    first=1 last="" n=0
+    # n starts from the clock: after a bar restart a counter from 0 reused ids still in the bell, and the new note replaced the old one silently.
+    first=1 last="" n=$(date +%s)000
 
     say() {  # level id session title body
       # A fresh id each time: the same id again would only update the old note in the bell, without a banner.
