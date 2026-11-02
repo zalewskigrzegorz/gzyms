@@ -72,6 +72,27 @@ import Testing
     #expect(shown == ["n0", "n1", "n2", "n3"])
 }
 
+@Test func theLineSurvivesARestartInOrder() throws {
+    var s = NotificationStore()
+    for i in 0..<6 { s.post(note("n\(i)", level: .error), now: Double(i) / 10) }
+    s.next(now: 1)  // n1 on screen: it comes back first
+    _ = s.takeSounds()
+    let data = try JSONEncoder().encode(s.saved(now: 1, wall: Date(timeIntervalSince1970: 0)))
+    var r = NotificationStore()
+    r.restore(try JSONDecoder().decode(NotificationStore.Saved.self, from: data), now: 0, wall: Date(timeIntervalSince1970: 60))
+    #expect(r.stacked.map(\.id) == ["n1", "n2", "n3", "n0"])
+    #expect(r.inbox("com.app").map(\.id).sorted() == ["n4", "n5"])
+    #expect(r.takeSounds().isEmpty)  // these sounded before the restart
+    r.dismiss(now: 1)
+    #expect(r.takeSounds().map(\.id) == ["n4"])
+}
+
+@Test func aFileFromBeforeTheQueueStillLoads() throws {
+    let old = #"{"inbox":[],"snoozed":[]}"#
+    let s = try JSONDecoder().decode(NotificationStore.Saved.self, from: Data(old.utf8))
+    #expect(s.queued == nil)
+}
+
 @Test func anUpdateWhileWaitingComesUpWithTheNewText() {
     var s = NotificationStore()
     for i in 0..<5 { s.post(note("n\(i)"), now: Double(i) / 10) }

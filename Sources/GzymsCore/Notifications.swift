@@ -330,28 +330,43 @@ public struct NotificationStore: Sendable {
     public var nextDeadline: Double? { ([deadline] + snoozed.map(\.at) + toPhone.values.map(\.at)).compactMap { $0 }.min() }
 
     /// What survives a bar restart (notifications.json): the lists and the snoozes, in wall time since uptime starts
-    /// over on a reboot. The stack is saved as list rows, so a crash loses nothing either.
+    /// over on a reboot. The stack is saved as list rows, so a crash loses nothing either, and `queued` keeps the
+    /// stack and the ones waiting for it in line, so they come up again in that order.
     public struct Saved: Codable, Equatable, Sendable {
         public struct Snooze: Codable, Equatable, Sendable { public var n: GzymsNotification; public var at: Date }
+        /// One row of `inbox` in line for the stack: whether it sounded already, and whether it came back from a snooze.
+        public struct Queued: Codable, Equatable, Sendable { public var id: String; public var heard: Bool; public var reminder: Bool }
         public var inbox: [GzymsNotification]
         public var snoozed: [Snooze]
         public var dnd: Date?
+        public var queued: [Queued]?
     }
 
     public func saved(now: Double, wall: Date) -> Saved {
         var copy = self
         // A meeting comes back from the calendar; a pending icon was never a row.
+        let line = (stack.isEmpty ? [] : stack[cursor...] + stack[..<cursor]).filter { $0.n.meetingStart == nil && !$0.n.compact }
+            + overflow.sorted(by: Self.order)
         for e in stack where e.n.meetingStart == nil { copy.file(e.n) }
         // Sorted by app: the same lists always give the same bytes, so an unchanged store is not written again.
         return Saved(inbox: copy.inboxes.sorted { ($0.key ?? "") < ($1.key ?? "") }.flatMap(\.value),
-                     snoozed: snoozed.map { .init(n: $0.n, at: wall + ($0.at - now)) }, dnd: dnd)
+                     snoozed: snoozed.map { .init(n: $0.n, at: wall + ($0.at - now)) }, dnd: dnd,
+                     queued: line.map { .init(id: $0.n.id, heard: $0.heard, reminder: $0.n.reminder) })
     }
 
-    /// A snooze whose time passed while the bar was off comes back on the next tick.
+    /// A snooze whose time passed while the bar was off comes back on the next tick. The ones in line come up in
+    /// the same order, the first on screen with its full time.
     public mutating func restore(_ s: Saved, now: Double, wall: Date) {
         for n in s.inbox { inboxes[n.app, default: []].append(n) }
         snoozed = s.snoozed.map { ($0.n, now + max(0, $0.at.timeIntervalSince(wall))) }
         dnd = s.dnd.flatMap { $0 > wall ? $0 : nil }  // its time ran out while the bar was off
+        for q in s.queued ?? [] {
+            guard var n = s.inbox.first(where: { $0.id == q.id }), !quiet(n) else { continue }
+            n.reminder = q.reminder
+            seq += 1
+            overflow.append(Entry(n: n, seq: seq, left: nil, heard: q.heard))
+        }
+        refill(keep: nil, now: now)
     }
 
     /// nil when there is none yet, or it does not decode: then it is moved aside, never lost.
