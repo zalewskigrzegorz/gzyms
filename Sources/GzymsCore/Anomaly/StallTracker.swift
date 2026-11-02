@@ -26,6 +26,15 @@ public struct StallTracker: Sendable {
 
     /// Main answered the ping.
     public mutating func pong() { pingSentAt = nil }
+
+    /// What a report is. The log keeps every kind; the log watcher warns on `main_thread_stall` only.
+    /// `asleep`: screens off or the Mac going to sleep (DarkWake, maintenance sleep), so nobody saw the bar freeze.
+    /// Under 1 s is a hitch: Apple calls under 500 ms a micro hang, and 1 s is the tracker's first step past that.
+    public static func kind(blocked: TimeInterval, asleep: Bool, settling: Bool) -> String {
+        if asleep { return "sleep_stall" }
+        if settling { return "settling_stall" }
+        return blocked >= 1 ? "main_thread_stall" : "main_thread_hitch"
+    }
 }
 
 /// Too many panel rebuilds in a short time: the SketchyBar wake bug in numbers.

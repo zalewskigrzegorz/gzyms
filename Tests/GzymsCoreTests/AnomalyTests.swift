@@ -27,6 +27,15 @@ import Testing
     #expect(t.tick(at: 5.1).blocked == nil)
 }
 
+@Test func stallKinds() {
+    // DarkWake 2026-11-02: 16 s with the screens off was a warning, now only a log line.
+    #expect(StallTracker.kind(blocked: 16, asleep: true, settling: false) == "sleep_stall")
+    #expect(StallTracker.kind(blocked: 16, asleep: true, settling: true) == "sleep_stall")
+    #expect(StallTracker.kind(blocked: 4, asleep: false, settling: true) == "settling_stall")
+    #expect(StallTracker.kind(blocked: 0.3, asleep: false, settling: false) == "main_thread_hitch")
+    #expect(StallTracker.kind(blocked: 1, asleep: false, settling: false) == "main_thread_stall")
+}
+
 @Test func thirdRebuildInTenSecondsIsAStorm() {
     var s = RebuildStorm(limit: 3, window: 10)
     #expect(s.record(at: 0) == false)

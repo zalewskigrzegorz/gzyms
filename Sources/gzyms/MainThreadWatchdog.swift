@@ -10,6 +10,7 @@ final class MainThreadWatchdog: @unchecked Sendable {
     /// Until when a stall is expected, and why ("start", "wake", "screens"); confined to `queue`.
     private var settlingUntil: TimeInterval = 0
     private var settlingWhy = ""
+    private var isAsleep = false  // confined to `queue`
     private let anomalies: AnomalyLog
 
     init(anomalies: AnomalyLog) { self.anomalies = anomalies }
@@ -23,6 +24,9 @@ final class MainThreadWatchdog: @unchecked Sendable {
         let until = ProcessInfo.processInfo.systemUptime + seconds
         queue.async { [self] in settlingUntil = until; settlingWhy = why }
     }
+
+    /// Screens off or the Mac going to sleep: macOS freezes or starves Gzyms in DarkWake, which is not a hang anyone sees.
+    func asleep(_ value: Bool) { queue.async { [self] in isAsleep = value } }
 
     func start() {
         settling("start")
@@ -44,9 +48,10 @@ final class MainThreadWatchdog: @unchecked Sendable {
             }
         }
         if let blocked = r.blocked {
-            let ms = String(Int(blocked * 1000))
-            if now < settlingUntil { anomalies.write(kind: "settling_stall", detail: ["blocked_ms": ms, "after": settlingWhy]) }
-            else { anomalies.write(kind: "main_thread_stall", detail: ["blocked_ms": ms]) }
+            let kind = StallTracker.kind(blocked: blocked, asleep: isAsleep, settling: now < settlingUntil)
+            var detail = ["blocked_ms": String(Int(blocked * 1000))]
+            if kind == "settling_stall" { detail["after"] = settlingWhy }
+            anomalies.write(kind: kind, detail: detail)
         }
     }
 }

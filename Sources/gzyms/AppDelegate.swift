@@ -79,6 +79,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [watchdog] _ in
             watchdog.settling("wake")
         }
+        let ws = NSWorkspace.shared.notificationCenter
+        for (name, asleep) in [(NSWorkspace.willSleepNotification, true), (NSWorkspace.screensDidSleepNotification, true),
+                               (NSWorkspace.didWakeNotification, false), (NSWorkspace.screensDidWakeNotification, false)] {
+            ws.addObserver(forName: name, object: nil, queue: .main) { [watchdog] _ in watchdog.asleep(asleep) }
+        }
         loadConfig()
         let home = FileManager.default.homeDirectoryForCurrentUser
         let watcher = StateWatcher(url: home.appendingPathComponent("Library/Application Support/HyprMac/state.json")) { [weak self] read in

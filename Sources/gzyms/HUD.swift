@@ -185,7 +185,7 @@ enum LogTail {
     static func read() -> [LogLine] {
         let dir = Paths.logsDir(home: FileManager.default.homeDirectoryForCurrentUser)
         let anomalies = tail(dir.appendingPathComponent("anomalies.jsonl")).map { line in
-            (ts: timestamp(json: line), line: LogLine(source: "anomalies", text: line, level: line.contains("stall") || line.contains("storm") ? "error" : nil))
+            (ts: timestamp(json: line), line: LogLine(source: "anomalies", text: line, level: line.contains("main_thread_stall") || line.contains("storm") ? "error" : nil))
         }
         let log = tail(dir.appendingPathComponent("gzyms.log")).map { line in
             (ts: String(line.prefix(20)), line: LogLine(source: "log", text: line, level: nil))
