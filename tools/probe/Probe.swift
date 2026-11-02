@@ -1,4 +1,5 @@
 import AppKit
+import Network
 import SwiftUI
 import UserNotifications
 
@@ -16,7 +17,7 @@ struct ProbeApp: App {
 }
 
 enum ProbeTab: String, CaseIterable, Identifiable {
-    case gallery, themes, notifications, cli, meetings, plugins, logs
+    case gallery, themes, notifications, cli, meetings, plugins, media, hacks, logs
     var id: Self { self }
 
     var title: String {
@@ -27,6 +28,8 @@ enum ProbeTab: String, CaseIterable, Identifiable {
         case .cli: "CLI"
         case .meetings: "Meetings"
         case .plugins: "Plugins"
+        case .media: "Media"
+        case .hacks: "Hacks"
         case .logs: "Logs"
         }
     }
@@ -39,6 +42,8 @@ enum ProbeTab: String, CaseIterable, Identifiable {
         case .cli: "terminal"
         case .meetings: "video"
         case .plugins: "puzzlepiece.extension"
+        case .media: "play.rectangle"
+        case .hacks: "wrench.and.screwdriver"
         case .logs: "doc.plaintext"
         }
     }
@@ -52,6 +57,8 @@ enum ProbeTab: String, CaseIterable, Identifiable {
         case .cli: ["gzyms", "notify", "level", "sound", "screen", "link", "theme", "hud", "version"]
         case .meetings: ["meeting-test", "calendar", "late", "starting now", "meet", "preview"]
         case .plugins: ["log watcher", "armageddon", "error", "fatal", "rule", "agents", "tuios"]
+        case .media: ["music", "video", "browser", "userscript", "mediaremote", "spotify", "play", "pause"]
+        case .hacks: ["media keys", "about:config", "hardwaremediakeys", "userscript", "violentmonkey", "music.app"]
         case .logs: ["log", "filter", "calendar", "mic", "notify", "nc", "dock", "chords", "anomalies"]
         }
     }
@@ -86,6 +93,8 @@ struct ProbeView: View {
                     case .cli: CLITab()
                     case .meetings: MeetingsTab()
                     case .plugins: PluginsTab()
+                    case .media: MediaTab()
+                    case .hacks: HacksTab()
                     case .logs: LogsTab()
                     }
                 }
@@ -94,6 +103,8 @@ struct ProbeView: View {
             }
             .navigationTitle((tab ?? .notifications).title)
         }
+        // Up from launch, so the userscript's tabs are heard whichever tab is open.
+        .onAppear { MediaServer.shared.start() }
     }
 }
 
@@ -526,6 +537,307 @@ struct LogsTab: View {
                 }
             }
             LogTail(prefixes: source == "all" ? [] : [source], contains: filter, count: 200).frame(minHeight: 420)
+        }
+    }
+}
+
+// MARK: - Media
+
+/// Spike (2026-11-03): browser video through a userscript, music through MediaRemote and Music.app's AppleScript.
+/// Needs media.hardwaremediakeys.enabled = false in the browser, so the media keys are left to the music player.
+struct MediaTab: View {
+    @ObservedObject private var server = MediaServer.shared
+    @ObservedObject private var mr = MediaRemoteFeed.shared
+    @State private var music = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GroupBox("Browser tabs (userscript)") {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Button("Open the install page") { NSWorkspace.shared.open(MediaServer.scriptURL) }
+                        Button("Copy its URL") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(MediaServer.scriptURL.absoluteString, forType: .string)
+                        }
+                        Text(server.status).font(.caption).foregroundStyle(.secondary)
+                    }
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        let tabs = server.live
+                        if tabs.isEmpty { Text("No tab reports media yet.").foregroundStyle(.secondary) }
+                        ForEach(tabs, id: \.id) { t in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Text(t.title).lineLimit(1)
+                                    Text(URL(string: t.url)?.host() ?? "").foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button("Go to") { server.send(t.id, 0, "focus") }
+                                }
+                                ForEach(t.media, id: \.i) { m in
+                                    HStack {
+                                        Image(systemName: m.playing ? "play.fill" : "pause.fill").frame(width: 16)
+                                        Text("\(m.kind) #\(m.i)").foregroundStyle(.secondary)
+                                        Button(m.playing ? "Pause" : "Play") { server.send(t.id, m.i, m.playing ? "pause" : "play") }
+                                        Button("Next") { server.send(t.id, m.i, "next") }
+                                    }
+                                }
+                                if !t.note.isEmpty { Text(t.note).font(.caption).foregroundStyle(.orange) }
+                            }
+                            .padding(6).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                }
+            }
+            GroupBox("MediaRemote (the media keys go to Now Playing)") {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let now = mr.now {
+                        HStack {
+                            Image(systemName: now.playing ? "play.fill" : "pause.fill").frame(width: 16)
+                            Text("\(now.appName): \(now.title)").lineLimit(1)
+                            Spacer()
+                            Button("Play/Pause") { mr.send(2) }
+                            Button("Next") { mr.send(4) }
+                        }
+                    } else {
+                        Text(mr.status.isEmpty ? "Nothing is Now Playing." : mr.status).foregroundStyle(.secondary)
+                    }
+                    ForEach(mr.others, id: \.app) { o in
+                        HStack {
+                            Image(systemName: o.playing ? "play.fill" : "pause.fill").frame(width: 16)
+                            Text("\(o.appName): \(o.title)").lineLimit(1)
+                            Spacer()
+                            // macOS steers only Now Playing (send-commands is Control Center's), so others can only be gone to.
+                            Button("Go to") { NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == o.app }?.activate() }
+                        }
+                    }
+                }
+            }
+            GroupBox("Music.app (AppleScript)") {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Button("Play/Pause") { music(["playpause"]) }
+                        Button("Next") { music(["next track"]) }
+                        Button("State") { music([]) }
+                        Text(music).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("A running Music.app takes the media keys when nothing else plays: quit it (cmd+Q) to give them to Spotifast.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .onAppear { server.start(); mr.start() }
+    }
+
+    /// Never launches Music.app: a running one takes the media keys.
+    private func music(_ command: [String]) {
+        let tell = command.map { "tell application id \"com.apple.Music\" to \($0)\n" }.joined()
+        let script = "if application id \"com.apple.Music\" is not running then return \"not running\"\n\(tell)"
+            + "tell application id \"com.apple.Music\" to return player state as text"
+        Gzyms.run(["-e", script], exe: "/usr/bin/osascript") { music = $0.components(separatedBy: "\n").dropFirst().joined(separator: " ") }
+    }
+}
+
+/// What the bar's Settings → Hacks would be: each hack with its state, what the user does, and one button.
+/// Read-only: the browser pref and the userscript install stay the user's own steps.
+struct HacksTab: View {
+    @ObservedObject private var server = MediaServer.shared
+    private struct Pref: Identifiable { let browser, profile: String; let off: Bool; var id: String { browser + profile } }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 2)) { _ in
+            VStack(alignment: .leading, spacing: 14) {
+                hack("Media keys for the music player only",
+                     state: prefs().map { "\($0.browser) \($0.profile): \($0.off ? "off ✓" : "on") " }.joined(separator: "· "),
+                     done: !prefs().isEmpty && prefs().allSatisfy(\.off),
+                     how: "In the browser open about:config and set media.hardwaremediakeys.enabled to false. The browser leaves Now Playing at once, no restart. Chromium: --disable-features=HardwareMediaKeyHandling.") {
+                    Button("Copy the pref name") { copy("media.hardwaremediakeys.enabled") }
+                }
+                hack("Browser video through the userscript",
+                     state: server.live.isEmpty ? "no tab reports media" : "\(server.live.count) tab(s) report media",
+                     done: !server.live.isEmpty,
+                     how: "Install Violentmonkey (or Tampermonkey), then open the script URL: the manager shows Install. Keep this app running, it serves the script and the tabs talk to it on 127.0.0.1 only.") {
+                    Button("Open the install page") { server.start(); NSWorkspace.shared.open(MediaServer.scriptURL) }
+                }
+                hack("Music.app off the media keys",
+                     state: musicRunning ? "Music.app is running" : "Music.app is not running",
+                     done: !musicRunning,
+                     how: "A running Music.app takes the media keys whenever the browser does not, even when it plays nothing. Quit it when you play from Spotify or Spotifast.") {
+                    Button("Quit Music.app") { NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == "com.apple.Music" }?.terminate() }
+                        .disabled(!musicRunning)
+                }
+            }
+        }
+        .onAppear { server.start() }
+    }
+
+    private var musicRunning: Bool { NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.apple.Music" } }
+
+    /// Every Gecko profile of Vimma and Firefox, from its prefs.js (only read).
+    private func prefs() -> [Pref] {
+        let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+        return ["Vimma", "Firefox"].flatMap { browser -> [Pref] in
+            let dir = support.appendingPathComponent("\(browser)/Profiles")
+            let profiles = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+            return profiles.compactMap { p in
+                guard let text = try? String(contentsOf: dir.appendingPathComponent("\(p)/prefs.js"), encoding: .utf8) else { return nil }
+                return Pref(browser: browser, profile: String(p.split(separator: ".").last ?? ""),
+                            off: text.contains("user_pref(\"media.hardwaremediakeys.enabled\", false)"))
+            }
+        }
+    }
+
+    private func copy(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+    }
+
+    private func hack(_ title: String, state: String, done: Bool, how: String, @ViewBuilder action: () -> some View) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: done ? "checkmark.circle.fill" : "circle").foregroundStyle(done ? .green : .secondary)
+                    Text(title).bold()
+                    Spacer()
+                    action()
+                }
+                Text(state).font(.caption).foregroundStyle(.secondary)
+                Text(how).font(.caption)
+            }
+        }
+    }
+}
+
+/// Loopback-only HTTP for the userscript: GET serves the script, POST /report takes a tab's media and answers its commands.
+@MainActor final class MediaServer: ObservableObject {
+    static let shared = MediaServer()
+    static let port: UInt16 = 47100
+    static let scriptURL = URL(string: "http://127.0.0.1:\(port)/gzyms-media.user.js")!
+
+    struct Media: Decodable { let i: Int, kind: String, title: String, playing: Bool }
+    struct Tab: Decodable { let id: String, url: String, title: String, note: String, media: [Media] }
+
+    @Published var status = ""
+    @Published private var tabs: [String: (tab: Tab, seen: Date)] = [:]
+    private var pending: [String: [[String: Any]]] = [:]
+    private var listener: NWListener?
+
+    /// Tabs heard from in the last 3 s (the userscript reports every second), with media.
+    var live: [Tab] {
+        tabs.values.filter { $0.seen > .now - 3 && !$0.tab.media.isEmpty }.map(\.tab).sorted { $0.id < $1.id }
+    }
+
+    func start() {
+        guard listener == nil else { return }
+        let params = NWParameters.tcp
+        params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: Self.port)!)
+        do { listener = try NWListener(using: params) } catch { status = "listen: \(error)"; return }
+        listener?.stateUpdateHandler = { s in MainActor.assumeIsolated { self.status = "server \(s) on 127.0.0.1:\(Self.port)" } }
+        listener?.newConnectionHandler = { c in
+            MainActor.assumeIsolated {
+                c.start(queue: .main)
+                self.read(c, Data())
+            }
+        }
+        listener?.start(queue: .main)
+    }
+
+    func send(_ tab: String, _ i: Int, _ cmd: String) { pending[tab, default: []].append(["i": i, "cmd": cmd]) }
+
+    private func read(_ c: NWConnection, _ buffer: Data) {
+        c.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, done, error in
+            MainActor.assumeIsolated {
+                var b = buffer
+                if let data { b.append(data) }
+                if let reply = self.answer(b) { c.send(content: reply, completion: .contentProcessed { _ in c.cancel() }) }
+                else if done || error != nil || b.count > 1 << 20 { c.cancel() }
+                else { self.read(c, b) }
+            }
+        }
+    }
+
+    /// The whole HTTP response for a complete request, nil while the request is still arriving.
+    private func answer(_ d: Data) -> Data? {
+        guard let end = d.range(of: Data("\r\n\r\n".utf8)) else { return nil }
+        let head = String(decoding: d[..<end.lowerBound], as: UTF8.self).components(separatedBy: "\r\n")
+        let line = head[0].split(separator: " ")
+        var headers: [String: String] = [:]
+        for h in head.dropFirst() {
+            if let colon = h.firstIndex(of: ":") { headers[h[..<colon].lowercased()] = h[h.index(after: colon)...].trimmingCharacters(in: .whitespaces) }
+        }
+        let body = d[end.upperBound...]
+        guard body.count >= Int(headers["content-length"] ?? "0") ?? 0 else { return nil }
+        guard line.count >= 2 else { return http(400, "text/plain", Data()) }
+        switch (line[0], line[1]) {
+        case ("GET", "/gzyms-media.user.js"):
+            guard let url = Bundle.main.url(forResource: "gzyms-media.user", withExtension: "js"), let js = try? Data(contentsOf: url) else {
+                return http(404, "text/plain", Data("no script in the bundle".utf8))
+            }
+            return http(200, "text/javascript; charset=utf-8", js)
+        case ("POST", "/report") where headers["x-gzyms"] == "1":
+            guard let tab = try? JSONDecoder().decode(Tab.self, from: Data(body)) else { return http(400, "text/plain", Data()) }
+            tabs[tab.id] = (tab, .now)
+            tabs = tabs.filter { $0.value.seen > .now - 60 }
+            let commands = pending.removeValue(forKey: tab.id) ?? []
+            return http(200, "application/json", (try? JSONSerialization.data(withJSONObject: ["commands": commands])) ?? Data())
+        default:
+            return http(404, "text/plain", Data())
+        }
+    }
+
+    private func http(_ code: Int, _ type: String, _ body: Data) -> Data {
+        Data("HTTP/1.1 \(code) \(code == 200 ? "OK" : "Error")\r\nContent-Type: \(type)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8) + body
+    }
+}
+
+/// tools/media-reader in /usr/bin/perl (only Apple-signed processes may read MediaRemote), and media-send for commands.
+@MainActor final class MediaRemoteFeed: ObservableObject {
+    static let shared = MediaRemoteFeed()
+    struct Now: Decodable { let app: String, appName: String, title: String, playing: Bool }
+    struct Line: Decodable { let app: String, appName: String, title: String, playing: Bool; let others: [Now]? }
+
+    @Published var now: Now?
+    @Published var others: [Now] = []
+    @Published var status = ""
+    private var process: Process?
+    private var buffer = Data()
+
+    func start() {
+        guard process == nil else { return }
+        guard let reader = Bundle.main.url(forResource: "media-reader", withExtension: "dylib") else { status = "no media-reader.dylib in Probe"; return }
+        let p = perl(reader), out = Pipe()
+        p.standardOutput = out
+        out.fileHandleForReading.readabilityHandler = { h in
+            let d = h.availableData
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.consume(d) } }
+        }
+        p.terminationHandler = { _ in DispatchQueue.main.async { MainActor.assumeIsolated { self.process = nil; self.status = "reader ended" } } }
+        do { try p.run(); process = p } catch { status = "reader: \(error)" }
+    }
+
+    /// MediaRemote command to the Now Playing app: 0 play, 1 pause, 2 toggle, 4 next.
+    func send(_ command: Int) {
+        guard let sender = Bundle.main.url(forResource: "media-send", withExtension: "dylib") else { status = "no media-send.dylib in Probe"; return }
+        let p = perl(sender)
+        p.environment = ["MR_CMD": String(command)]
+        p.standardOutput = FileHandle.nullDevice
+        try? p.run()
+    }
+
+    private func perl(_ dylib: URL) -> Process {
+        let p = Process()
+        p.executableURL = URL(filePath: "/usr/bin/perl")
+        p.arguments = ["-e", "require DynaLoader; DynaLoader::dl_load_file($ARGV[0], 0) or die DynaLoader::dl_error()", dylib.path]
+        return p
+    }
+
+    private func consume(_ d: Data) {
+        buffer.append(d)
+        while let nl = buffer.firstIndex(of: 10) {
+            let line = buffer[..<nl]
+            buffer = Data(buffer[buffer.index(after: nl)...])
+            let l = try? JSONDecoder().decode(Line.self, from: line)
+            now = l.map { Now(app: $0.app, appName: $0.appName, title: $0.title, playing: $0.playing) }
+            others = l?.others ?? []
         }
     }
 }
