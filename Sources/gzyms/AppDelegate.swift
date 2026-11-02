@@ -2,10 +2,14 @@ import AppKit
 import Carbon.HIToolbox
 import GzymsCore
 import GzymsUI
+import Sparkle
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = BarModel()
+    /// Sparkle updates. Off outside the bundle (`swift run`), where it would fail on a missing SUFeedURL.
+    private let updater = SPUStandardUpdaterController(startingUpdater: Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil,
+                                                       updaterDelegate: nil, userDriverDelegate: nil)
     private var panels: [UInt32: BarPanel] = [:]
     private var screens: ScreenManager?
     private var state: StateWatcher?
@@ -1010,6 +1014,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let grants = NSMenuItem(title: "Permissions…", action: #selector(menuPermissions), keyEquivalent: "")
         grants.target = self
         menu.addItem(grants)
+        let update = NSMenuItem(title: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
+        update.target = updater
+        menu.addItem(update)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Gzyms", action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self

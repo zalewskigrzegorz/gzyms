@@ -9,30 +9,8 @@ label="dev.gzyms"
 plist="$HOME/Library/LaunchAgents/$label.plist"
 logs="$HOME/Library/Logs/Gzyms"
 
-bash scripts/gen-skill.sh  # skill/*.md into the binary
-swift build -c release
-scripts/make-icon.sh
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$logs"
-cp .build/release/gzyms "$app/Contents/MacOS/gzyms"
-cp .build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
-cp -R assets/sounds "$app/Contents/Resources/"  # the Gzyms cat (ElevenLabs sound effects)
-cat > "$app/Contents/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>CFBundleIdentifier</key><string>$label</string>
-  <key>CFBundleName</key><string>Gzyms</string>
-  <key>CFBundleExecutable</key><string>gzyms</string>
-  <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.0.1</string>
-  <key>LSUIElement</key><true/>
-  <key>NSCameraUsageDescription</key><string>Gzyms shows your camera in the check before a meeting.</string>
-  <key>NSCalendarsFullAccessUsageDescription</key><string>Gzyms reminds you of meetings that have a video link.</string>
-  <key>NSMicrophoneUsageDescription</key><string>Gzyms shows a live mic level in the microphone popup.</string>
-</dict></plist>
-EOF
-codesign --force --sign "Gzyms Dev" --identifier "$label" "$app"
+mkdir -p "$logs"
+bash scripts/bundle.sh "$app"
 
 cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -40,6 +18,7 @@ cat > "$plist" <<EOF
 <plist version="1.0"><dict>
   <key>Label</key><string>$label</string>
   <key>ProgramArguments</key><array><string>$app/Contents/MacOS/gzyms</string></array>
+  <key>EnvironmentVariables</key><dict><key>GZYMS_LAUNCHD</key><string>1</string></dict>  <!-- without it gzyms hands over to this job -->
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>  <!-- back after a crash, not after Quit -->
   <key>StandardErrorPath</key><string>$logs/gzyms.log</string>

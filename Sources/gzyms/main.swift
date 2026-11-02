@@ -48,6 +48,20 @@ if args.first == "hud" {
     HUD.becomeDetached()
     delegate = HUDController()
 } else {
+    // Started by hand or by Sparkle after an update, while install-dev.sh's login item runs this same binary:
+    // hand over to launchd, which keeps the log and brings the bar back after a crash.
+    let agent = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/dev.gzyms.plist")
+    let fromLaunchd = ProcessInfo.processInfo.environment["GZYMS_LAUNCHD"] == "1"
+    unsetenv("GZYMS_LAUNCHD")  // Sparkle's relaunch is a child of this process and would inherit it
+    if !fromLaunchd,
+       let plist = NSDictionary(contentsOf: agent), let program = (plist["ProgramArguments"] as? [String])?.first,
+       let me = Bundle.main.executablePath,
+       URL(fileURLWithPath: program).resolvingSymlinksInPath() == URL(fileURLWithPath: me).resolvingSymlinksInPath() {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        p.arguments = ["kickstart", "gui/\(getuid())/dev.gzyms"]
+        if (try? p.run()) != nil { p.waitUntilExit(); if p.terminationStatus == 0 { exit(0) } }
+    }
     // One bar at a time, before any plugin, window or permission prompt. Exit 0, or launchd's KeepAlive would retry.
     let pidFile = HUD.pidFile.deletingLastPathComponent().appendingPathComponent("gzyms.pid")
     try? FileManager.default.createDirectory(at: pidFile.deletingLastPathComponent(), withIntermediateDirectories: true)
