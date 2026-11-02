@@ -86,6 +86,7 @@ public struct PermissionsWizardView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(theme[\.surface].opacity(0.6)))
             HStack {
                 Spacer()
+                Button("Learn the keys in 5 min") { NSWorkspace.shared.open(tutorialURL) }
                 Button(states.allSatisfy(\.granted) ? "Close" : "Later", action: later)
             }
         }

@@ -6,6 +6,9 @@ import Foundation
 /// whatsnew/*.md as built in.
 public let bundledWhatsNew = whatsNewFiles
 
+/// The interactive tutorial in the browser, opened from the wizard, the logo menu and What's new.
+public let tutorialURL = URL(string: "https://gzyms.dev/try/")!
+
 /// The newest macOS major Gzyms was tried on. Raise it after a run on the next one.
 public let testedMacOSMajor = 27
 

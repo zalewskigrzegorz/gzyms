@@ -324,4 +324,8 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     preview(GzymsMessageView(title: "Gzyms was not tested on macOS 28", lines: ["Some parts may not work right.", "If something breaks, a report helps fix it."],
                              actions: [.init("Turn on debug mode") {}, .init("Report a problem") {}], close: {})
         .themed(.mochaNeon), "gzyms-message")
+    // Lines are inline markdown: code in backticks and a link.
+    preview(GzymsMessageView(title: "What's new in Gzyms 0.0.2", lines: ["`gzyms skill` teaches coding agents.", "Learn the keys at [gzyms.dev/try](https://gzyms.dev/try/)."],
+                             actions: [.init("Learn the keys") {}], close: {})
+        .themed(.mochaNeon), "gzyms-whats-new")
 }

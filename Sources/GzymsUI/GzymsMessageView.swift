@@ -33,7 +33,8 @@ public struct GzymsMessageView: View {
                 ForEach(lines, id: \.self) { line in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•").foregroundStyle(theme[\.sky])
-                        Text(line).fixedSize(horizontal: false, vertical: true)
+                        Text((try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                            ?? AttributedString(line)).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

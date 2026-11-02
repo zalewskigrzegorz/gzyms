@@ -961,7 +961,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let close: () -> Void = { [weak self] in self?.messages.next() }
         let view = switch m {
         case let .whatsNew(version, lines):
-            GzymsMessageView(title: "What's new in Gzyms \(version)", lines: lines, close: close)
+            GzymsMessageView(title: "What's new in Gzyms \(version)", lines: lines,
+                             actions: [.init("Learn the keys") { NSWorkspace.shared.open(tutorialURL) }], close: close)
         case let .untestedMacOS(major):
             GzymsMessageView(title: "Gzyms was not tested on macOS \(major)",
                              lines: ["Some parts may not work right.", "If something breaks, a report helps fix it."],
@@ -1017,6 +1018,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let update = NSMenuItem(title: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
         update.target = updater
         menu.addItem(update)
+        let learn = NSMenuItem(title: "Learn Gzyms…", action: #selector(menuLearn), keyEquivalent: "")
+        learn.target = self
+        menu.addItem(learn)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Gzyms", action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self
@@ -1026,6 +1030,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func menuSettings() { toggleSettings(nil) }
     @objc private func menuPermissions() { wizard.show(on: focusedScreen()); checkGrants() }
+    @objc private func menuLearn() { NSWorkspace.shared.open(tutorialURL) }
     @objc private func menuQuit() { NSApp.terminate(nil) }
 
     /// A tab opens on that tab (and stays open); no tab toggles.
