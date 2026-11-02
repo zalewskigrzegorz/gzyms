@@ -226,7 +226,7 @@ private struct Row<Control: View>: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                if let note { Text(note).font(.system(size: 11)).foregroundStyle(theme[\.overlay]) }
+                if let note { Text(note).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).fixedSize(horizontal: false, vertical: true) }
             }
             Spacer(minLength: 16)
             control
@@ -1162,8 +1162,23 @@ private struct NotificationsTab: View {
         }
         Section(title: "macOS") {
             Row(title: "Let Gzyms show them, not macOS",
-                note: "The gear next to an app opens its macOS page. Keep Allow notifications and Badge on. Untick Desktop, Notification Center and Lock Screen, and turn the sound off. Gzyms still gets every one, and nothing shows twice.") {
+                note: "The gear next to an app opens its macOS page. Keep Allow notifications, Notification Center and Badge on. Untick Desktop and Lock Screen, and turn the sound off. Gzyms still gets every one, and nothing shows twice.") {
                 Button("Open Notification settings", action: actions.openNotificationSettings)
+            }
+            Row(title: "Open the exact chat (experimental)",
+                note: """
+                    Opening a notification in Gzyms presses its original in Notification Center. The app then opens the right chat, thread or event. Off, Gzyms opens just the app.
+                    This is a trick, not an Apple feature. A macOS update can break it. Then Gzyms opens just the app.
+                    For each app, in System Settings → Notifications:
+                    1. Allow notifications on
+                    2. Desktop off
+                    3. Notification Center on
+                    4. Lock Screen off
+                    5. Play sound for notification off. Gzyms plays it.
+                    6. Badge application icon on
+                    In Keyboard → Keyboard Shortcuts, Show Notification Center (globe+N) stays on.
+                    """) {
+                Switch(on: config.openOriginal) { write("open_original", $0 ? nil : .bool(false), .table(["notifications"])) }
             }
         }
         }

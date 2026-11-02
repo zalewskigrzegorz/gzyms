@@ -543,10 +543,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !opened { logNote(b, "link failed") }
         } else if let owner = pluginNoteOwner(b.id, plugins: model.plugins.map(\.folder)) {
             pluginHost.send(plugin: owner.plugin, .notifyOpen, id: owner.id)  // the plugin knows where it leads
-        } else if let app = b.app, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app) {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        } else if model.config.openOriginal, let uuid = ncRecordUUID(noteID: b.id), let app = b.app {
+            // The original in Notification Center knows the exact chat or thread; without it, just the app.
+            NotificationClick.press(uuid: uuid) { pressed in if !pressed { Self.openApp(app) } }
+        } else if let app = b.app {
+            Self.openApp(app)
         }
         notesChanged()
+    }
+
+    private static func openApp(_ app: String) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     private func dismissBanner() {

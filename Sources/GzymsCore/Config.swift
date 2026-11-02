@@ -29,6 +29,9 @@ public struct GzymsConfig: Equatable, Sendable {
     public var dndBreaks = DNDBreak.defaults
     /// `[notifications] priority`: what sounds at once even while it waits for room in the stack.
     public var priority = DNDBreak.priorityDefaults
+    /// `[notifications] open_original` (experimental): opening another app's notification presses its original in
+    /// Notification Center, so the app opens the exact chat or thread. Off: just the app.
+    public var openOriginal = true
     public var anomalies = true
     /// Global, in every app (`[shortcuts] mic_mute`, "off" = none).
     public var micShortcut = Shortcut("ctrl+alt+m")
@@ -243,6 +246,7 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         if bad.isEmpty { config.dndBreaks = Set(names.compactMap(DNDBreak.init(rawValue:))) }
         else { problems.append("dnd.breaks_through: \(bad.joined(separator: ", ")) must be \(DNDBreak.allCases.map(\.rawValue).joined(separator: ", ")), kept armageddon and meetings") }
     }
+    if let v = raw.notifications?.openOriginal { config.openOriginal = v }
     if let names = raw.notifications?.priority {
         let bad = names.filter { DNDBreak(rawValue: $0) == nil }
         if bad.isEmpty { config.priority = Set(names.compactMap(DNDBreak.init(rawValue:))) }
@@ -453,8 +457,9 @@ private struct RawNotifications: Decodable {
     var letters: RawLetters?
     var phone: RawPhone?
     var priority: [String]?
+    var openOriginal: Bool?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case sounds, keys, hold, levels, apps, letters, phone, priority }
+    enum CodingKeys: String, CodingKey { case sounds, keys, hold, levels, apps, letters, phone, priority, openOriginal = "open_original" }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         sounds = lenient(c, .sounds, "notifications.sounds", &unknown)
@@ -465,7 +470,8 @@ private struct RawNotifications: Decodable {
         letters = lenient(c, .letters, "notifications.letters", &unknown)
         phone = lenient(c, .phone, "notifications.phone", &unknown)
         priority = lenient(c, .priority, "notifications.priority", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone", "priority"], prefix: "notifications.")
+        openOriginal = lenient(c, .openOriginal, "notifications.open_original", &unknown)
+        unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone", "priority", "open_original"], prefix: "notifications.")
         unknown += (levels?.unknown ?? []) + (apps?.unknown ?? []) + (letters?.unknown ?? []) + (phone?.unknown ?? [])
     }
 }

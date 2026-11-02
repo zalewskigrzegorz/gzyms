@@ -11,32 +11,16 @@ public func ncNotification(key: String, app: String, delivered: Double, data: Da
     if title == nil { title = body; body = nil }
     guard let title else { return nil }
     return GzymsNotification(id: "nc-\(key)", app: app, level: .info, title: title, subtitle: text("subt"), body: body,
-                             link: ncLink(app: app, req: req), altLink: nil, sound: "message",
-                             at: Date(timeIntervalSinceReferenceDate: delivered))
+                             link: nil, altLink: nil, sound: "message", at: Date(timeIntervalSinceReferenceDate: delivered))
 }
 
-/// Where a click on another app's notification leads, built from what its record carries. nil = just open the app.
-func ncLink(app: String, req: [String: Any]) -> String? {
-    switch app {
-    case "com.tinyspeck.slackmacgap": slackLink(req)
-    default: nil
-    }
-}
-
-/// Slack's record has no channel id and no thread, only `iden` = "<team id>_<message ts>" and the channel name as
-/// the subtitle ("#name"; a DM has the sender's name there). `slack://channel` takes the name too (checked live).
-private func slackLink(_ req: [String: Any]) -> String? {
-    guard let iden = req["iden"] as? String, let m = iden.firstMatch(of: /^([TE][A-Z0-9]+)_/) else { return nil }
-    var c = URLComponents()
-    c.scheme = "slack"
-    c.queryItems = [URLQueryItem(name: "team", value: String(m.1))]
-    if let subt = req["subt"] as? String, subt.hasPrefix("#"), subt.count > 1, !subt.contains(" ") {
-        c.host = "channel"
-        c.queryItems?.append(URLQueryItem(name: "id", value: String(subt.dropFirst())))
-    } else {
-        c.host = "open"
-    }
-    return c.string
+/// The record's uuid as Notification Center's own panel names the banner (its AX identifier), from a note's id.
+/// nil for notes that did not come from the database.
+public func ncRecordUUID(noteID: String) -> String? {
+    let hex = Array(noteID.dropFirst(3))
+    guard noteID.hasPrefix("nc-"), hex.count == 32 else { return nil }
+    let parts = [0..<8, 8..<12, 12..<16, 16..<20, 20..<32].map { String(hex[$0]) }
+    return UUID(uuidString: parts.joined(separator: "-"))?.uuidString
 }
 
 /// The app from a `usernoted` log line `Delivering <NotificationRecord app:"…" …> … updatedExisting: false`.

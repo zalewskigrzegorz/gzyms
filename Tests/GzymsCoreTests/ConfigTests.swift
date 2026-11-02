@@ -267,3 +267,10 @@ import Testing
 @Test func keysUnknownKeyIsReported() {
     #expect(loadConfig(toml: "[keys]\nleadr = \"f19\"").problems.contains { $0.contains("keys.leadr") })
 }
+
+@Test func openOriginalIsOnUnlessTurnedOff() {
+    #expect(loadConfig(toml: nil).config.openOriginal)
+    let off = loadConfig(toml: "[notifications]\nopen_original = false")
+    #expect(!off.config.openOriginal)
+    #expect(off.problems.isEmpty)
+}
