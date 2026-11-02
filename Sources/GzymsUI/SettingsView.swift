@@ -3,7 +3,7 @@ import GzymsCore
 import SwiftUI
 
 public enum SettingsTab: String, CaseIterable, Sendable {
-    case general, appearance, themes, notifications, modules, plugins, calendar, agents, sounds, shortcuts, permissions, debug, about
+    case general, appearance, themes, notifications, apps, modules, plugins, calendar, agents, sounds, shortcuts, permissions, debug, about
     public var title: String { self == .modules ? "Order" : rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 }
 
@@ -11,7 +11,9 @@ public enum SettingsTab: String, CaseIterable, Sendable {
 public struct SeenApp: Equatable {
     public var id: String, name: String
     public var icon: NSImage?
-    public init(id: String, name: String, icon: NSImage?) { self.id = id; self.name = name; self.icon = icon }
+    /// What to change in its macOS notification settings so opening the original works; nil = nothing.
+    public var warning: String?
+    public init(id: String, name: String, icon: NSImage?, warning: String? = nil) { self.id = id; self.name = name; self.icon = icon; self.warning = warning }
 }
 
 /// What the panel can ask the app to do. Every setting goes through `write`, which edits one line of `config.toml`.
@@ -124,7 +126,8 @@ public struct SettingsView: View {
                     Text(t.title)
                         .font(.system(size: 13, weight: t == tab ? .semibold : .regular))
                         .foregroundStyle(t == tab ? theme[\.base] : theme[\.text])
-                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .fixedSize()
+                        .padding(.horizontal, 8).padding(.vertical, 5)
                         .background(Capsule().fill(t == tab ? theme[\.mauve] : theme[\.surface].opacity(0.0001)))
                         .contentShape(Capsule())
                         .onTapGesture { tab = t }
@@ -162,7 +165,8 @@ public struct SettingsView: View {
         case .general: GeneralTab(config: config, names: workspaceNames, write: actions.write, reveal: actions.revealConfig)
         case .appearance: AppearanceTab(config: config, devices: devices, write: actions.write, openThemes: { tab = .themes })
         case .themes: ThemesTab(config: config, write: actions.write)
-        case .notifications: NotificationsTab(config: config, apps: apps, plugins: plugins, actions: actions)
+        case .notifications: NotificationsTab(config: config, actions: actions)
+        case .apps: AppsTab(config: config, apps: apps, plugins: plugins, actions: actions)
         case .modules: ModulesTab(config: config, write: actions.write, plugins: plugins)
         case .plugins: PluginsTab(config: config, write: actions.write, plugins: plugins, actions: actions)
         case .calendar: CalendarTab(config: config, calendars: calendars, write: actions.write)
@@ -1056,10 +1060,7 @@ private struct DebugTab: View {
 
 private struct NotificationsTab: View {
     let config: GzymsConfig
-    let apps: [SeenApp]
-    let plugins: [PluginStatus]
     let actions: SettingsActions
-    @State private var dropping = false
     @State private var tested: String?
     @Environment(\.theme) private var theme
     private var write: (String, TOMLValue?, ConfigTable) -> Void { actions.write }
@@ -1125,62 +1126,6 @@ private struct NotificationsTab: View {
                 }
             }
         }
-        Section(title: "Apps") {
-            HStack {
-                Text("App"); Spacer(); Color.clear.frame(width: 24)
-                Text("Banner").frame(width: 56); Text("Sound").frame(width: 56); Text("Count").frame(width: 56)
-                Text("Phone").frame(width: 56)
-                Text("Every notification is").frame(width: 150)
-            }
-            .font(.system(size: 11)).foregroundStyle(theme[\.overlay]).padding(.horizontal, 12).padding(.top, 6)
-            ForEach(listed, id: \.id) { app in
-                AppRow(app: app, rule: config.appRules[app.id] ?? AppRule(), write: write) { actions.openAppNotifications(app.id) }
-            }
-            if !plugins.isEmpty {
-                Text("Plugins").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 8)
-                ForEach(plugins, id: \.folder) { p in
-                    let id = "plugin:\(p.folder)"
-                    AppRow(app: SeenApp(id: id, name: p.name, icon: nil), rule: config.appRules[id] ?? AppRule(), write: write)
-                }
-                Divider().padding(.horizontal, 12).padding(.top, 4)
-            }
-            HStack {
-                Text("Drag an app here to set it up before it sends anything")
-                    .foregroundStyle(theme[\.overlay])
-                Text("or")
-                Button("Choose app…", action: actions.chooseApp)
-            }
-            .frame(maxWidth: .infinity).padding(14)
-            .background(RoundedRectangle(cornerRadius: 8).strokeBorder(dropping ? theme[\.mauve] : theme[\.overlay].opacity(0.5),
-                                                                       style: StrokeStyle(lineWidth: 1, dash: [4])))
-            .padding(10)
-            .dropDestination(for: URL.self) { urls, _ in
-                urls.filter { $0.pathExtension == "app" }.forEach(actions.dropApp)
-                return true
-            } isTargeted: { dropping = $0 }
-        }
-        Section(title: "macOS") {
-            Row(title: "Let Gzyms show them, not macOS",
-                note: "The gear next to an app opens its macOS page. Keep Allow notifications, Notification Center and Badge on. Untick Desktop and Lock Screen, and turn the sound off. Gzyms still gets every one, and nothing shows twice.") {
-                Button("Open Notification settings", action: actions.openNotificationSettings)
-            }
-            Row(title: "Open the exact chat (experimental)",
-                note: """
-                    Opening a notification in Gzyms presses its original in Notification Center. The app then opens the right chat, thread or event. Off, Gzyms opens just the app.
-                    This is a trick, not an Apple feature. A macOS update can break it. Then Gzyms opens just the app.
-                    For each app, in System Settings → Notifications:
-                    1. Allow notifications on
-                    2. Desktop off
-                    3. Notification Center on
-                    4. Lock Screen off
-                    5. Play sound for notification off. Gzyms plays it.
-                    6. Badge application icon on
-                    In Keyboard → Keyboard Shortcuts, Show Notification Center (globe+N) stays on.
-                    """) {
-                Switch(on: config.openOriginal) { write("open_original", $0 ? nil : .bool(false), .table(["notifications"])) }
-            }
-        }
         }
     }
 
@@ -1231,12 +1176,124 @@ private struct NotificationsTab: View {
             .pointerStyle(.link)
     }
 
+}
+
+/// Which apps may show what, and how macOS should hand their notifications over.
+private struct AppsTab: View {
+    let config: GzymsConfig
+    let apps: [SeenApp]
+    let plugins: [PluginStatus]
+    let actions: SettingsActions
+    @State private var dropping = false
+    @Environment(\.theme) private var theme
+    private var write: (String, TOMLValue?, ConfigTable) -> Void { actions.write }
+
+    var body: some View {
+        Columns {
+        Section(title: "Apps") {
+            HStack {
+                Text("App"); Spacer(); Color.clear.frame(width: 24)
+                Text("Banner").frame(width: 56); Text("Sound").frame(width: 56); Text("Count").frame(width: 56)
+                Text("Phone").frame(width: 56)
+                Text("Every notification is").frame(width: 150)
+            }
+            .font(.system(size: 11)).foregroundStyle(theme[\.overlay]).padding(.horizontal, 12).padding(.top, 6)
+            ForEach(listed, id: \.id) { app in
+                AppRow(app: app, rule: config.appRules[app.id] ?? AppRule(), write: write) { actions.openAppNotifications(app.id) }
+            }
+            if !plugins.isEmpty {
+                Text("Plugins").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 8)
+                ForEach(plugins, id: \.folder) { p in
+                    let id = "plugin:\(p.folder)"
+                    AppRow(app: SeenApp(id: id, name: p.name, icon: nil), rule: config.appRules[id] ?? AppRule(), write: write)
+                }
+                Divider().padding(.horizontal, 12).padding(.top, 4)
+            }
+            HStack {
+                Text("Drag an app here to set it up before it sends anything")
+                    .foregroundStyle(theme[\.overlay])
+                Text("or")
+                Button("Choose app…", action: actions.chooseApp)
+            }
+            .frame(maxWidth: .infinity).padding(14)
+            .background(RoundedRectangle(cornerRadius: 8).strokeBorder(dropping ? theme[\.mauve] : theme[\.overlay].opacity(0.5),
+                                                                       style: StrokeStyle(lineWidth: 1, dash: [4])))
+            .padding(10)
+            .dropDestination(for: URL.self) { urls, _ in
+                urls.filter { $0.pathExtension == "app" }.forEach(actions.dropApp)
+                return true
+            } isTargeted: { dropping = $0 }
+        }
+        Section(title: "macOS") {
+            Row(title: "Let Gzyms show them, not macOS",
+                note: "The gear next to an app opens its macOS page. Keep Allow notifications, Notification Center and Badge on. Untick Desktop and Lock Screen, and turn the sound off. Gzyms still gets every one, and nothing shows twice.") {
+                Button("Open Notification settings", action: actions.openNotificationSettings)
+            }
+            Row(title: "Open the exact chat (experimental)",
+                note: """
+                    Opening a notification in Gzyms presses its original in Notification Center. The app then opens the right chat, thread or event. Off, Gzyms opens just the app.
+                    This is a trick, not an Apple feature. A macOS update can break it. Then Gzyms opens just the app.
+                    Set each app as below. Its gear opens its page, and a warning next to it says what is off. Keep the globe+N shortcut on.
+                    """) {
+                Switch(on: config.openOriginal) { write("open_original", $0 ? nil : .bool(false), .table(["notifications"])) }
+            }
+            MacNotificationsMock().padding(.horizontal, 12).padding(.bottom, 10)
+        }
+        }
+    }
+
     /// Seen apps plus apps with a rule, by name.
     private var listed: [SeenApp] {
         let ruled = config.appRules.keys.filter { id in !id.hasPrefix("plugin:") && !apps.contains { $0.id == id } }.map { SeenApp(id: $0, name: $0, icon: nil) }
         return (apps + ruled).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
+}
 
+/// The per-app page of System Settings → Notifications, drawn with the boxes Gzyms needs: easier to copy than a list.
+private struct MacNotificationsMock: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            line("Allow notifications", on: true)
+            HStack(spacing: 14) {
+                tile("Desktop", on: false)
+                tile("Notification Center", on: true)
+                tile("Lock Screen", on: nil)
+            }
+            line("Badge application icon", on: true)
+            line("Play sound for notification", on: false, note: "Gzyms plays it")
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(theme[\.base]))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme[\.overlay].opacity(0.4)))
+    }
+
+    /// nil = either way.
+    private func tile(_ title: String, on: Bool?) -> some View {
+        VStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 4).fill(theme[\.surface]).frame(width: 90, height: 44)
+                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(on == true ? theme[\.green] : .clear, lineWidth: 2))
+            Text(title).font(.system(size: 11))
+            mark(on)
+        }
+    }
+
+    private func line(_ title: String, on: Bool, note: String? = nil) -> some View {
+        HStack {
+            Text(title).font(.system(size: 11))
+            if let note { Text(note).font(.system(size: 11)).foregroundStyle(theme[\.overlay]) }
+            Spacer()
+            mark(on)
+        }
+    }
+
+    private func mark(_ on: Bool?) -> some View {
+        Image(systemName: on == nil ? "minus.square" : on! ? "checkmark.square.fill" : "square")
+            .foregroundStyle(on == nil ? theme[\.overlay] : on! ? theme[\.green] : theme[\.red])
+            .help(on == nil ? "Either way" : on! ? "On" : "Off")
+    }
 }
 
 /// A key cap: click it, press a letter. Writes `[keys.verbs]`.
@@ -1314,7 +1371,13 @@ private struct AppRow: View {
     var body: some View {
         HStack {
             if let icon = app.icon { Image(nsImage: icon).resizable().frame(width: 18, height: 18) }
-            Text(app.name).lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(app.name).lineLimit(1)
+                if let warning = app.warning {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(theme[\.peach])
+                        .fixedSize()
+                }
+            }
             Spacer()
             Group {
                 if let macOS { Button(action: macOS) { Image(systemName: "gearshape") }.buttonStyle(.borderless).help("Its macOS notification settings") }

@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var wizard = PermissionsWizard(model: model) { [weak self] g in self?.openGrant(g) }
     private var appsObservers: [NSObjectProtocol] = []
     private lazy var settings = SettingsPanel(model: model, actions: settingsActions())
+    private var settingsKeyObserver: NSObjectProtocol?
     private let seenAppsFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Gzyms/seen-apps.json")
     private lazy var messages = GzymsMessagePanel(model: model)
@@ -1049,12 +1050,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func menuSettings() { toggleSettings(nil) }
     @objc private func menuPermissions() { wizard.show(on: focusedScreen()); checkGrants() }
+    /// Marks each app whose macOS notification settings keep opening the original from working (Settings → Apps).
+    /// The file opens only with Full Disk Access, so it is read off the main thread.
+    private func refreshAppWarnings() {
+        let ids = model.seenApps.map(\.id), on = model.config.openOriginal
+        DispatchQueue.global(qos: .utility).async {
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            let prefs = try? Data(contentsOf: home.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences/group.com.apple.usernoted.plist"))
+            let hotkeys = try? Data(contentsOf: home.appending(path: "Library/Preferences/com.apple.symbolichotkeys.plist"))
+            let warnings = on ? prefs.flatMap { ncSettingsWarnings(prefs: $0, apps: ids, hotkeys: hotkeys) } ?? [:] : [:]
+            DispatchQueue.main.async { MainActor.assumeIsolated { [weak self] in
+                guard let self else { return }
+                let apps = self.model.seenApps.map { a in var a = a; a.warning = warnings[a.id]; return a }
+                if apps != self.model.seenApps { self.model.seenApps = apps; log("nc settings: \(warnings.count) apps set up wrong") }
+            } }
+        }
+    }
+
     @objc private func menuLearn() { NSWorkspace.shared.open(tutorialURL) }
     @objc private func menuQuit() { NSApp.terminate(nil) }
 
     /// A tab opens on that tab (and stays open); no tab toggles.
     private func toggleSettings(_ tab: SettingsTab?) {
         if let tab { model.settingsTab = tab }
+        refreshAppWarnings()
+        if settingsKeyObserver == nil {  // back from System Settings: the warnings follow what was changed there
+            settingsKeyObserver = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: settings, queue: .main) { _ in
+                MainActor.assumeIsolated { [weak self] in self?.refreshAppWarnings() }
+            }
+        }
         log("settings: toggle (visible \(settings.isVisible), in front \(settings.isInFront))")
         if settings.isVisible {
             if tab == nil, settings.isInFront { settings.hide() } else { settings.makeKeyAndOrderFront(nil) }

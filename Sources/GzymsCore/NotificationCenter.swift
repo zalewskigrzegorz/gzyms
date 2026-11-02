@@ -23,6 +23,31 @@ public func ncRecordUUID(noteID: String) -> String? {
     return UUID(uuidString: parts.joined(separator: "-"))?.uuidString
 }
 
+/// Per app, what keeps opening the original in Notification Center from working (the warning sign in Settings → Apps),
+/// from macOS's per-app notification settings (`apps` in usernoted's group plist). `flags` read by flipping the boxes
+/// live on macOS 27: 0x1 = Notification Center off, 0x4 = Play sound on (Gzyms plays it), 0x8 = Desktop on.
+/// Lock Screen and the badge do not matter.
+/// Only `apps` (the ones Gzyms has seen) are checked. nil = the settings could not be read.
+public func ncSettingsWarnings(prefs: Data, apps: [String], hotkeys: Data?) -> [String: String]? {
+    guard let plist = try? PropertyListSerialization.propertyList(from: prefs, format: nil) as? [String: Any],
+          let list = plist["apps"] as? [[String: Any]] else { return nil }
+    // shortcut: an unset entry keeps the shortcut's default (on); an edited one says enabled = false.
+    let keys = hotkeys.flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
+    let entry = (keys?["AppleSymbolicHotKeys"] as? [String: Any])?["163"] as? [String: Any]
+    let shortcutOff = entry?["enabled"] as? Bool == false
+    var out: [String: String] = [:]
+    for a in list {
+        guard let id = a["bundle-id"] as? String, apps.contains(id), let flags = a["flags"] as? Int else { continue }
+        var wrong: [String] = []
+        if flags & 0x1 != 0 { wrong.append("Notification Center off") }
+        if flags & 0x8 != 0 { wrong.append("Desktop on") }
+        if flags & 0x4 != 0 { wrong.append("Sound on") }
+        if shortcutOff { wrong.append("globe+N shortcut off") }
+        if !wrong.isEmpty { out[id] = wrong.joined(separator: ", ") }
+    }
+    return out
+}
+
 /// The app from a `usernoted` log line `Delivering <NotificationRecord app:"…" …> … updatedExisting: false`.
 /// nil for anything else, and for updates of a notification already shown.
 public func deliveredApp(_ message: String) -> String? {

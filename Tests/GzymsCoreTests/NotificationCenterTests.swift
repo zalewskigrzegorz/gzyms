@@ -28,6 +28,21 @@ private func blob(_ req: [String: Any]) throws -> Data {
     #expect(ncRecordUUID(noteID: "nc-0123456789ABCDEF0123456789ABCDEZ") == nil)
 }
 
+@Test func settingsWarnAboutWhatIsWrong() throws {
+    func prefs(_ apps: [(String, Int)]) throws -> Data {
+        try PropertyListSerialization.data(fromPropertyList: ["apps": apps.map { ["bundle-id": $0.0, "flags": $0.1] }], format: .binary, options: 0)
+    }
+    let seen = ["com.chat", "com.mail", "com.ok"]
+    // Flags as macOS 27 wrote them: the right setup, then Desktop and sound on, then everything off.
+    let data = try prefs([("com.ok", 0x1280_3142), ("com.mail", 0x1280_314E), ("com.chat", 0x1280_3143), ("com.unseen", 0x1)])
+    #expect(ncSettingsWarnings(prefs: data, apps: seen, hotkeys: nil) ==
+            ["com.chat": "Notification Center off", "com.mail": "Desktop on, Sound on"])
+    let off = try PropertyListSerialization.data(fromPropertyList: ["AppleSymbolicHotKeys": ["163": ["enabled": false]]], format: .binary, options: 0)
+    #expect(ncSettingsWarnings(prefs: try prefs([("com.ok", 0x1280_3142)]), apps: seen, hotkeys: off) ==
+            ["com.ok": "globe+N shortcut off"])
+    #expect(ncSettingsWarnings(prefs: Data("nope".utf8), apps: seen, hotkeys: nil) == nil)
+}
+
 @Test func recordWithoutTitleUsesBody() throws {
     let n = try #require(ncNotification(key: "1", app: "com.x", delivered: 0, data: try blob(["body": "only body"])))
     #expect(n.title == "only body")
