@@ -20,6 +20,16 @@ private func blob(_ req: [String: Any]) throws -> Data {
     #expect(soundSource(for: .pending(app: "com.app", at: n.at), choices: [:]) == .system("Pop"))
 }
 
+@Test func slackRecordLinksToItsChannelOrWorkspace() throws {
+    func link(_ req: [String: Any], app: String = "com.tinyspeck.slackmacgap") throws -> String? {
+        try #require(ncNotification(key: "1", app: app, delivered: 0, data: try blob(["titl": "Acme"].merging(req) { a, _ in a }))).link
+    }
+    #expect(try link(["subt": "#dev-team", "iden": "T0FAKE123_1700000000.000100"]) == "slack://channel?team=T0FAKE123&id=dev-team")
+    #expect(try link(["subt": "Anna Nowak", "iden": "T0FAKE123_1700000000.000100"]) == "slack://open?team=T0FAKE123")  // a DM
+    #expect(try link(["subt": "#dev-team"]) == nil)  // no team: just open Slack
+    #expect(try link(["subt": "#dev-team", "iden": "T0FAKE123_1"], app: "com.other") == nil)
+}
+
 @Test func recordWithoutTitleUsesBody() throws {
     let n = try #require(ncNotification(key: "1", app: "com.x", delivered: 0, data: try blob(["body": "only body"])))
     #expect(n.title == "only body")
