@@ -31,13 +31,14 @@ It prints the notification's id. Gzyms has to be running, else it exits 1 with a
 | `--id <id>` | Reusing an id replaces the earlier notification with that id. Use it for progress or status that changes. |
 | `--app <bundle id>` | Shows that app's icon. Opening the banner opens the app when there is no link. The user's per-app rules apply. |
 | `--link <url>` | Opened when the user opens the banner. `file:` links are refused. |
-| `--alt-link <url>` | Opened by the banner's second action (a shortcut). |
+| `--alt-link <url>` | Opened by the banner's second action (a shortcut, a right click or a two-finger click). |
+| `--alt-label <text>` | The second action's name on the banner's hints, e.g. `Open in agent`. Without it the hint says `alt`. |
 | `--sound <name>` | A Gzyms event: `message`, `success`, `fail`, `waiting`, `armageddon`. The user picks what each one sounds like. A macOS sound name (`Glass`, `Basso`) plays as it is. Without it, info and warning sound as `message`, error and critical as `fail`. |
 | `--screen <part of a name>` | The screen to show it on (`built-in`, `dell`). Default: the focused screen. |
 | `--compact` | The small island with only the app's icon. Needs `--app`. |
 | `--reminder` | Stays until acted on, whatever the level. |
 
-Short forms: `-t` `-s` `-b` `-l` `-i` `-a` `-c` `-r`. `--sound`, `--screen`, `--link` and `--alt-link` have none. `gzyms help notify` lists them side by side.
+Short forms: `-t` `-s` `-b` `-l` `-i` `-a` `-c` `-r`. `--sound`, `--screen`, `--link`, `--alt-link` and `--alt-label` have none. `gzyms help notify` lists them side by side.
 
 ## Reading notifications: gzyms notifications
 
@@ -78,6 +79,7 @@ The key is the dotted name as in `~/.config/gzyms/config.toml` (or `$XDG_CONFIG_
 - Notifications from other apps (Slack, Mail, WhatsApp) come from macOS's Notification Center. Opening one in Gzyms opens the exact chat, thread or event, as the original would. It is a trick, not an Apple API: Gzyms opens the Notification Center panel with globe+N, moves it off screen, and presses the original there through Accessibility. Only the app that sent a notification gets its data (the thread id and so on), so there is no other way. It needs the app's "Notification Center" box ticked in System Settings → Notifications, and "Desktop" and "Play sound for notification" off, so nothing shows or sounds twice ("Lock Screen" does not matter). It also needs Accessibility and the globe+N shortcut. In Settings → Apps a warning next to an app says what is off ("Notification Center off", "Desktop on", "Sound on"), and its gear opens that app's macOS page. Mail cannot be set up for it: Settings → Apps says so, and a click opens just Mail. A macOS update can break it. Then Gzyms just opens the app. `[notifications] open_original = false` (Settings → Hacks → "Open the exact chat") turns it off: opening then just opens the app.
 - Settings → Hacks lists everything that rides on a private macOS API or a trick, with its state. `[hacks] browser_media = true` starts a server on 127.0.0.1:47100 for the userscript at http://127.0.0.1:47100/gzyms-media.user.js (Tampermonkey): browser tabs with video then show in the music pill and popup with play, pause, next and Go to. It pairs with `media.hardwaremediakeys.enabled = false` in a Firefox-based browser, so the media keys reach the music player. Docs: https://gzyms.dev/docs/#hacks
 - The banner stack holds one on screen and three waiting. More wait in their app's list (counted at once) and come up in order as room frees. A banner sounds when it enters the stack. `[notifications] priority` lists what sounds at once even while it waits: `armageddon`, `critical` (the default pair) and `meetings`.
+- On the banner: a two-finger click is the second action, a long sideways two-finger swipe dismisses it, an up or down swipe steps through the waiting ones. With the pointer over it the hints show and each one can be clicked. A dismissed banner plays `[sounds] dismiss`.
 
 ## Keyboard: [keys]
 
@@ -179,6 +181,12 @@ A notification, with the same fields as `gzyms notify`. Its `"level"` is one of 
 {"notify":{"id":"deploy","title":"Deploy done","subtitle":"api","body":"1.4.2 is live","level":"info","sound":"success","link":"https://example.com"}}
 ```
 
+A second action: `"alt_label"` names it on the banner's hints, `"alt_link"` is the URL it opens. With `"alt_label"` and no `"alt_link"`, the second action sends `notify_alt` back to the plugin, so the plugin does the work itself.
+
+```json
+{"notify":{"id":"agent-3","title":"Agent waits","alt_label":"Open in agent"}}
+```
+
 ## Gzyms to plugin: stdin, one JSON object per line
 
 ```json
@@ -190,6 +198,7 @@ A notification, with the same fields as `gzyms notify`. Its `"level"` is one of 
 - `"click"` and `"right_click"`: on a pill without a menu, or on a menu row (the row's id).
 - `"open"`: its menu opened, a good moment to refresh.
 - `"notify_open"`: the user opened one of its notifications that has no link (the id is the plugin's own).
+- `"notify_alt"`: the user took the second action of one of its notifications that has `"alt_label"` and no `"alt_link"` (the id is the plugin's own).
 
 ## Rules
 

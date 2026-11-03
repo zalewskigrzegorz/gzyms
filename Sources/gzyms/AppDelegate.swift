@@ -380,6 +380,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         island.onRight = { [weak self] in self?.openBanner(alt: true) }
         island.onDismiss = { [weak self] in self?.dismissBanner() }
         island.onStep = { [weak self] in self?.stepBanner($0) }
+        island.onHint = { [weak self] in self?.chordAction($0) }
         armageddon.onOpen = { [weak self] id in self?.open(id) }
         armageddon.playSound = { [weak self] in self?.play(.armageddon) }
         armageddon.onVisible = { [weak self] up in self?.chords.armageddon = up }
@@ -541,7 +542,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Right click without a second action dismisses, like the wheel.
     private func openBanner(alt: Bool) {
         guard let b = notes.banner else { return }
-        if alt && b.altLink == nil {
+        if alt && !b.hasAlt {
             // Right click and the alt letter never remove anything: without a second action the banner just says so.
             noAltBanner = b.id
             notesChanged()
@@ -570,7 +571,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let opened = URL(string: target).map { $0.scheme != nil && !$0.isFileURL && NSWorkspace.shared.open($0) } ?? false
             if !opened { logNote(b, "link failed") }
         } else if let owner = pluginNoteOwner(b.id, plugins: model.plugins.map(\.folder)) {
-            pluginHost.send(plugin: owner.plugin, .notifyOpen, id: owner.id)  // the plugin knows where it leads
+            pluginHost.send(plugin: owner.plugin, alt ? .notifyAlt : .notifyOpen, id: owner.id)  // the plugin knows where it leads
         } else if model.config.openOriginal, let uuid = ncRecordUUID(noteID: b.id), let app = b.app, !ncOpenOriginalUnsupported.contains(app) {
             // The original in Notification Center knows the exact chat or thread; without it, just the app.
             NotificationClick.press(uuid: uuid) { pressed in if !pressed { Self.openApp(app) } }
@@ -587,6 +588,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func dismissBanner() {
         guard let b = notes.banner else { return }
+        // Heard, so a swipe or a key that took one by accident does not go unnoticed (Greg).
+        if model.config.notificationSounds { play(.dismiss) }
         if b.meetingStart != nil {
             // Only hides it for this meeting (Greg): nothing is sent, nothing is filed.
             notes.remove(b.id, now: ProcessInfo.processInfo.systemUptime)
@@ -620,7 +623,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let remaining = toStart.map { $0 > 0 ? $0 : nil } ?? notes.remaining(now: ProcessInfo.processInfo.systemUptime)
             island.show(b, icon: b.app.flatMap(AppIcons.icon(for:)), theme: model.config.theme, on: screen,
                         total: total, remaining: remaining, running: b.meetingStart != nil ? (toStart ?? 0) > 0 : !notes.isPaused,
-                        hints: noAltBanner == b.id ? ChordHints(snoozeMinutes: nil, note: "No second action") : chords.hints,
+                        hints: noAltBanner == b.id ? ChordHints(snoozeMinutes: nil, note: "No second action")
+                            : chords.hints ?? (island.hovered ? chords.hoverHints : nil),
                         queue: notes.queue)
         } else {
             island.hide()

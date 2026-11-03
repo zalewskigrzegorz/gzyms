@@ -187,6 +187,7 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
     }
     struct Notify: Decodable {
         var id: String?, title: String?, subtitle: String?, body: String?, level: String?, sound: String?, link: String?
+        var alt_link: String?, alt_label: String?
     }
     struct Raw: Decodable { var item: Item?; var notify: Notify? }
     guard let raw = try? JSONDecoder().decode(Raw.self, from: Data(line.utf8)) else { return nil }
@@ -203,15 +204,20 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
         // A plugin's own id updates its earlier notification. Namespaced with ":", which a folder name cannot hold,
         // so plugin "log" can never pass for "log-watcher".
         let id = "plugin:\(plugin):" + (n.id ?? UUID().uuidString)
-        return .notify(GzymsNotification(id: id, app: nil, level: level, title: title, subtitle: n.subtitle, body: n.body,
-                                         link: n.link, altLink: nil, sound: n.sound, at: now))
+        var note = GzymsNotification(id: id, app: nil, level: level, title: title, subtitle: n.subtitle, body: n.body,
+                                     link: n.link, altLink: n.alt_link, sound: n.sound, at: now)
+        note.altLabel = n.alt_label
+        return .notify(note)
     }
     return nil
 }
 
 /// What Gzyms writes on a plugin's stdin: `click` / `right_click` on a pill or a row, `open` when its list opens,
-/// `notify_open` when someone opens one of its notifications that has no link (the id is the plugin's own).
-public enum PluginEvent: String, CaseIterable, Sendable { case click, rightClick = "right_click", open, notifyOpen = "notify_open" }
+/// `notify_open` when someone opens one of its notifications that has no link (the id is the plugin's own),
+/// `notify_alt` for the second action of one with `alt_label` and no `alt_link`.
+public enum PluginEvent: String, CaseIterable, Sendable {
+    case click, rightClick = "right_click", open, notifyOpen = "notify_open", notifyAlt = "notify_alt"
+}
 
 /// A plugin's text in pieces: `:name:` with an SF Symbol name inside is that symbol, the rest stays text.
 /// A name that is no symbol (`12:30:00`, `:nope:`) stays text as written.

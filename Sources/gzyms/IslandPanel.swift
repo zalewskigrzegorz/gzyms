@@ -12,7 +12,17 @@ final class IslandPanel: NSPanel {
     var onHover: (Bool) -> Void = { _ in }
     /// Scroll over the banner: +1 next, -1 previous.
     var onStep: (Int) -> Void = { _ in }
+    /// A click on one of the banner's hints.
+    var onHint: (ChordAction) -> Void = { _ in }
+    /// The pointer is over the banner: its hints show as if the leader were held.
+    private(set) var hovered = false
+    /// The hint lit under the pointer: a click runs it instead of opening the banner.
+    private var litHint: ChordAction?
     private var scrolled: CGFloat = 0
+    /// A trackpad gesture's travel so far and the axis it locked to: across dismisses once, along steps.
+    private var travel = CGPoint.zero
+    private var swipe = Swipe.undecided
+    private enum Swipe { case undecided, along, across, spent }
     private var lastScroll: TimeInterval = 0
     private var edges: CGFloat = 0
     private(set) var shown: GzymsNotification?
@@ -56,7 +66,11 @@ final class IslandPanel: NSPanel {
         inset = notch ? screen.safeAreaInsets.top : 0
         let total = n.reminder ? nil : total
         edges = n.compact ? 0 : CGFloat(BannerView.edges(queue.count)) * (BannerView.edgeHeight + BannerView.edgeGap)
-        let banner = BannerView(n: n, icon: icon, remaining: remaining, total: total, running: running, hints: hints, topInset: inset, queue: queue)
+        let banner = BannerView(n: n, icon: icon, remaining: remaining, total: total, running: running, hints: hints, topInset: inset, queue: queue,
+                                onHintHover: { [weak self] a, on in
+                                    guard let self else { return }
+                                    if on { litHint = a } else if litHint == a { litHint = nil }  // the next one may come first
+                                })
             .themed(theme)
         let size = NSHostingView(rootView: banner).fittingSize
         // Centred at the top: while the window grows from the small island, it uncovers the full one from the middle.
@@ -77,6 +91,7 @@ final class IslandPanel: NSPanel {
         guard let gone = shown else { return }
         log("island: hide \(gone.id) (animate \(animate), fade \(fadeNextHide))")
         shown = nil
+        hovered = false; litHint = nil  // gone from under the pointer: no exit event may come
         guard animate else {
             fadeNextHide = false
             // Out of the click's own event, like the animated path: an orderOut inside it can leave the window on screen.
@@ -118,21 +133,30 @@ final class IslandPanel: NSPanel {
         } completionHandler: { MainActor.assumeIsolated { done?() } }
     }
 
-    // Clicks are taken here, before SwiftUI: left = open, middle (wheel) = dismiss, right = the second action.
+    // Clicks are taken here, before SwiftUI: left = open (or the hint under it), middle (wheel) = dismiss,
+    // right or two fingers = the second action.
     // On the button's release: an orderOut while it is still held on this window leaves the window on screen.
     override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .leftMouseDown, .rightMouseDown, .otherMouseDown: break
-        case .leftMouseUp: log("island: click on \(shown?.id ?? "nothing")"); onOpen()
-        case .rightMouseUp: onRight()
+        case .leftMouseUp:
+            if let a = litHint {
+                log("island: hint \(a) on \(shown?.id ?? "nothing")")
+                litHint = nil
+                onHint(a)
+                return
+            }
+            log("island: click on \(shown?.id ?? "nothing")"); onOpen()
+        case .rightMouseUp: log("island: right click on \(shown?.id ?? "nothing")"); onRight()
         case .otherMouseUp where event.buttonNumber == 2: onDismiss()
         case .scrollWheel: scroll(event)
         default: super.sendEvent(event)
         }
     }
 
-    /// A trackpad (events with a phase): one step per 40 pt of finger travel, so a long swipe goes further, and the
-    /// glide after the fingers lift never steps. A mouse wheel has no phase (Apple: legacy scroll events), even with
+    /// A trackpad (events with a phase): each gesture locks to the axis it moved most along in its first few points.
+    /// Vertical: one step per 40 pt of finger travel, so a long swipe goes further. Clearly sideways: dismiss once at 140 pt.
+    /// The glide after the fingers lift never acts. A mouse wheel has no phase (Apple: legacy scroll events), even with
     /// precise deltas from smoothing (Logi sends 100+ pt per event): one step per turn, at most every 0.25 s, any size.
     /// Down = next, by the hand's movement (natural scrolling flips the sign).
     private func scroll(_ e: NSEvent) {
@@ -145,15 +169,30 @@ final class IslandPanel: NSPanel {
             step(dy)
             return
         }
-        if e.phase.contains(.began) || e.phase.contains(.mayBegin) { scrolled = 0 }
+        if e.phase.contains(.began) || e.phase.contains(.mayBegin) { scrolled = 0; travel = .zero; swipe = .undecided }
         scrolled += dy
-        guard abs(scrolled) >= 40 else { return }
-        step(scrolled)
-        scrolled = 0
+        travel.x += e.scrollingDeltaX; travel.y += dy
+        if swipe == .undecided {
+            guard max(abs(travel.x), abs(travel.y)) >= 10 else { return }
+            swipe = abs(travel.x) > 2 * abs(travel.y) ? .across : .along
+        }
+        switch swipe {
+        case .across:
+            // A short flick must not throw one away unseen (Greg: 50 pt was too easy).
+            guard abs(travel.x) >= 140 else { return }
+            swipe = .spent
+            log("island: swipe on \(shown?.id ?? "nothing")")
+            onDismiss()
+        case .along:
+            guard abs(scrolled) >= 40 else { return }
+            step(scrolled)
+            scrolled = 0
+        case .undecided, .spent: return
+        }
     }
 
-    override func mouseEntered(with event: NSEvent) { onHover(true) }
-    override func mouseExited(with event: NSEvent) { onHover(false) }
+    override func mouseEntered(with event: NSEvent) { hovered = true; onHover(true) }
+    override func mouseExited(with event: NSEvent) { hovered = false; onHover(false) }
 }
 
 /// The app icon flying from a hiding banner into its place on the bar (the prototype's "lot do ikony").

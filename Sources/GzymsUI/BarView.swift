@@ -485,7 +485,7 @@ public struct InboxList: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(notes.enumerated()), id: \.element.id) { i, n in
-                PopupRow(index: i, remove: { onRemove(n.id) }, alt: n.altLink == nil ? nil : { onAlt(n.id) }, action: { onOpen(n.id) }) {
+                PopupRow(index: i, remove: { onRemove(n.id) }, alt: n.hasAlt ? { onAlt(n.id) } : nil, action: { onOpen(n.id) }) {
                     if n.reminder { Image(systemName: "clock.fill").foregroundStyle(theme[\.gold]) }
                     VStack(alignment: .leading, spacing: 1) {
                         Text(n.title).lineLimit(1)

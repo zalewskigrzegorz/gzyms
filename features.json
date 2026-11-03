@@ -1,5 +1,5 @@
 {
-  "count": 70,
+  "count": 74,
   "updated": "2026-11-03",
   "features": [
     "gzyms notify command",
@@ -37,6 +37,10 @@
     "Device check before joining a meeting",
     "Leader key mode with hints over the bar",
     "Banner keys (open, dismiss, second action, snooze, next, previous)",
+    "Trackpad gestures on a banner (two-finger click, swipe to dismiss)",
+    "Banner hints on hover, clickable",
+    "Named second action on a banner",
+    "Sound when a banner is dismissed",
     "Popup navigation with j k h l",
     "dd clears a notification list",
     "Remappable key letters",

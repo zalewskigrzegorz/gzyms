@@ -2,7 +2,7 @@ import Foundation
 
 /// The moments Gzyms makes a sound for, in the order Settings lists them.
 public enum SoundEvent: String, CaseIterable, Sendable {
-    case message, success, fail, waiting, armageddon
+    case message, success, fail, waiting, armageddon, dismiss
 
     /// What plays when `[sounds]` says nothing: the macOS sounds Gzyms always used.
     public var defaultChoice: String {
@@ -12,6 +12,7 @@ public enum SoundEvent: String, CaseIterable, Sendable {
         case .fail: "Basso"
         case .waiting: "Submarine"
         case .armageddon: "Sosumi"
+        case .dismiss: "Tink"
         }
     }
 
@@ -23,6 +24,7 @@ public enum SoundEvent: String, CaseIterable, Sendable {
         case .fail: [(440, 0.18), (330, 0.3)]
         case .waiting: [(1046, 0.1), (1046, 0.1), (1568, 0.2)]
         case .armageddon: [(988, 0.14), (740, 0.14), (988, 0.14), (740, 0.14), (1318, 0.3)]
+        case .dismiss: [(784, 0.06), (523, 0.1)]
         }
     }
 }

@@ -944,6 +944,7 @@ private struct SoundRow: View {
         .fail: "Errors and critical ones",
         .waiting: "An agent waits for you",
         .armageddon: "The full-screen alarm, every 1.5 s until clicked",
+        .dismiss: "A banner is dismissed: a swipe, a key or the wheel",
     ]
 
     private var current: String { choice ?? event.defaultChoice }

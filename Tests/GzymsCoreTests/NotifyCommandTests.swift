@@ -31,6 +31,10 @@ private func failure(_ args: [String]) -> String? {
                     "--app", "com.app", "--link", "https://a", "--alt-link", "gh pr view", "--sound", "success", "--screen", "built-in"])
     #expect(n == GzymsNotification(id: "ci-1", app: "com.app", level: .error, title: "Build", subtitle: "main", body: "green",
                                    link: "https://a", altLink: "gh pr view", sound: "success", at: at0, screen: "built-in"))
+    let named = parsed(["--title", "x", "--alt-link", "https://a", "--alt-label", "Open in agent"])
+    #expect(named?.altLabel == "Open in agent" && named?.hasAlt == true)
+    // Outside a plugin a name alone is no action: nothing would run it.
+    #expect(parsed(["--title", "x", "--alt-label", "Open in agent"])?.hasAlt == false)
 }
 
 @Test func badLevelListsLevels() {

@@ -71,6 +71,12 @@ A notification, with the same fields as `gzyms notify`. Its `"level"` is one of 
 {"notify":{"id":"deploy","title":"Deploy done","subtitle":"api","body":"1.4.2 is live","level":"info","sound":"success","link":"https://example.com"}}
 ```
 
+A second action: `"alt_label"` names it on the banner's hints, `"alt_link"` is the URL it opens. With `"alt_label"` and no `"alt_link"`, the second action sends `notify_alt` back to the plugin, so the plugin does the work itself.
+
+```json
+{"notify":{"id":"agent-3","title":"Agent waits","alt_label":"Open in agent"}}
+```
+
 ## Gzyms to plugin: stdin, one JSON object per line
 
 ```json
@@ -82,6 +88,7 @@ A notification, with the same fields as `gzyms notify`. Its `"level"` is one of 
 - `"click"` and `"right_click"`: on a pill without a menu, or on a menu row (the row's id).
 - `"open"`: its menu opened, a good moment to refresh.
 - `"notify_open"`: the user opened one of its notifications that has no link (the id is the plugin's own).
+- `"notify_alt"`: the user took the second action of one of its notifications that has `"alt_label"` and no `"alt_link"` (the id is the plugin's own).
 
 ## Rules
 

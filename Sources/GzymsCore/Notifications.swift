@@ -127,6 +127,8 @@ public struct GzymsNotification: Codable, Equatable, Identifiable, Sendable {
     public var link: String?
     /// The second action, e.g. a PR in the console instead of the browser.
     public var altLink: String?
+    /// The second action's name on the banner's hints ("Open in agent"); nil = "alt".
+    public var altLabel: String?
     public var sound: String?
     public var at: Date
     /// Came back from a snooze: drawn as a reminder and kept until acted on.
@@ -150,6 +152,9 @@ public struct GzymsNotification: Codable, Equatable, Identifiable, Sendable {
 }
 
 extension GzymsNotification {
+    /// A link to open, or a plugin's named action that the plugin runs itself (`notify_alt`).
+    public var hasAlt: Bool { altLink != nil || (altLabel != nil && id.hasPrefix("plugin:")) }
+
     public static func pending(app: String, at: Date) -> GzymsNotification {
         // The sound comes with the icon, ~5 s before the text: macOS banners (and their sounds) are off for apps Gzyms shows.
         var n = GzymsNotification(id: "pending-\(app)", app: app, level: .info, title: "", subtitle: nil, body: nil,

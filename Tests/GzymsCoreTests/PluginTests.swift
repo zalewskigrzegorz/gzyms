@@ -18,6 +18,13 @@ import Testing
     guard case .notify(let n) = pluginMessage(#"{"notify":{"id":"d","title":"Deploy done","level":"error"}}"#, plugin: "ci", now: now)
     else { Issue.record("not a notify"); return }
     #expect(n.id == "plugin:ci:d" && n.level == .error && n.title == "Deploy done")
+    #expect(!n.hasAlt)
+    // A named second action without a link goes back to the plugin; with one it opens the link.
+    guard case .notify(let a) = pluginMessage(#"{"notify":{"id":"a","title":"Agent waits","alt_label":"Open in agent"}}"#, plugin: "ag", now: now),
+          case .notify(let l) = pluginMessage(#"{"notify":{"id":"l","title":"PR","alt_link":"https://x","alt_label":"Diff"}}"#, plugin: "ag", now: now)
+    else { Issue.record("not a notify"); return }
+    #expect(a.altLabel == "Open in agent" && a.altLink == nil && a.hasAlt)
+    #expect(l.altLabel == "Diff" && l.altLink == "https://x" && l.hasAlt)
     #expect(pluginMessage(#"{"item":{"id":"b"}}"#, plugin: "ci", now: now) == nil)   // no text
     #expect(pluginMessage(#"{"notify":{"body":"x"}}"#, plugin: "ci", now: now) == nil) // no title
     #expect(pluginMessage("hello", plugin: "ci", now: now) == nil)

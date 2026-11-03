@@ -137,6 +137,10 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
             "banner-hints")
     preview(BannerView(n: banner(.info, body: "All 112 tests green."), icon: nil, remaining: 4, total: 6, hints: ChordHints(snoozeMinutes: 10)),
             "banner-hints-snooze")
+    var named = banner(.info, body: "Agent 3 waits for you.")
+    named.altLink = "https://example.com"
+    named.altLabel = "Open in agent"
+    preview(BannerView(n: named, icon: nil, remaining: 4, total: 6, hints: ChordHints(snoozeMinutes: nil, hold: "⌃")), "banner-hints-named-alt")
     preview(BannerView(n: banner(.warning, body: "Three more wait under it."), icon: nil, remaining: 4, total: 8,
                        hints: ChordHints(snoozeMinutes: nil), topInset: 30, queue: [banner(.error, body: nil), banner(.info, body: nil), banner(.info, body: nil, reminder: true)]), "banner-stack")
     var reminder = banner(.info, body: "Standup in 3 min.", reminder: true)
@@ -338,4 +342,12 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     preview(GzymsMessageView(title: "What's new in Gzyms 0.0.2", lines: ["`gzyms skill` teaches coding agents.", "Learn the keys at [gzyms.dev/try](https://gzyms.dev/try/)."],
                              actions: [.init("Learn the keys") {}], close: {})
         .themed(.mochaNeon), "gzyms-whats-new")
+}
+
+@Test func hintRowsCarryTheirActions() {
+    let rows = ChordHints(snoozeMinutes: nil, hold: "⌃").rows(alt: "Open in agent", waiting: 2)
+    #expect(rows.map { $0.map(\.text) } == [["⌃O open", "⌃X dismiss", "⌃Z snooze"], ["⌃A Open in agent"], ["⌃N next", "⌃P prev", "2 more"]])
+    #expect(rows.flatMap { $0.map(\.action) } == [.open, .dismiss, .snooze(minutes: 3), .alt, .next, .previous, nil])
+    #expect(ChordHints(snoozeMinutes: nil).rows(alt: nil).count == 1)  // no second action: no alt line
+    #expect(ChordHints(snoozeMinutes: nil, note: "No second action").rows(alt: "x") == [[HintItem("No second action")]])
 }

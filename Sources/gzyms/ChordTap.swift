@@ -51,6 +51,14 @@ final class ChordTap {
     /// What the banner's hint row shows right now; nil = none.
     var hints: ChordHints? { core.hints }
 
+    /// The hints the leader would show, for the pointer over the banner.
+    var hoverHints: ChordHints {
+        core.peek { s in
+            guard case .modifier(let m)? = s.leader else { return ChordHints(snoozeMinutes: nil, verbs: s.verbs) }
+            return ChordHints(snoozeMinutes: nil, verbs: s.verbs, hold: String(Leader.modifier(m).symbol.prefix(1)))
+        }
+    }
+
     /// `[keys]`: a new leader, timeout, hint letters or verbs end a running mode.
     func configureNav(leader: Leader?, idleTimeout: Double, hintChars: String, verbs: Verbs) {
         core.navEvent(.off)
@@ -118,6 +126,7 @@ final class TapCore: Sendable {
 
     func read<T: Sendable>(_ key: KeyPath<State, T> & Sendable) -> T { state.withLock { $0[keyPath: key] } }
     func write(_ change: (inout State) -> Void) { state.withLock { change(&$0) } }
+    func peek<T: Sendable>(_ get: (State) -> T) -> T { state.withLock { get($0) } }
 
     static func isModifier(_ l: Leader?) -> Bool { if case .modifier? = l { true } else { false } }
 

@@ -17,15 +17,18 @@ public struct BannerView: View {
     /// Banners waiting under this one, the next first: one edge each in its level's colour, at most three (M3c).
     let queue: [GzymsNotification]
     var waiting: Int { queue.count }
+    /// The pointer went onto (true) or off (false) a hint with this action.
+    var onHintHover: (ChordAction?, Bool) -> Void = { _, _ in }
     @Environment(\.theme) private var theme
 
     public static let width: CGFloat = 340
     static let barWidth: CGFloat = width
     static let radius: CGFloat = 20
 
-    public init(n: GzymsNotification, icon: NSImage?, remaining: Double?, total: Double?, running: Bool = false, hints: ChordHints? = nil, topInset: CGFloat = 0, queue: [GzymsNotification] = []) {
+    public init(n: GzymsNotification, icon: NSImage?, remaining: Double?, total: Double?, running: Bool = false, hints: ChordHints? = nil, topInset: CGFloat = 0, queue: [GzymsNotification] = [],
+                onHintHover: @escaping (ChordAction?, Bool) -> Void = { _, _ in }) {
         self.n = n; self.icon = icon; self.remaining = remaining; self.total = total; self.running = running; self.hints = hints; self.topInset = topInset
-        self.queue = queue
+        self.queue = queue; self.onHintHover = onHintHover
     }
 
     public static let edgeHeight: CGFloat = 5, edgeGap: CGFloat = 2
@@ -81,10 +84,7 @@ public struct BannerView: View {
                         .foregroundStyle(loud ? accent : theme[\.overlay]).lineLimit(1)
                 }
                 if let b = n.body { Text(b).font(.system(size: 12)).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
-                if let hints {
-                    Text(hints.text(alt: n.altLink != nil, waiting: waiting)).font(.system(size: 11, weight: .medium).monospaced())
-                        .foregroundStyle(theme[\.gold]).padding(.top, 4)
-                }
+                if let hints { hintRows(hints) }
             }
             // The island under a notch is black in every theme: a light theme's dark text would vanish there.
             .foregroundStyle(topInset > 0 && !theme.isDark ? theme[\.base] : theme[\.text])
@@ -102,6 +102,23 @@ public struct BannerView: View {
         // Anything above info, and reminders, get a U of their colour: sides and bottom, the top hides under the bar or notch.
         .overlay { if outlined { OpenTopOutline(radius: Self.radius).stroke(accent, lineWidth: 2) } }
         .pointerStyle(.link)
+    }
+
+    /// Each item with an action lights up under the pointer, and the island's panel runs the lit one on a click.
+    private func hintRows(_ hints: ChordHints) -> some View {
+        let rows = hints.rows(alt: n.hasAlt ? n.altLabel ?? "alt" : nil, waiting: waiting)
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { r, row in
+                HStack(spacing: 0) {
+                    ForEach(Array(row.enumerated()), id: \.offset) { i, item in
+                        if i > 0 { Text(" · ") }
+                        HintChip(item: item, onHover: onHintHover)
+                    }
+                }
+            }
+        }
+        .font(.system(size: 11, weight: .medium).monospaced())
+        .foregroundStyle(theme[\.gold]).padding(.top, 4)
     }
 
     /// Shrinks to nothing as the time runs out; a full line when the banner stays until acted on.
@@ -222,14 +239,46 @@ public struct ChordHints: Equatable, Sendable {
         self.snoozeMinutes = snoozeMinutes; self.verbs = verbs; self.hold = hold; self.note = note
     }
 
-    func text(alt: Bool, waiting: Int = 0) -> String {
-        if let note { return note }
+    /// The hint lines, each a list of items. `alt` is the second action's name; nil = the banner has none.
+    public func rows(alt: String?, waiting: Int = 0) -> [[HintItem]] {
+        if let note { return [[HintItem(note)]] }
         let v = verbs, h = hold ?? ""
         let k = { (l: String) in h.isEmpty ? l : h + l.uppercased() }
-        if let m = snoozeMinutes { return "snooze \(m) min · \(k(v.snooze)) for longer" }
-        return "\(k(v.open)) open · \(k(v.dismiss)) dismiss · \(k(v.snooze)) snooze" + (alt ? " · \(k(v.alt)) alt" : "")
-            + (waiting > 0 ? "\n\(k(v.next))/\(k(v.prev)) \(waiting) more" : "")
+        if let m = snoozeMinutes { return [[HintItem("snooze \(m) min · \(k(v.snooze)) for longer")]] }
+        var rows = [[HintItem("\(k(v.open)) open", .open), HintItem("\(k(v.dismiss)) dismiss", .dismiss),
+                     HintItem("\(k(v.snooze)) snooze", .snooze(minutes: KeyNav.snoozeMinutes[0]))]]
+        if let alt { rows.append([HintItem("\(k(v.alt)) \(alt)", .alt)]) }
+        if waiting > 0 { rows.append([HintItem("\(k(v.next)) next", .next), HintItem("\(k(v.prev)) prev", .previous), HintItem("\(waiting) more")]) }
+        return rows
     }
+}
+
+/// A hint with an action: gold behind it while the pointer is on it, so it reads as a button.
+private struct HintChip: View {
+    let item: HintItem
+    let onHover: (ChordAction?, Bool) -> Void
+    @State private var lit = false
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Text(item.text).lineLimit(1)
+            .padding(.horizontal, 2)
+            .foregroundStyle(lit ? theme[\.base] : theme[\.gold])
+            .background(lit ? theme[\.gold] : .clear, in: RoundedRectangle(cornerRadius: 3))
+            .padding(.horizontal, -2)
+            .onHover { on in
+                guard item.action != nil else { return }
+                lit = on
+                onHover(item.action, on)
+            }
+    }
+}
+
+/// One hint on the banner and what a click on it does; nil = just text.
+public struct HintItem: Equatable, Sendable {
+    public var text: String
+    public var action: ChordAction?
+    public init(_ text: String, _ action: ChordAction? = nil) { self.text = text; self.action = action }
 }
 
 /// The countdown runs as a Core Animation animation, so the window server draws it and Gzyms spends nothing.

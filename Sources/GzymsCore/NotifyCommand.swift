@@ -8,7 +8,7 @@ public struct NotifyArgsError: Error, Equatable {
 }
 
 /// The flags `gzyms notify` takes with a value. skill/guide.md documents each one (SkillTests checks).
-public let notifyFlags = ["--title", "--subtitle", "--body", "--level", "--id", "--app", "--link", "--alt-link", "--sound", "--screen"]
+public let notifyFlags = ["--title", "--subtitle", "--body", "--level", "--id", "--app", "--link", "--alt-link", "--alt-label", "--sound", "--screen"]
 /// The flags `gzyms notify` takes alone.
 public let notifySwitches = ["--compact", "--reminder"]
 /// One letter where it is free (Greg): --sound and --screen share s with --subtitle, --link and --alt-link lose to
@@ -16,7 +16,7 @@ public let notifySwitches = ["--compact", "--reminder"]
 public let notifyShort = ["-t": "--title", "-s": "--subtitle", "-b": "--body", "-l": "--level", "-i": "--id", "-a": "--app",
                           "-c": "--compact", "-r": "--reminder"]
 
-/// `gzyms notify --title … [--subtitle --body --level --id --app --link --alt-link --sound --screen] [--compact] [--reminder]`.
+/// `gzyms notify --title … [--subtitle --body --level --id --app --link --alt-link --alt-label --sound --screen] [--compact] [--reminder]`.
 /// `--compact` is the small island with only the app's icon, `--reminder` stays until acted on.
 public func parseNotify(_ args: [String], now: Date) -> Result<GzymsNotification, NotifyArgsError> {
     let known = notifyFlags, switches = notifySwitches
@@ -45,6 +45,7 @@ public func parseNotify(_ args: [String], now: Date) -> Result<GzymsNotification
                               subtitle: v["--subtitle"], body: v["--body"], link: v["--link"], altLink: v["--alt-link"],
                               sound: v["--sound"], at: now, reminder: on.contains("--reminder"), screen: v["--screen"])
     n.compact = on.contains("--compact")
+    n.altLabel = v["--alt-label"]
     return .success(n)
 }
 
