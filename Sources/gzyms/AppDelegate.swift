@@ -44,6 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keysObserver: NSObjectProtocol?
     private var nc: NotificationCenterSource?
     private var signal: DeliverySignal?
+    /// For Settings → Hacks: the delivery log is alive.
+    private var lastSignal: Date?
     private var dock: DockBadges?
     private var flying = 0  // the counts wait for the icon to land, then bump
     private var configWatcher: ConfigWatcher?
@@ -55,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var meetings: [Meeting] = []
     private var meetingClock = MeetingClock()
     private lazy var music = MusicSource { [weak self] line in self?.musicChanged(line) }
+    private lazy var mediaServer = MediaServer { [weak self] tabs in if self?.model.tabs != tabs { self?.model.tabs = tabs } }
     private let pluginHost = PluginHost(dir: Paths.configDir(env: ProcessInfo.processInfo.environment).appendingPathComponent("plugins"))
     private var pluginsStarted = false
     private let caffeine = CaffeineController()
@@ -216,9 +219,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onCPUPopup = { [weak self] open in self?.cpuPopup(open) }
         model.onAudioChange = { [weak self] in self?.refreshAudio() }
         model.onMicMute = { [weak self] in self?.micMute.toggle(self?.model.audio) }
-        model.onMusic = { action in
+        model.onMusic = { [weak self] action in
             switch action {
-            case .key(let c): MusicSource.send(c)
+            case .key(let c): MusicSource.nowPlaying(c)
+            case .script(let app, let c): MusicSource.script(app, c)
+            case .tab(let id, let i, let c): self?.mediaServer.send(id, media: i, c)
             case .jump(let app, let title): MusicSource.jump(to: app, title: title)
             }
         }
@@ -402,6 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The log says an app just sent something: its icon shows at once, the text follows from the db.
     /// A full banner on screen is left alone; the row replaces it in a few seconds anyway.
     private func pending(_ app: String) {
+        lastSignal = Date()
         if let b = notes.banner, !b.compact { return }
         post(.pending(app: AppIcons.bundleID(matching: app), at: Date()))
     }
@@ -748,6 +754,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         meetingClock.points = load.config.meetingPoints
         calendar?.setSkip(load.config.calendarSkip)
         if load.config.hiddenWidgets.contains(.music) { music.stop() } else { music.start() }
+        if load.config.browserMedia && !load.config.hiddenWidgets.contains(.music) { mediaServer.start() } else { mediaServer.stop() }
         if pluginsStarted {
             pluginHost.setOptions(load.config.pluginOptions)
             pluginHost.setDisabled(load.config.disabledPlugins)
@@ -1117,6 +1124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func settingsActions() -> SettingsActions {
         var a = SettingsActions { [weak self] key, value, table in self?.writeSetting(key, value, table) }
         a.recording = { [weak self] on in self?.chords.paused = on; self?.settings.recording = on }
+        a.hacks = { [weak self] in self?.hacksState() ?? HacksState() }
+        a.quitApp = { id in NSRunningApplication.runningApplications(withBundleIdentifier: id).forEach { $0.terminate() } }
         a.chooseApp = { [weak self] in self?.chooseApp() }
         a.chooseLogo = { [weak self] in self?.chooseLogo() }
         a.revealPlugin = { [weak self] folder in
@@ -1289,15 +1298,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The artwork comes once per track; later lines of the same track keep it.
+    private func hacksState() -> HacksState {
+        var h = HacksState()
+        let support = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support")
+        for browser in geckoBrowsers {
+            let dir = support.appending(path: "\(browser)/Profiles")
+            for p in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] {
+                guard let js = try? String(contentsOf: dir.appending(path: "\(p)/prefs.js"), encoding: .utf8) else { continue }
+                h.profiles.append(.init(browser: browser, name: String(p.split(separator: ".").last ?? ""), keysOff: mediaKeysOff(prefsJS: js)))
+            }
+        }
+        h.musicAppRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty
+        h.serverListening = mediaServer.listening
+        h.tabs = model.tabs.count
+        h.reader = music.reader
+        h.lastSignal = lastSignal
+        return h
+    }
+
     private func musicChanged(_ line: NowPlayingLine) {
         switch line {
-        case .nothing:
-            if model.nowPlaying != nil { model.nowPlaying = nil; model.artwork = nil }
-        case .item(let np, let art):
-            if let art { model.artwork = NSImage(data: art) }
-            else if np.artworkID != model.nowPlaying?.artworkID { model.artwork = nil }
-            if model.nowPlaying != np { model.nowPlaying = np }
+        case .nothing: if model.nowPlaying != nil { model.nowPlaying = nil }
+        case .item(let np): if model.nowPlaying != np { model.nowPlaying = np }
         }
     }
 

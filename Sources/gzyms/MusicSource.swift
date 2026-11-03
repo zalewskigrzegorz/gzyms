@@ -17,6 +17,9 @@ final class MusicSource {
 
     init(deliver: @escaping (NowPlayingLine) -> Void) { self.deliver = deliver }
 
+    /// For Settings → Hacks: "native", "osascript", or "" when stopped.
+    var reader: String { process == nil ? "" : native ? "native" : "osascript" }
+
     func start() {
         guard process == nil, retry == nil else { return }
         let p = Process()
@@ -105,6 +108,44 @@ final class MusicSource {
             }
             app.activate()
         }
+    }
+
+    /// A command to the Now Playing app through tools/media-send in /usr/bin/perl (as the reader reads); the media key
+    /// when the dylib is not in the bundle (`swift run`).
+    static func nowPlaying(_ c: MediaCommand) {
+        guard let sender = Bundle.main.url(forResource: "media-send", withExtension: "dylib") else { send(c); return }
+        let p = Process()
+        p.executableURL = URL(filePath: "/usr/bin/perl")
+        p.arguments = ["-e", "require DynaLoader; DynaLoader::dl_load_file($ARGV[0], 0) or die DynaLoader::dl_error()", sender.path]
+        p.environment = ["MR_CMD": String(c.remoteCommand)]
+        let err = Pipe()
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = err
+        p.terminationHandler = { p in
+            guard p.terminationStatus != 0 else { return }
+            let why = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            log("music: media-send failed (exit \(p.terminationStatus)): \(why.prefix(200))")
+        }
+        do { try p.run() } catch { log("music: media-send did not start: \(error)"); send(c) }
+    }
+
+    /// A command through the app's own AppleScript (`MediaItem.scriptable`), so it reaches the app even when it is not
+    /// Now Playing. Never launches the app.
+    static func script(_ app: String, _ c: MediaCommand) {
+        guard MediaItem.scriptable.contains(app) else { return }  // the id goes into the script text
+        let verb = switch c { case .playPause: "playpause"; case .next: "next track"; case .previous: "previous track" }
+        let p = Process()
+        p.executableURL = URL(filePath: "/usr/bin/osascript")
+        p.arguments = ["-e", "if application id \"\(app)\" is running then tell application id \"\(app)\" to \(verb)"]
+        p.standardOutput = FileHandle.nullDevice
+        let err = Pipe()
+        p.standardError = err
+        p.terminationHandler = { p in
+            guard p.terminationStatus != 0 else { return }
+            let why = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            log("music: \(app) \(verb) failed: \(why.prefix(200))")
+        }
+        do { try p.run() } catch { log("music: osascript did not start: \(error)") }
     }
 
     /// The media key, as if pressed on the keyboard: macOS gives it to whatever plays.

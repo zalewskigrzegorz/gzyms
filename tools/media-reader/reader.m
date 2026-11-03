@@ -66,7 +66,6 @@ static void run(void) {
     if (!getClients || !Request || !PlayerPath || !Player) { fprintf(stderr, "MediaRemote is not what it was\n"); exit(2); }
     queue = dispatch_queue_create("gzyms.media-reader", 0);
     NSData *last = nil;
-    NSString *lastArt = nil;
     BOOL first = YES;  // the first line always goes out, so MusicSource knows the reader works
     while (getppid() != 1) {  // Gzyms gone (killed, crashed): launchd adopts us, so do not linger.
         @autoreleasepool {
@@ -81,8 +80,7 @@ static void run(void) {
                         @"appName": [current valueForKey:@"displayName"] ?: @"",
                         @"playing": [Request valueForKey:@"localIsPlaying"] ?: @NO,
                         @"elapsed": value(info, @"ElapsedTime") ?: @0, @"duration": value(info, @"Duration") ?: @0,
-                        @"at": @((at ?: NSDate.date).timeIntervalSince1970), @"rate": value(info, @"PlaybackRate") ?: @0,
-                        @"artId": [value(info, @"ArtworkIdentifier") description] ?: @"" } mutableCopy];
+                        @"at": @((at ?: NSDate.date).timeIntervalSince1970), @"rate": value(info, @"PlaybackRate") ?: @0 } mutableCopy];
                 NSMutableArray *others = [NSMutableArray array];
                 pid_t currentPid = [[current valueForKey:@"processIdentifier"] intValue];
                 for (id c in clients()) {
@@ -100,12 +98,6 @@ static void run(void) {
             if (first || (![line isEqual:last] && !(line == nil && last == nil))) {
                 first = NO;
                 last = line;
-                NSString *art = s[@"artId"];
-                if (art.length && ![art isEqual:lastArt]) {
-                    lastArt = art;
-                    NSData *artwork = value(info, @"ArtworkData");
-                    if (artwork) s[@"artwork"] = [artwork base64EncodedStringWithOptions:0];
-                }
                 say(s);
             }
         }

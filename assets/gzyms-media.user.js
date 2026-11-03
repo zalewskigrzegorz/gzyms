@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name        Gzyms media
 // @namespace   dev.gzyms
-// @version     0.1.1
-// @description Tells Gzyms Probe (127.0.0.1:47100) what video and audio this tab plays, and takes its play, pause, next and go-to.
+// @version     0.2.0
+// @description Tells Gzyms (127.0.0.1:47100) what video and audio this tab plays, and takes its play, pause, next, previous and go-to.
 // @match       *://*/*
 // @downloadURL http://127.0.0.1:47100/gzyms-media.user.js
 // @updateURL   http://127.0.0.1:47100/gzyms-media.user.js
@@ -51,6 +51,10 @@
       if (handlers.nexttrack) handlers.nexttrack({ action: 'nexttrack' });
       else if (document.querySelector('.ytp-next-button')) document.querySelector('.ytp-next-button').click();
       else note = 'next: the site has no next';
+    } else if (cmd === 'previous') {
+      // Like a player's back button: to the start, or the site's previous when already there.
+      if (e.currentTime > 3 || !handlers.previoustrack) e.currentTime = 0;
+      else handlers.previoustrack({ action: 'previoustrack' });
     }
   }
 
@@ -59,17 +63,17 @@
       i, kind: e.tagName.toLowerCase(), playing: !e.paused && !e.ended,
       title: (ms && ms.metadata && ms.metadata.title) || document.title,
     }));
-    // A tab without media stays silent; one last report when its media goes, so Probe drops it.
+    // A tab without media stays silent; one last report when its media goes, so Gzyms drops it.
     if (!list.length && !had) return;
     had = list.length > 0;
     GM_xmlhttpRequest({
       method: 'POST',
       url: 'http://127.0.0.1:47100/report',
-      // The custom header makes a page's own fetch() need a CORS preflight, which Probe never answers.
+      // The custom header makes a page's own fetch() need a CORS preflight, which Gzyms never answers.
       headers: { 'Content-Type': 'application/json', 'X-Gzyms': '1' },
       data: JSON.stringify({ id, url: location.href, title: document.title, note, media: list }),
       timeout: 2000,
-      onload: (r) => { try { JSON.parse(r.responseText).commands.forEach(run); } catch (_) { /* Probe not running */ } },
+      onload: (r) => { try { JSON.parse(r.responseText).commands.forEach(run); } catch (_) { /* Gzyms not running */ } },
     });
   }
 

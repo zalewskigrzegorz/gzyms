@@ -23,6 +23,8 @@ public final class PopupState {
         public var choose: () -> Void
         public var remove: (() -> Void)?
         public var alt: (() -> Void)?
+        /// The alt verb keeps the popup open after it ran (play/pause in the music popup).
+        public var altStays = false
     }
 
     nonisolated public init() {}
@@ -42,9 +44,10 @@ public final class PopupState {
     public func choose() { rows[row]?.choose() }
     /// The open popup's Clear all; nothing in a popup without one.
     public func clearAll() { open.flatMap { clears[$0] }?() }
-    /// true = the row had a second action and ran it; otherwise the row shows "No second action".
+    /// true = the row had a second action, ran it, and the keyboard mode ends; a row without one says
+    /// "No second action".
     public func alt() -> Bool {
-        if let a = rows[row]?.alt { a(); return true }
+        if let r = rows[row], let a = r.alt { a(); return !r.altStays }
         let r = row
         noAlt = r
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if self.noAlt == r { self.noAlt = nil } }
@@ -77,6 +80,7 @@ struct NavRow: ViewModifier {
     let choose: () -> Void
     let remove: (() -> Void)?
     var alt: (() -> Void)?
+    var altStays = false
     @State private var me = UUID()
     @Environment(\.popups) private var popups
     @Environment(\.theme) private var theme
@@ -101,12 +105,13 @@ struct NavRow: ViewModifier {
             .onDisappear { if popups.rows[index]?.owner == me { popups.rows[index] = nil } }
     }
 
-    private func register() { popups.rows[index] = .init(owner: me, choose: choose, remove: remove, alt: alt) }
+    private func register() { popups.rows[index] = .init(owner: me, choose: choose, remove: remove, alt: alt, altStays: altStays) }
 }
 
 extension View {
-    func navRow(_ index: Int, choose: @escaping () -> Void, remove: (() -> Void)? = nil, alt: (() -> Void)? = nil) -> some View {
-        modifier(NavRow(index: index, choose: choose, remove: remove, alt: alt))
+    func navRow(_ index: Int, choose: @escaping () -> Void, remove: (() -> Void)? = nil, alt: (() -> Void)? = nil,
+                altStays: Bool = false) -> some View {
+        modifier(NavRow(index: index, choose: choose, remove: remove, alt: alt, altStays: altStays))
     }
 }
 

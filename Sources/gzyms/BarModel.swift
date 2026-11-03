@@ -46,7 +46,8 @@ final class BarModel {
     /// `[bar] logo` read once per config load, not on every redraw.
     var customLogo: NSImage?
     var nowPlaying: NowPlaying?
-    var artwork: NSImage?
+    /// Browser tabs with media, from the userscript through `MediaServer`.
+    var tabs: [BrowserTab] = []
     @ObservationIgnored var onMusic: (MusicAction) -> Void = { _ in }
     var pluginPills: [PluginPill] = []
     var caffeine: CaffeineState?
@@ -129,7 +130,7 @@ struct PanelRoot: View {
                     inboxes: model.inboxes, onOpenNote: { model.onOpenNote($0) }, onRemoveNote: { model.onRemoveNote($0) },
                     onMenu: { model.onMenu() }, grantWarning: model.grantWarning, onGrantWarning: model.onGrantWarning, secureInput: model.secureInput,
                     meetingPill: model.meetingPill, onMeetingPill: model.onMeetingPill, logo: model.customLogo,
-                    nowPlaying: model.nowPlaying, artwork: model.artwork, onMusic: model.onMusic,
+                    media: mediaItems(model.nowPlaying, tabs: model.tabs, now: context.date.timeIntervalSince1970), onMusic: model.onMusic,
                     pluginPills: model.pluginPills, onPluginEvent: model.onPluginEvent,
                     caffeine: model.caffeine, onCaffeine: model.onCaffeine, dnd: model.dnd, onDND: model.onDND, shelf: model.shelf, onShelf: model.onShelf)
         }

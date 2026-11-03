@@ -8,15 +8,13 @@ public struct NowPlaying: Equatable, Sendable {
     public var playing: Bool
     /// `elapsed` seconds were true at `at` (seconds since 1970); it runs on from there while playing.
     public var elapsed: Double, duration: Double, at: Double, rate: Double
-    public var artworkID: String
     /// The other apps with something to play (a film behind the music), for the popup. Empty from the osascript reader.
     public var others: [MediaSource]
 
     public init(title: String, artist: String = "", album: String = "", app: String = "", appName: String = "", playing: Bool,
-                elapsed: Double = 0, duration: Double = 0, at: Double = 0, rate: Double = 1, artworkID: String = "",
-                others: [MediaSource] = []) {
+                elapsed: Double = 0, duration: Double = 0, at: Double = 0, rate: Double = 1, others: [MediaSource] = []) {
         self.title = title; self.artist = artist; self.album = album; self.app = app; self.appName = appName; self.playing = playing
-        self.elapsed = elapsed; self.duration = duration; self.at = at; self.rate = rate; self.artworkID = artworkID
+        self.elapsed = elapsed; self.duration = duration; self.at = at; self.rate = rate
         self.others = others
     }
 
@@ -50,7 +48,7 @@ public struct MediaSource: Equatable, Sendable, Decodable {
 /// One line of the reader: a state, or nothing playing.
 public enum NowPlayingLine: Equatable, Sendable {
     case nothing
-    case item(NowPlaying, artwork: Data?)
+    case item(NowPlaying)
 }
 
 /// nil = not a line of the reader (garbage, a half line).
@@ -58,7 +56,7 @@ public func nowPlayingLine(_ json: String) -> NowPlayingLine? {
     let text = json.trimmingCharacters(in: .whitespacesAndNewlines)
     if text == "null" { return .nothing }
     struct Raw: Decodable {
-        var title, artist, album, app, appName, artId, artwork: String?
+        var title, artist, album, app, appName: String?
         var playing: Bool?
         var elapsed, duration, at, rate: Double?
         var others: [MediaSource]?
@@ -66,8 +64,8 @@ public func nowPlayingLine(_ json: String) -> NowPlayingLine? {
     guard let r = try? JSONDecoder().decode(Raw.self, from: Data(text.utf8)), let title = r.title, !title.isEmpty else { return nil }
     let np = NowPlaying(title: title, artist: r.artist ?? "", album: r.album ?? "", app: r.app ?? "", appName: r.appName ?? "",
                         playing: r.playing ?? false, elapsed: r.elapsed ?? 0, duration: r.duration ?? 0, at: r.at ?? 0,
-                        rate: r.rate ?? 1, artworkID: r.artId ?? "", others: r.others ?? [])
-    return .item(np, artwork: r.artwork.flatMap { Data(base64Encoded: $0) })
+                        rate: r.rate ?? 1, others: r.others ?? [])
+    return .item(np)
 }
 
 /// The fallback reader, for when the native one (tools/media-reader in /usr/bin/perl) does not start: Now Playing
@@ -83,7 +81,7 @@ const K = 'kMRMediaRemoteNowPlayingInfo';
 const say = s => out.writeData($(s + '\n').dataUsingEncoding($.NSUTF8StringEncoding));
 ObjC.import('unistd');
 function run() {
-let last = '', lastArt = '';
+let last = '';
 while (true) {
   // Gzyms gone (killed, crashed): launchd adopts us, so do not linger.
   if ($.getppid() === 1) return;
@@ -99,17 +97,12 @@ while (true) {
           app: ObjC.unwrap(c.parentApplicationBundleIdentifier) || ObjC.unwrap(c.bundleIdentifier) || '',
           appName: ObjC.unwrap(c.displayName) || '', playing: !!ObjC.unwrap(R.localIsPlaying),
           elapsed: v('ElapsedTime') || 0, duration: v('Duration') || 0,
-          at: at ? at.getTime() / 1000 : Date.now() / 1000, rate: v('PlaybackRate') || 0, artId: String(v('ArtworkIdentifier') || '') };
+          at: at ? at.getTime() / 1000 : Date.now() / 1000, rate: v('PlaybackRate') || 0 };
   }
   const line = JSON.stringify(s);
   if (line !== last) {
     last = line;
-    if (s && s.artId && s.artId !== lastArt) {
-      lastArt = s.artId;
-      const art = info.objectForKey(K + 'ArtworkData');
-      if (art.js) s.artwork = ObjC.unwrap(art.base64EncodedStringWithOptions(0));
-    }
-    say(JSON.stringify(s));
+    say(line);
   }
   delay(1);
 }
@@ -119,8 +112,23 @@ while (true) {
 /// The keys macOS sends to whatever plays (NX_KEYTYPE_*).
 public enum MediaCommand: Int32, Sendable {
     case playPause = 16, next = 17, previous = 18
+
+    /// MRMediaRemoteSendCommand's number for it (tools/media-send).
+    public var remoteCommand: Int {
+        switch self {
+        case .playPause: 2
+        case .next: 4
+        case .previous: 5
+        }
+    }
 }
 
-/// What the player's popup asks for: a media key (it reaches the last used player only), or going to an app's
-/// window that shows this title.
-public enum MusicAction: Sendable { case key(MediaCommand), jump(app: String, title: String) }
+/// What the player's popup asks for: a command to the Now Playing app (macOS lets it reach no other), one through
+/// an app's own AppleScript (`MediaItem.scriptable`), one to a browser tab, or going to an app's window that shows
+/// this title.
+public enum MusicAction: Equatable, Sendable {
+    case key(MediaCommand)
+    case script(app: String, MediaCommand)
+    case tab(String, media: Int, TabCommand)
+    case jump(app: String, title: String)
+}

@@ -3,7 +3,7 @@ import GzymsCore
 import SwiftUI
 
 public enum SettingsTab: String, CaseIterable, Sendable {
-    case general, appearance, themes, notifications, apps, modules, plugins, calendar, agents, sounds, shortcuts, permissions, debug, about
+    case general, appearance, themes, notifications, apps, modules, plugins, calendar, agents, sounds, shortcuts, permissions, hacks, debug, about
     public var title: String { self == .modules ? "Order" : rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 }
 
@@ -54,6 +54,10 @@ public struct SettingsActions {
     public var openURL: (String) -> Void = { _ in }
     /// A shortcut recorder is listening: the keyboard tap stands aside.
     public var recording: (Bool) -> Void = { _ in }
+    /// What Settings → Hacks shows, read fresh every 2 s while that tab is open.
+    public var hacks: () -> HacksState = { HacksState() }
+    /// Quits a running app by bundle id (Music.app, which takes the media keys).
+    public var quitApp: (String) -> Void = { _ in }
     public init(write: @escaping (String, TOMLValue?, ConfigTable) -> Void) { self.write = write }
 }
 
@@ -117,21 +121,30 @@ public struct SettingsView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
+    private func tabs(size: CGFloat, pad: CGFloat) -> some View {
+        HStack(spacing: 4) {
+            ForEach(SettingsTab.allCases, id: \.self) { t in
+                Text(t.title)
+                    .font(.system(size: size, weight: t == tab ? .semibold : .regular))
+                    .foregroundStyle(t == tab ? theme[\.base] : theme[\.text])
+                    .fixedSize()
+                    .padding(.horizontal, pad).padding(.vertical, 5)
+                    .background(Capsule().fill(t == tab ? theme[\.mauve] : theme[\.surface].opacity(0.0001)))
+                    .contentShape(Capsule())
+                    .onTapGesture { tab = t }
+            }
+        }
+        .padding(.horizontal, 40)  // clear of the close button
+    }
+
     /// Wide screens get sections side by side (Greg): one column per ~540 pt, up to three.
     private var columns: Int { max(1, min(3, Int((width - 48) / 540))) }
 
     @ViewBuilder private var header: some View {
-            HStack(spacing: 4) {
-                ForEach(SettingsTab.allCases, id: \.self) { t in
-                    Text(t.title)
-                        .font(.system(size: 13, weight: t == tab ? .semibold : .regular))
-                        .foregroundStyle(t == tab ? theme[\.base] : theme[\.text])
-                        .fixedSize()
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .background(Capsule().fill(t == tab ? theme[\.mauve] : theme[\.surface].opacity(0.0001)))
-                        .contentShape(Capsule())
-                        .onTapGesture { tab = t }
-                }
+            // A narrow panel gets tighter tabs before any is cut off.
+            ViewThatFits(in: .horizontal) {
+                tabs(size: 13, pad: 8)
+                tabs(size: 12, pad: 5)
             }
             .frame(maxWidth: .infinity)
             .overlay(alignment: .trailing) {
@@ -174,6 +187,7 @@ public struct SettingsView: View {
         case .sounds: SoundsTab(config: config, write: actions.write, actions: actions)
         case .shortcuts: ShortcutsTab(config: config, write: actions.write, recording: actions.recording)
         case .permissions: Section(title: "Permissions") { PermissionsView(states: grants, open: actions.openGrant, restart: actions.restart) }
+        case .hacks: HacksTab(config: config, grants: grants, actions: actions, live: live)
         case .debug: DebugTab(config: config, actions: actions)
         case .about: AboutTab(version: actions.version, open: actions.openURL, config: config, logo: logo,
                               choose: actions.chooseLogo, write: actions.write, live: live)
@@ -1057,6 +1071,103 @@ private struct DebugTab: View {
     }
 }
 
+// MARK: - Hacks
+
+/// What Settings → Hacks reads from the Mac: each hack's live state.
+public struct HacksState: Equatable {
+    /// One Gecko profile and whether it left the media keys to the music player.
+    public struct Profile: Equatable {
+        public var browser: String, name: String
+        public var keysOff: Bool
+        public init(browser: String, name: String, keysOff: Bool) { self.browser = browser; self.name = name; self.keysOff = keysOff }
+    }
+    public var profiles: [Profile] = []
+    public var musicAppRunning = false
+    public var serverListening = false
+    public var tabs = 0
+    /// "native", "osascript", or "" when the music pill is off.
+    public var reader = ""
+    /// When usernoted last said an app sent something.
+    public var lastSignal: Date?
+    public init() {}
+}
+
+/// Everything in Gzyms that rides on a private API or a trick, one tile each: what it does, what it rests on, what can
+/// break it, its state right now, and one control (Greg, 2026-11-03).
+private struct HacksTab: View {
+    let config: GzymsConfig
+    let grants: [GrantState]
+    let actions: SettingsActions
+    let live: Bool
+    @Environment(\.theme) private var theme
+
+    private static let docs = "https://gzyms.dev/docs/#hacks"
+    private static let pref = "media.hardwaremediakeys.enabled"
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: live ? 2 : 3600)) { _ in
+            let h = actions.hacks()
+            Columns {
+                Section(title: "Media") {
+                    Row(title: "Media keys for the music player only",
+                        note: state(h.profiles.isEmpty ? "No Firefox-based browser found."
+                                    : h.profiles.map { "\($0.browser) \($0.name): \($0.keysOff ? "off" : "on")" }.joined(separator: ". ") + ".",
+                                    ok: !h.profiles.isEmpty && h.profiles.allSatisfy(\.keysOff))
+                            + " In about:config set \(Self.pref) to false. The browser leaves Now Playing at once. Chromium: start it with --disable-features=HardwareMediaKeyHandling.") {
+                        Button("Copy pref") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(Self.pref, forType: .string)
+                        }
+                    }
+                    Row(title: "Browser tabs in the music pill",
+                        note: state(!config.browserMedia ? "Off." : !h.serverListening ? "Port 47100 is busy. Quit Gzyms Probe." : "\(h.tabs) tab(s) report media.",
+                                    ok: config.browserMedia && h.serverListening)
+                            + " Install Tampermonkey, then open the script and press Install. Gzyms serves it on 127.0.0.1 only. Tabs then show in the music popup with play, pause, next and Go to.") {
+                        HStack(spacing: 8) {
+                            Button("Open script") { actions.openURL("http://127.0.0.1:47100/gzyms-media.user.js") }.disabled(!h.serverListening)
+                            Switch(on: config.browserMedia) { actions.write("browser_media", $0 ? .bool(true) : nil, .table(["hacks"])) }
+                        }
+                    }
+                    Row(title: "Music.app off the media keys",
+                        note: state(h.musicAppRunning ? "Music.app is running." : "Music.app is not running.", ok: !h.musicAppRunning)
+                            + " A running Music.app takes the media keys when the browser does not, even when it plays nothing. Quit it when you play from Spotify or Spotifast.") {
+                        Button("Quit Music.app") { actions.quitApp("com.apple.Music") }.disabled(!h.musicAppRunning)
+                    }
+                    Row(title: "What plays",
+                        note: state(h.reader == "native" ? "Native reader." : h.reader == "osascript" ? "Fallback reader. Now Playing only." : "Off. The music pill is hidden.",
+                                    ok: h.reader == "native")
+                            + " Gzyms reads macOS's private MediaRemote from inside /usr/bin/perl, because only Apple-signed programs may. The fallback is osascript. A macOS update can close both. Then the pill goes away.") {
+                        docsButton
+                    }
+                }
+                Section(title: "Notifications") {
+                    Row(title: "Open the exact chat",
+                        note: "Opening a notification in Gzyms presses its original in Notification Center through Accessibility, after globe+N. The app then opens the right chat or thread. A macOS update can break it. Then Gzyms opens just the app. Set each app in Apps.") {
+                        Switch(on: config.openOriginal) { actions.write("open_original", $0 ? nil : .bool(false), .table(["notifications"])) }
+                    }
+                    Row(title: "Instant app icons",
+                        note: state(h.lastSignal.map { "Last signal at \($0.formatted(date: .omitted, time: .shortened))." } ?? "No signal since Gzyms started.",
+                                    ok: h.lastSignal != nil)
+                            + " Gzyms follows macOS's notification log, so an app's icon shows at once and the text follows a few seconds later. A macOS update can change the log.") {
+                        docsButton
+                    }
+                    Row(title: "Notifications from other apps",
+                        note: state(fullDisk ? "Full Disk Access is on." : "Full Disk Access is off.", ok: fullDisk)
+                            + " Gzyms reads macOS's private notification database. It needs Full Disk Access. A macOS update can move the database.") {
+                        Button("Permissions") { actions.openGrant(.fullDiskAccess) }
+                    }
+                }
+            }
+        }
+    }
+
+    private var fullDisk: Bool { grants.first { $0.grant == .fullDiskAccess }?.granted == true }
+
+    private var docsButton: some View { Button("Docs") { actions.openURL(Self.docs) } }
+
+    private func state(_ text: String, ok: Bool) -> String { (ok ? "✓ " : "○ ") + text }
+}
+
 // MARK: - Notifications
 
 private struct NotificationsTab: View {
@@ -1231,13 +1342,9 @@ private struct AppsTab: View {
                 note: "The gear next to an app opens its macOS page. Keep Allow notifications, Notification Center and Badge on. Untick Desktop and Lock Screen, and turn the sound off. Gzyms still gets every one, and nothing shows twice.") {
                 Button("Open Notification settings", action: actions.openNotificationSettings)
             }
-            Row(title: "Open the exact chat (experimental)",
-                note: """
-                    Opening a notification in Gzyms presses its original in Notification Center. The app then opens the right chat, thread or event. Off, Gzyms opens just the app.
-                    This is a trick, not an Apple feature. A macOS update can break it. Then Gzyms opens just the app.
-                    Set each app as below. Its gear opens its page, and a warning next to it says what is off. Keep the globe+N shortcut on.
-                    """) {
-                Switch(on: config.openOriginal) { write("open_original", $0 ? nil : .bool(false), .table(["notifications"])) }
+            Row(title: "Open the exact chat",
+                note: "Set each app as below so a notification opens its chat, thread or event. Its gear opens its page, and a warning next to it says what is off. The switch is in Hacks.") {
+                EmptyView()
             }
             MacNotificationsMock().padding(.horizontal, 12).padding(.bottom, 10)
         }

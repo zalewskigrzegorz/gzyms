@@ -9,8 +9,8 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 swiftc -O -parse-as-library -o "$app/Contents/MacOS/probe" Probe.swift
 # The Media tab: the bar's MediaRemote reader, a one-shot command sender (both loaded into /usr/bin/perl) and the userscript it serves.
 clang -fobjc-arc -O2 -dynamiclib -framework Foundation -o "$app/Contents/Resources/media-reader.dylib" ../media-reader/reader.m
-clang -fobjc-arc -O2 -dynamiclib -framework Foundation -o "$app/Contents/Resources/media-send.dylib" media-send.m
-cp gzyms-media.user.js "$app/Contents/Resources/"
+clang -fobjc-arc -O2 -dynamiclib -framework Foundation -o "$app/Contents/Resources/media-send.dylib" ../media-send/send.m
+cp ../../assets/gzyms-media.user.js "$app/Contents/Resources/"
 codesign --force --sign "Gzyms Dev" "$app/Contents/Resources/media-reader.dylib" "$app/Contents/Resources/media-send.dylib"
 # ProbeIcon.svg → ProbeIcon.icns, the same way scripts/make-icon.sh builds Gzyms' icon.
 set_dir=$(mktemp -d)/ProbeIcon.iconset && mkdir -p "$set_dir"

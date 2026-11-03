@@ -32,6 +32,9 @@ public struct GzymsConfig: Equatable, Sendable {
     /// `[notifications] open_original` (experimental): opening another app's notification presses its original in
     /// Notification Center, so the app opens the exact chat or thread. Off: just the app.
     public var openOriginal = true
+    /// `[hacks] browser_media`: the loopback server for the browser userscript, so tabs with video show in the music
+    /// pill. Off until turned on in Settings → Hacks: it opens a port on 127.0.0.1.
+    public var browserMedia = false
     public var anomalies = true
     /// Global, in every app (`[shortcuts] mic_mute`, "off" = none).
     public var micShortcut = Shortcut("ctrl+alt+m")
@@ -247,6 +250,7 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         else { problems.append("dnd.breaks_through: \(bad.joined(separator: ", ")) must be \(DNDBreak.allCases.map(\.rawValue).joined(separator: ", ")), kept armageddon and meetings") }
     }
     if let v = raw.notifications?.openOriginal { config.openOriginal = v }
+    if let v = raw.hacks?.browser_media { config.browserMedia = v }
     if let names = raw.notifications?.priority {
         let bad = names.filter { DNDBreak(rawValue: $0) == nil }
         if bad.isEmpty { config.priority = Set(names.compactMap(DNDBreak.init(rawValue:))) }
@@ -404,9 +408,10 @@ private struct RawConfig: Decodable {
     var plugins: [String: [String: TOMLValue]]?
     var caffeine: RawCaffeine?
     var dnd: RawDND?
+    var hacks: RawHacks?
     var sounds: [String: String]?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case theme, cpu, workspaces, notifications, appearance, audio, bar, debug, shortcuts, keys, calendar, widgets, plugins, caffeine, dnd, sounds }
+    enum CodingKeys: String, CodingKey { case theme, cpu, workspaces, notifications, appearance, audio, bar, debug, shortcuts, keys, calendar, widgets, plugins, caffeine, dnd, hacks, sounds }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = lenient(c, .theme, "theme", &unknown)
@@ -424,9 +429,10 @@ private struct RawConfig: Decodable {
         plugins = lenient(c, .plugins, "plugins", &unknown)
         caffeine = lenient(c, .caffeine, "caffeine", &unknown)
         dnd = lenient(c, .dnd, "dnd", &unknown)
+        hacks = lenient(c, .hacks, "hacks", &unknown)
         sounds = lenient(c, .sounds, "sounds", &unknown)
         unknown += try unknownKeys(in: decoder, known: ["theme", "cpu", "workspaces", "notifications", "appearance", "audio", "bar", "debug",
-                                                        "shortcuts", "keys", "calendar", "widgets", "plugins", "caffeine", "dnd", "sounds"], prefix: "")
+                                                        "shortcuts", "keys", "calendar", "widgets", "plugins", "caffeine", "dnd", "hacks", "sounds"], prefix: "")
         unknown += (calendar?.unknown ?? []) + (widgets?.unknown ?? [])
         unknown += (appearance?.unknown ?? []) + (audio?.unknown ?? []) + (bar?.unknown ?? []) + (debug?.unknown ?? [])
         unknown += shortcuts?.unknown ?? []
@@ -649,6 +655,10 @@ private struct RawDebug: Decodable {
         anomalies = lenient(c, .anomalies, "debug.anomalies", &unknown)
         unknown += try unknownKeys(in: decoder, known: ["anomalies"], prefix: "debug.")
     }
+}
+
+private struct RawHacks: Decodable {
+    var browser_media: Bool?
 }
 
 private struct RawCaffeine: Decodable {

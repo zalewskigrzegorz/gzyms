@@ -119,8 +119,8 @@ public struct BarView: View {
     var onMeetingPill: () -> Void = {}
     /// The user's own logo (`[bar] logo`); nil = the cat.
     let logo: NSImage?
-    let nowPlaying: NowPlaying?
-    let artwork: NSImage?
+    /// What plays: `mediaItems` of Now Playing and the browser tabs; empty = no pill.
+    let media: [MediaItem]
     var onMusic: (MusicAction) -> Void = { _ in }
     let pluginPills: [PluginPill]
     let caffeine: CaffeineState?
@@ -143,7 +143,7 @@ public struct BarView: View {
     /// pills take no room (and no gap).
     private func visible(_ s: BarSlot) -> Bool {
         switch s {
-        case .widget(let w): !hidden.contains(w) && (w != .music || nowPlaying?.shown(now: now.timeIntervalSince1970) == true)
+        case .widget(let w): !hidden.contains(w) && (w != .music || !media.isEmpty)
             && (w != .shelf || dropping || !shelf.isEmpty)
         case .plugin(let f): pluginPills.contains { $0.plugin == f }
         }
@@ -169,9 +169,8 @@ public struct BarView: View {
         switch w {
         // CPU and network change on every tick anyway; the rest redraw only when their own data moves.
         case .music:
-            if let np = nowPlaying {
-                Redraw(np, artwork, small) { MusicView(np: np, artwork: artwork, appIcon: icon(np.app), small: small, onCommand: onMusic) }
-                    .equatable()
+            if !media.isEmpty {
+                Redraw(media, small) { MusicView(items: media, small: small, icon: icon, onCommand: onMusic) }.equatable()
             }
         case .cpu: CPUView(percent: cpu, series: cpuSeries, chart: cpuChart, small: small, top: topProcesses, onPopup: onCPUPopup)
         case .memory: Redraw(memory, small) { MemoryView(memory: memory, small: small) }.equatable()
@@ -201,14 +200,14 @@ public struct BarView: View {
                 onRemoveNote: @escaping (String) -> Void = { _ in }, onMenu: @escaping () -> Void = {},
                 grantWarning: Bool = false, onGrantWarning: @escaping () -> Void = {}, secureInput: Bool = false,
                 meetingPill: String? = nil, onMeetingPill: @escaping () -> Void = {}, logo: NSImage? = nil,
-                nowPlaying: NowPlaying? = nil, artwork: NSImage? = nil, onMusic: @escaping (MusicAction) -> Void = { _ in },
+                media: [MediaItem] = [], onMusic: @escaping (MusicAction) -> Void = { _ in },
                 pluginPills: [PluginPill] = [], onPluginEvent: @escaping (String, PluginEvent, String) -> Void = { _, _, _ in },
                 caffeine: CaffeineState? = nil, onCaffeine: @escaping (Int??) -> Void = { _ in },
                 dnd: Date? = nil, onDND: @escaping (Date?) -> Void = { _ in },
                 shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }) {
         self.shelf = shelf; self.onShelf = onShelf
         self.dnd = dnd; self.onDND = onDND
-        self.logo = logo; self.nowPlaying = nowPlaying; self.artwork = artwork; self.onMusic = onMusic
+        self.logo = logo; self.media = media; self.onMusic = onMusic
         self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent
         self.caffeine = caffeine; self.onCaffeine = onCaffeine
         self.workspaces = workspaces; self.small = small; self.notch = notch; self.stale = stale
@@ -871,77 +870,135 @@ extension Theme {
     func tint(_ name: String?) -> Color { name.flatMap { resolve($0) }.map { Color(hex: $0) } ?? Color(hex: text) }
 }
 
-/// ▶ "Artist – Title" from macOS's Now Playing; the popup has the artwork, progress and ⏮ ⏯ ⏭.
+/// The media pill: ▶ and the main item's "Artist – Title", then a small icon for every other source (dim = paused).
+/// With less room the title shortens, then only icons stay, a waveform by each that plays. No artwork and no
+/// animation: the bar stays still while music plays (Greg, 2026-11-03).
 public struct MusicView: View {
-    let np: NowPlaying
-    let artwork: NSImage?
-    /// The playing app's icon, for when there is no room for the title.
-    let appIcon: NSImage?
+    let items: [MediaItem]
     let small: Bool
+    let icon: (String) -> NSImage?
     let onCommand: (MusicAction) -> Void
     @Environment(\.popups) private var popups
     @Environment(\.theme) private var theme
-    public init(np: NowPlaying, artwork: NSImage?, appIcon: NSImage? = nil, small: Bool, onCommand: @escaping (MusicAction) -> Void) {
-        self.np = np; self.artwork = artwork; self.appIcon = appIcon; self.small = small; self.onCommand = onCommand
+    public init(items: [MediaItem], small: Bool, icon: @escaping (String) -> NSImage? = { _ in nil }, onCommand: @escaping (MusicAction) -> Void) {
+        self.items = items; self.small = small; self.icon = icon; self.onCommand = onCommand
     }
 
     public var body: some View {
-        // Whole title, a shorter one, then only the app's icon: a lone "M…" says nothing (Greg).
-        ViewThatFits(in: .horizontal) {
-            pill { Text(np.line).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 170, alignment: .leading) }
-            pill { Text(np.line).lineLimit(1).truncationMode(.tail).frame(width: small ? 56 : 72, alignment: .leading) }
-            pill {
-                if let appIcon { Image(nsImage: appIcon).resizable().frame(width: small ? 12 : 14, height: small ? 12 : 14) }
-                else { Image(systemName: "music.note") }
+        if let main = mainMedia(items) {
+            ViewThatFits(in: .horizontal) {
+                full(main) { Text(main.line).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 170, alignment: .leading) }
+                full(main) { Text(main.line).lineLimit(1).truncationMode(.tail).frame(width: small ? 56 : 72, alignment: .leading) }
+                compact(main)
             }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture { popups.binding("widget:music").wrappedValue.toggle() }
-        .popover(isPresented: popups.binding("widget:music"), arrowEdge: .bottom) {
-            MusicDetailsView(np: np, artwork: artwork, onCommand: onCommand).environment(\.theme, theme).environment(\.popups, popups)
+            .contentShape(Rectangle())
+            .onTapGesture { popups.binding("widget:music").wrappedValue.toggle() }
+            .popover(isPresented: popups.binding("widget:music"), arrowEdge: .bottom) {
+                MusicDetailsView(items: items, icon: icon, onCommand: onCommand).environment(\.theme, theme).environment(\.popups, popups)
+            }
         }
     }
 
-    private func pill<C: View>(@ViewBuilder _ content: () -> C) -> some View {
-        HStack(spacing: small ? 4 : 5) {
-            Image(systemName: np.playing ? "play.fill" : "pause.fill").font(.system(size: small ? 8 : 9))
-                .foregroundStyle(np.playing ? theme[\.green] : theme[\.overlay])
-            content()
+    private func full<T: View>(_ main: MediaItem, @ViewBuilder title: () -> T) -> some View {
+        let rest = items.filter { $0.id != main.id }
+        return chip {
+            Image(systemName: main.playing ? "play.fill" : "pause.fill").font(.system(size: small ? 8 : 9))
+                .foregroundStyle(main.playing ? theme[\.green] : theme[\.overlay])
+            title()
+            ForEach(rest.prefix(4)) { MediaIcon(item: $0, icon: icon, size: small ? 10 : 11).opacity($0.playing ? 1 : 0.4) }
+            if rest.count > 4 { Text("+\(rest.count - 4)").font(.system(size: small ? 8 : 9)).foregroundStyle(theme[\.overlay]) }
         }
-        .font(.system(size: small ? 10 : 11))
-        .foregroundStyle(theme[\.text])
-        .padding(.horizontal, small ? 6 : 8)
-        .padding(.vertical, small ? 2 : 4)
-        .background(theme[\.surface], in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// The icons alone, for a full bar: one per playing source, or the main one with its pause.
+    private func compact(_ main: MediaItem) -> some View {
+        let playing = items.filter(\.playing)
+        return chip {
+            ForEach(playing.isEmpty ? [main] : playing) { it in
+                HStack(spacing: 2) {
+                    MediaIcon(item: it, icon: icon, size: small ? 11 : 13)
+                    Image(systemName: it.playing ? "waveform" : "pause.fill").font(.system(size: small ? 8 : 9))
+                        .foregroundStyle(it.playing ? theme[\.green] : theme[\.overlay])
+                }
+            }
+        }
+    }
+
+    private func chip<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        HStack(spacing: small ? 4 : 5) { content() }
+            .font(.system(size: small ? 10 : 11))
+            .foregroundStyle(theme[\.text])
+            .padding(.horizontal, small ? 6 : 8)
+            .padding(.vertical, small ? 2 : 4)
+            .background(theme[\.surface], in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
+/// An app's icon, or a play glyph for a browser tab (no favicons: nothing is fetched).
+struct MediaIcon: View {
+    let item: MediaItem
+    let icon: (String) -> NSImage?
+    let size: CGFloat
+    @Environment(\.theme) private var theme
+    var body: some View {
+        if !item.isTab, let image = icon(item.app) {
+            Image(nsImage: image).resizable().frame(width: size, height: size)
+        } else {
+            Image(systemName: item.isTab ? "play.rectangle.fill" : "music.note").font(.system(size: size - 2))
+                .foregroundStyle(theme[\.sky]).frame(width: size, height: size)
+        }
+    }
+}
+
+/// Every source, one row each; the row the keyboard (or a click) is on opens with its progress and ⏮ ⏯ ⏭.
+/// On a row: Enter goes to it, the alt verb (a) plays or pauses and keeps the popup open, the remove verb (x) skips.
 public struct MusicDetailsView: View {
-    let np: NowPlaying
-    let artwork: NSImage?
+    let items: [MediaItem]
+    let icon: (String) -> NSImage?
     let onCommand: (MusicAction) -> Void
     @Environment(\.theme) private var theme
-    public init(np: NowPlaying, artwork: NSImage?, onCommand: @escaping (MusicAction) -> Void) {
-        self.np = np; self.artwork = artwork; self.onCommand = onCommand
+    @Environment(\.popups) private var popups
+    public init(items: [MediaItem], icon: @escaping (String) -> NSImage? = { _ in nil }, onCommand: @escaping (MusicAction) -> Void) {
+        self.items = items; self.icon = icon; self.onCommand = onCommand
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Group {
-                    if let artwork { Image(nsImage: artwork).resizable().scaledToFill() }
-                    else { Image(systemName: "music.note").font(.system(size: 22)).foregroundStyle(theme[\.overlay]) }
-                }
-                .frame(width: 56, height: 56)
-                .background(theme[\.surface])
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(np.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
-                    if !np.artist.isEmpty { Text(np.artist).lineLimit(1) }
-                    if !np.appName.isEmpty { Text(np.appName).font(.system(size: 11)).foregroundStyle(theme[\.overlay]) }
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, it in
+                VStack(alignment: .leading, spacing: 6) {
+                    header(it)
+                        .contentShape(Rectangle())
+                        .onTapGesture { popups.row = i }
+                        .navRow(i, choose: { onCommand(goTo(it)) }, remove: command(it, .next).map { a in { onCommand(a) } },
+                                alt: command(it, .playPause).map { a in { onCommand(a) } }, altStays: true)
+                    if i == open { details(it) }
                 }
             }
-            if np.duration > 0 {
+        }
+        .popupStyle(theme, width: 300)
+        // The main item opens first, whichever way the popup was opened.
+        .onAppear { if let m = mainMedia(items), let i = items.firstIndex(of: m) { popups.row = i } }
+    }
+
+    private var open: Int { min(popups.row, items.count - 1) }
+
+    private func header(_ it: MediaItem) -> some View {
+        HStack(spacing: 7) {
+            MediaIcon(item: it, icon: icon, size: 16)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(it.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Text(it.artist.isEmpty ? it.from : "\(it.artist) · \(it.from)").font(.system(size: 10)).foregroundStyle(theme[\.overlay]).lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Image(systemName: it.playing ? "play.fill" : "pause.fill").font(.system(size: 9))
+                .foregroundStyle(it.playing ? theme[\.green] : theme[\.overlay])
+        }
+        .padding(.vertical, 3).padding(.horizontal, 4)
+    }
+
+    @ViewBuilder private func details(_ it: MediaItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let np = it.clock, np.duration > 0 {
                 // Ticks only while the popup is open.
                 TimelineView(.periodic(from: .now, by: 1)) { ctx in
                     let p = np.position(now: ctx.date.timeIntervalSince1970)
@@ -952,36 +1009,41 @@ public struct MusicDetailsView: View {
                     }
                 }
             }
-            HStack(spacing: 18) {
-                Spacer()
-                button("backward.fill", .previous, 0)
-                button(np.playing ? "pause.fill" : "play.fill", .playPause, 1)
-                button("forward.fill", .next, 2)
-                Spacer()
-            }
-            row("arrow.up.forward.app", "Go to \(np.appName.isEmpty ? "the player" : np.appName)", .jump(app: np.app, title: np.title), 3)
-            // The keys and buttons above reach only this one (macOS's rule); the rest can be gone to.
-            if !np.others.isEmpty {
-                Divider()
-                ForEach(Array(np.others.enumerated()), id: \.offset) { i, o in
-                    row(o.playing ? "play.fill" : "pause.fill", "\(o.appName): \(o.line)", .jump(app: o.app, title: o.title), 4 + i)
+            if it.steerable {
+                HStack(spacing: 18) {
+                    Spacer()
+                    button("backward.fill", command(it, .previous))
+                    button(it.playing ? "pause.fill" : "play.fill", command(it, .playPause))
+                    button("forward.fill", command(it, .next))
+                    Spacer()
                 }
+            } else {
+                Text("macOS lets Gzyms steer only the Now Playing app. Go to it to play or pause.")
+                    .font(.system(size: 10)).foregroundStyle(theme[\.overlay]).fixedSize(horizontal: false, vertical: true)
             }
+            Label("Go to \(it.from)", systemImage: "arrow.up.forward.app").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+                .contentShape(Rectangle()).onTapGesture { onCommand(goTo(it)) }
         }
-        .popupStyle(theme, width: 280)
+        .padding(.horizontal, 4).padding(.bottom, 6)
     }
 
-    private func button(_ symbol: String, _ c: MediaCommand, _ index: Int) -> some View {
-        Image(systemName: symbol).font(.system(size: 15)).frame(width: 30, height: 26)
-            .contentShape(Rectangle()).onTapGesture { onCommand(.key(c)) }
-            .navRow(index, choose: { onCommand(.key(c)) })
+    private func button(_ symbol: String, _ a: MusicAction?) -> some View {
+        Image(systemName: symbol).font(.system(size: 15)).frame(width: 30, height: 24)
+            .contentShape(Rectangle()).onTapGesture { if let a { onCommand(a) } }
     }
 
-    private func row(_ symbol: String, _ text: String, _ a: MusicAction, _ index: Int) -> some View {
-        Label(text, systemImage: symbol).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle()).onTapGesture { onCommand(a) }
-            .navRow(index, choose: { onCommand(a) })
+    /// nil for an app macOS does not let Gzyms steer.
+    private func command(_ it: MediaItem, _ c: MediaCommand) -> MusicAction? {
+        switch it.source {
+        case .nowPlaying: .key(c)
+        case .app: MediaItem.scriptable.contains(it.app) ? .script(app: it.app, c) : nil
+        case .tab(let id, let i): .tab(id, media: i, c == .playPause ? .toggle : c == .next ? .next : .previous)
+        }
+    }
+
+    private func goTo(_ it: MediaItem) -> MusicAction {
+        if case .tab(let id, let i) = it.source { return .tab(id, media: i, .focus) }
+        return .jump(app: it.app, title: it.title)
     }
 
     static func clock(_ s: Double) -> String {

@@ -111,7 +111,8 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     // A laptop-like notch with a long track: the title gives way, nothing slides under the notch.
     let song = NowPlaying(title: "Pray for Silence (Extended Version)", artist: "Some Band", playing: true, at: fixedNow.timeIntervalSince1970)
     preview(BarView(workspaces: ws, small: false, notch: NotchGap(minX: 660, maxX: 852), stale: false, now: fixedNow, cpu: 12,
-                    cpuSeries: series, memory: mem, icon: { _ in nil }, nowPlaying: song), "bar-notch-music", width: 1512)
+                    cpuSeries: series, memory: mem, icon: { _ in nil }, media: mediaItems(song, tabs: [], now: fixedNow.timeIntervalSince1970)),
+            "bar-notch-music", width: 1512)
     preview(TopProcessesView(top: [ProcessCPU(pid: 1, name: "Vimma", percent: 14.2)]), "cpu-popup")
     preview(MemoryDetailsView(memory: mem), "memory-popup")
     let net = NetSample(down: 1_234_000, up: 30_400, kind: .wifi, ip: "192.168.1.23", tailscale: "100.90.5.9", proxy: "127.0.0.1:9090")
@@ -146,15 +147,20 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     preview(BannerView(n: .pending(app: "com.app", at: fixedNow), icon: nil, remaining: nil, total: nil), "banner-pending")
     preview(InboxList(notes: [reminder, older]), "inbox-list")
     preview(BellView(notes: [older], small: false), "bell")
-    let np = NowPlaying(title: "Midnight City", artist: "M83", appName: "Spotify", playing: true, elapsed: 75, duration: 243,
-                        at: Date().timeIntervalSince1970)
-    preview(MusicView(np: np, artwork: nil, small: false) { _ in }, "music-pill")
-    let appIcon = fakeIcon
-    preview(MusicView(np: np, artwork: nil, appIcon: appIcon, small: false) { _ in }.frame(width: 120), "music-pill-short")
-    preview(MusicView(np: np, artwork: nil, appIcon: appIcon, small: false) { _ in }.frame(width: 50), "music-pill-icon")
-    var withFilm = np
-    withFilm.others = [MediaSource(app: "dev.vimma.browser", appName: "Vimma", title: "Art being a rizz master", playing: true)]
-    preview(MusicDetailsView(np: withFilm, artwork: nil) { _ in }, "music-popup")
+    var np = NowPlaying(title: "Midnight City", artist: "M83", app: "com.spotify.client", appName: "Spotify", playing: true,
+                        elapsed: 75, duration: 243, at: Date().timeIntervalSince1970)
+    let music = mediaItems(np, tabs: [], now: np.at)
+    let icon: (String) -> NSImage? = { _ in fakeIcon }
+    preview(MusicView(items: music, small: false, icon: icon) { _ in }, "music-pill")
+    preview(MusicView(items: music, small: false, icon: icon) { _ in }.frame(width: 120), "music-pill-short")
+    preview(MusicView(items: music, small: false, icon: icon) { _ in }.frame(width: 60), "music-pill-icon")
+    // Music, a film in a tab and an app that can only be gone to: the tail icons, then the icons alone.
+    np.others = [MediaSource(app: "com.apple.podcasts", appName: "Podcasts", title: "A talk", playing: false)]
+    let film = BrowserTab(id: "t", url: "https://www.youtube.com/watch?v=1", media: [.init(i: 0, title: "Art being a rizz master", playing: true)])
+    let many = mediaItems(np, tabs: [film], now: np.at)
+    preview(MusicView(items: many, small: false, icon: icon) { _ in }, "music-pill-sources")
+    preview(MusicView(items: many, small: false, icon: icon) { _ in }.frame(width: 70), "music-pill-sources-icons")
+    preview(MusicDetailsView(items: many, icon: icon) { _ in }, "music-popup")
     let awake = CaffeineState(until: fixedNow.addingTimeInterval(105 * 60))
     preview(HStack { CaffeineView(state: nil, now: fixedNow, small: false) { _ in }; CaffeineView(state: awake, now: fixedNow, small: false) { _ in } },
             "caffeine-pills")
