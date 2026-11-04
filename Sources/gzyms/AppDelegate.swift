@@ -90,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let seenAppsFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Gzyms/seen-apps.json")
     private lazy var messages = GzymsMessagePanel(model: model)
+    private lazy var palette = PalettePanel(model: model)
     private var messageObserver: NSObjectProtocol?
     private let messagesFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Gzyms/messages.json")
@@ -556,10 +557,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The banner's letters work with a held modifier leader too, before any bar was picked.
         for case .banner(let a) in actions { chordAction(a) }
         if notes.banner != nil { notesChanged() }  // its hint row follows the mode
+        if actions.contains(.palette) { showPalette() }
         guard let p = navPanel else { return }
         for a in actions {
             switch a {
-            case .banner, .preview: break
+            case .banner, .preview, .palette: break
             case .open(let id): p.popups.open = id
             case .move(let by): p.popups.move(by)
             case .choose: p.popups.choose()
@@ -1274,6 +1276,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.show(on: screen)
         if model.settingsTab == .permissions { checkGrants() }  // opened straight on it: the tab-change hook never fires
         log("settings: open \(model.settingsTab.rawValue)")
+    }
+
+    /// Leader, then space: the Settings tabs, the actions people look for, every theme and the notifications still on
+    /// the lists, in one search.
+    private func showPalette() {
+        let a = settingsActions()
+        var items = SettingsTab.allCases.map { t in
+            PaletteItem(id: "tab:\(t.rawValue)", title: t.title, kind: "Settings", words: t.keywords) { [weak self] in self?.toggleSettings(t) }
+        }
+        func action(_ title: String, _ words: String, _ run: @escaping () -> Void) {
+            items.append(PaletteItem(id: title, title: title, kind: "Action", words: words, run: run))
+        }
+        action("Do Not Disturb on", "dnd quiet silence") { [weak self] in self?.setDND(.distantFuture) }
+        action("Do Not Disturb off", "dnd") { [weak self] in self?.setDND(nil) }
+        action("Test banner", "notification try demo") { [weak self] in
+            self?.post(GzymsNotification(id: "palette-test-\(Int(Date().timeIntervalSince1970))", app: nil, level: .info, title: "Gzyms test",
+                                         subtitle: nil, body: "This is how a banner looks.", link: nil, altLink: nil, sound: nil, at: Date()))
+        }
+        action("Usage HUD", "cpu memory stats", a.showHUD)
+        action("Report a problem", "bug zip issue") { _ = a.report() }
+        if a.canCheckForUpdates { action("Check for updates", "update upgrade version", a.checkForUpdates) }
+        action("What's new", "changes release notes") { [weak self] in
+            if let n = newestWhatsNew() { self?.showMessage(.whatsNew(version: n.version, lines: n.lines)) }
+        }
+        action("Open config.toml", "config file edit", a.revealConfig)
+        action("Open the event log", "log debug", a.openLog)
+        action("Restart Gzyms", "reload relaunch", a.restart)
+        action("Quit Gzyms", "exit close", a.quit)
+        items += Theme.all.map { t in
+            PaletteItem(id: "theme:\(t.name)", title: "Theme \(t.name)", kind: "Theme", words: "colors colours look") { [weak self] in
+                self?.writeSetting("theme", .string(t.name), .table([]))
+            }
+        }
+        // A notification is found by its app, title and text; Enter opens it like a click, ⌘Enter takes its second action.
+        let names = Dictionary(model.seenApps.map { ($0.id, $0.name) }) { a, _ in a }
+        for n in notes.inboxes.values.joined().sorted(by: { $0.at > $1.at }) {
+            let app = n.app.map { names[$0] ?? seenApp($0)?.name ?? $0 } ?? "Notification"
+            let alt: (() -> Void)? = n.altLink == nil ? nil : { [weak self] in self?.open(n.id, alt: true) }
+            items.append(PaletteItem(id: "note:\(n.id)", title: n.title, kind: app, words: [app, n.subtitle, n.body].compactMap { $0 }.joined(separator: " "),
+                                     alt: alt) { [weak self] in self?.open(n.id) })
+        }
+        palette.show(items: items, extra: { [weak self] q in
+            guard let m = paletteDNDMinutes(q) else { return [] }
+            let span = m % 60 == 0 ? "\(m / 60) h" : m > 60 ? "\(m / 60) h \(m % 60) min" : "\(m) min"
+            return [PaletteItem(id: "dnd:\(m)", title: "Do Not Disturb for \(span)", kind: "Action") { self?.setDND(Date() + Double(m) * 60) }]
+        }, on: focusedScreen())
+        log("palette: open")
     }
 
     private func settingsActions() -> SettingsActions {

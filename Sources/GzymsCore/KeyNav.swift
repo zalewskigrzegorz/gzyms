@@ -1,6 +1,6 @@
 /// A key as the keyboard mode sees it. `.modified` = anything with ⌘, ⌃ or ⌥: it belongs to the apps.
 public enum NavKey: Equatable, Sendable {
-    case letter(String), esc, enter, up, down, left, right, modified, other
+    case letter(String), esc, enter, space, up, down, left, right, modified, other
 
     /// From a macOS key code; `modified` = ⌘, ⌃ or ⌥ held.
     public init(keyCode: Int64, modified: Bool) {
@@ -8,6 +8,7 @@ public enum NavKey: Equatable, Sendable {
         switch keyCode {
         case 36, 76: self = .enter
         case 53: self = .esc
+        case 49: self = .space
         case 123: self = .left
         case 124: self = .right
         case 125: self = .down
@@ -74,6 +75,8 @@ public enum NavAction: Equatable, Sendable {
     case banner(ChordAction)
     /// The meeting preview's keys: c camera, m mic, s speakers, t test sound.
     case preview(String)
+    /// Leader, then space: the command palette opens and the mode ends.
+    case palette
     case exit
 }
 
@@ -214,6 +217,7 @@ public struct KeyNav: Sendable {
             if zs > 0 { zs = 0; return [] }
             if !typed.isEmpty { typed = ""; return [] }
             return exit()
+        case .space: return [.palette] + exit()
         case .letter(let c) where bannerUp && isBannerVerb(c):
             let a = banner(c, now: now)!
             return a.actions + (a.ends ? exit() : [])

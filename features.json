@@ -1,5 +1,5 @@
 {
-  "count": 78,
+  "count": 79,
   "updated": "2026-11-04",
   "features": [
     "gzyms notify command",
@@ -51,6 +51,7 @@
     "Mic mute shortcut",
     "macOS menu bar peek on holding Cmd",
     "Keyboard-driven Settings",
+    "Command palette (leader, then space)",
     "Sound output pill with device switching",
     "Mic pill with input level",
     "Banned audio devices",

@@ -355,6 +355,19 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         .themed(.mochaNeon), "gzyms-whats-new")
 }
 
+@MainActor @Test func paletteShowsTheRowsThatFit() {
+    let s = PaletteState()
+    s.items = SettingsTab.allCases.map { PaletteItem(id: $0.rawValue, title: $0.title, kind: "Settings", words: $0.keywords) {} }
+        + [PaletteItem(id: "dnd", title: "Do Not Disturb on", kind: "Action", words: "dnd") {}]
+    s.query = "so"
+    #expect(s.shown.first?.title == "Sounds")
+    s.move(1)
+    preview(PaletteView(state: s) { _ in }.themed(.mochaNeon), "palette")
+    s.query = "zzz"
+    #expect(s.shown.isEmpty && s.selected == 0)
+    preview(PaletteView(state: s) { _ in }.themed(.mochaNeon), "palette-empty")
+}
+
 @Test func hintRowsCarryTheirActions() {
     let rows = ChordHints(snoozeMinutes: nil, hold: "⌃").rows(alt: "Open in agent", waiting: 2)
     #expect(rows.map { $0.map(\.text) } == [["⌃O open", "⌃X dismiss", "⌃Z snooze"], ["⌃A Open in agent"], ["⌃N next", "⌃P prev", "2 more"]])
