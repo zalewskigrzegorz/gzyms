@@ -44,6 +44,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keysObserver: NSObjectProtocol?
     private var nc: NotificationCenterSource?
     private var signal: DeliverySignal?
+    private var banners: BannerSource?
+    private var bannerGuard = BannerGuard()
+    /// Notification Center shows no banners although apps send them (`BannerGuard`).
+    private var noBanners = false
+    /// `nc-` notes opened, dismissed or already shown from their banner, so their database row ~5 s later is skipped.
+    private var handled: [String: Date] = [:]
     /// For Settings → Hacks: the delivery log is alive.
     private var lastSignal: Date?
     private var dock: DockBadges?
@@ -353,6 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onOpenNote = { [weak self] in self?.open($0) }
         model.onAltNote = { [weak self] in self?.open($0, alt: true) }
         model.onRemoveNote = { [weak self] id in
+            self?.forget(id)
             self?.notes.remove(id, now: ProcessInfo.processInfo.systemUptime)
             self?.notesChanged()
         }
@@ -363,16 +370,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chords.start()
         startKeys()
         let source = NotificationCenterSource { [weak self] list in
-            for var n in list {
+            guard let self else { return }
+            for var n in list where !wasHandled(n.id) {
                 n.app = n.app.map(AppIcons.bundleID(matching:))
-                self?.post(n)
+                post(n)
             }
         }
         source.start()
         nc = source
-        let sig = DeliverySignal { [weak self] app in self?.pending(app) }
-        sig.start()
-        signal = sig
+        applyNotificationSources()
+        // A banner parked off screen goes home when Gzyms quits, so macOS's own is back.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.banners?.stop() }
+        }
         let badges = DockBadges { [weak self] in self?.model.dockBadges = $0 }
         badges.start()
         dock = badges
@@ -409,9 +419,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A full banner on screen is left alone; the row replaces it in a few seconds anyway.
     private func pending(_ app: String) {
         lastSignal = Date()
+        countSignal(AppIcons.bundleID(matching: app))
         if let b = notes.banner, !b.compact { return }
         post(.pending(app: AppIcons.bundleID(matching: app), at: Date()))
     }
+
+    /// `[notifications] banner_ax` and `signal`, at start and on every config load.
+    private func applyNotificationSources() {
+        guard nc != nil else { return }  // the first load comes before startNotifications
+        let c = model.config
+        if c.bannerAX {
+            if banners == nil { banners = BannerSource { [weak self] n in self?.bannerArrived(n) } }
+            banners?.start()
+        } else if let b = banners {
+            b.stop()
+            banners = nil
+        }
+        if c.signal, signal == nil {
+            let s = DeliverySignal { [weak self] app in self?.pending(app) }
+            s.start()
+            signal = s
+        } else if !c.signal, let s = signal {
+            s.stop()
+            signal = nil
+        }
+    }
+
+    /// A banner read through Accessibility. Its database row is skipped, unless the app was not recognised: the row
+    /// brings the bundle id under the same id.
+    private func bannerArrived(_ n: GzymsNotification) {
+        bannerGuard.banner(at: ProcessInfo.processInfo.systemUptime)
+        noBanners = false
+        if n.app != nil { markHandled(n.id) }
+        post(n)
+    }
+
+    /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb, not for apps whose
+    /// macOS style is None (they never show a banner), not while the observer is off.
+    private func countSignal(_ app: String) {
+        guard model.config.signal, notes.dnd == nil, banners?.attached == true,
+              model.seenApps.first(where: { $0.id == app })?.warning?.contains("Banners off") != true else { return }
+        bannerGuard.signal(at: ProcessInfo.processInfo.systemUptime)
+        if bannerGuard.warns, !noBanners {
+            noBanners = true
+            log("banners: apps send notifications but Notification Center shows no banner. killall NotificationCenter fixes it")
+        }
+    }
+
+    private func markHandled(_ id: String) {
+        guard id.hasPrefix("nc-") else { return }
+        let now = Date()
+        handled = handled.filter { now.timeIntervalSince($0.value) < 120 }
+        handled[id] = now
+    }
+
+    /// Dismissed in Gzyms: its database row stays away and a parked alert is closed, not left hidden.
+    private func forget(_ id: String) {
+        guard let uuid = ncRecordUUID(noteID: id) else { return }
+        markHandled(id)
+        banners?.closeParked(uuid: uuid)
+    }
+
+    private func wasHandled(_ id: String) -> Bool { handled[id].map { Date().timeIntervalSince($0) < 120 } ?? false }
 
     /// From `gzyms notify` or from another app through Notification Center.
     private func post(_ n: GzymsNotification) {
@@ -565,6 +634,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let b = notes.open(id, now: ProcessInfo.processInfo.systemUptime) else { return }
         logNote(b, alt ? "alt" : "opened")
+        let uuid = ncRecordUUID(noteID: b.id)
+        if uuid != nil { markHandled(b.id) }
         if b.meetingStart != nil { finishMeeting(b) }
         if let target = alt ? b.altLink : b.link {
             // Any process in the session can post, sandboxed ones too: a file: link would launch whatever it points at.
@@ -572,10 +643,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !opened { logNote(b, "link failed") }
         } else if let owner = pluginNoteOwner(b.id, plugins: model.plugins.map(\.folder)) {
             pluginHost.send(plugin: owner.plugin, alt ? .notifyAlt : .notifyOpen, id: owner.id)  // the plugin knows where it leads
-        } else if model.config.openOriginal, let uuid = ncRecordUUID(noteID: b.id), let app = b.app, !ncOpenOriginalUnsupported.contains(app) {
-            // The original in Notification Center knows the exact chat or thread; without it, just the app.
-            NotificationClick.press(uuid: uuid, app: app, live: nil) { pressed in if !pressed { Self.openApp(app) } }
+        } else if model.config.openOriginal, let uuid {
+            // The original knows the exact chat or thread: its banner while up, else its row in the panel. Without it, the app.
+            let app = b.app
+            NotificationClick.press(uuid: uuid, app: app, live: banners?.liveBanner(uuid: uuid)) { [weak self] pressed in
+                self?.banners?.closeParked(uuid: uuid)
+                guard !pressed else { return }
+                if let app { Self.openApp(app) } else { log("nc click: \(uuid.prefix(8)) not opened, its app is unknown") }
+            }
         } else if let app = b.app {
+            if let uuid { banners?.closeParked(uuid: uuid) }
             Self.openApp(app)
         }
         notesChanged()
@@ -600,6 +677,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         notes.dismiss(now: ProcessInfo.processInfo.systemUptime)  // gone for good: nothing flies to the icon
         logNote(b, "dismissed")
+        forget(b.id)
         notesChanged()
     }
 
@@ -777,6 +855,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notes.phone = load.config.phone
         notes.breaksThrough = load.config.dndBreaks
         notes.priority = load.config.priority
+        applyNotificationSources()
         sounds = [:]  // a file may have changed under the same path
         applyMotion()
         if notes.banner != nil { notesChanged() }  // a banner on screen takes the new theme too
@@ -971,7 +1050,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if wizard.isVisible, before.filter(\.grant.required).contains(where: { !$0.granted }) { wizard.orderOut(nil) }
         }
         // Accessibility given after launch: the keyboard tap starts now instead of after a restart.
-        if now.first(where: { $0.grant == .accessibility })?.granted == true { chords.start() }
+        if now.first(where: { $0.grant == .accessibility })?.granted == true { chords.start(); banners?.start() }
+        // Taken away while running: stop parking. Without the grant the parked window cannot be moved back either.
+        else if banners?.attached == true { banners?.stop() }
         let watching = wizard.isVisible || (settings.isVisible && model.settingsTab == .permissions)
         grantTimer?.invalidate()
         let t = Timer(timeInterval: watching ? 2 : 30, repeats: false) { [weak self] _ in MainActor.assumeIsolated { self?.checkGrants() } }
