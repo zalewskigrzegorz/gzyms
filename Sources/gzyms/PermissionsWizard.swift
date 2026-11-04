@@ -3,7 +3,7 @@ import GzymsCore
 import GzymsUI
 import SwiftUI
 
-/// The one separate window (spec): opens at launch when a grant is missing, from the bar's ⚠ and from the logo menu.
+/// The one separate window (spec): opens at launch when a grant is missing, and from the bar's ⚠.
 /// Closes itself once everything is granted; "Later" closes it until the next launch.
 @MainActor
 final class PermissionsWizard: NSPanel {

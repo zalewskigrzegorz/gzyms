@@ -70,6 +70,8 @@ final class SettingsPanel: NSPanel {
                                         "a": #selector(NSText.selectAll(_:)), "z": Selector(("undo:"))]
         if mods == .command, let key = event.charactersIgnoringModifiers?.lowercased(), let action = edit[key],
            NSApp.sendAction(action, to: nil, from: self) { return true }
+        if mods == .command, event.charactersIgnoringModifiers == "q" { NSApp.terminate(nil); return true }
+        if mods == .command, event.charactersIgnoringModifiers == "," { hide(); return true }
         if mods == [.command, .shift], event.charactersIgnoringModifiers?.lowercased() == "z", NSApp.sendAction(Selector(("redo:")), to: nil, from: self) { return true }
         return super.performKeyEquivalent(with: event)
     }

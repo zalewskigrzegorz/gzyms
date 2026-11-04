@@ -55,6 +55,10 @@ public struct SettingsActions {
     public var report: () -> URL? = { nil }
     public var requestFeature: () -> Void = {}
     public var version = "dev"
+    /// Sparkle has a feed to ask; without it the button stays out.
+    public var canCheckForUpdates = false
+    public var checkForUpdates: () -> Void = {}
+    public var quit: () -> Void = {}
     public var openURL: (String) -> Void = { _ in }
     /// A shortcut recorder is listening: the keyboard tap stands aside.
     public var recording: (Bool) -> Void = { _ in }
@@ -198,7 +202,8 @@ public struct SettingsView: View {
         }
         case .hacks: HacksTab(config: config, grants: grants, actions: actions, live: live)
         case .debug: DebugTab(config: config, actions: actions)
-        case .about: AboutTab(version: actions.version, open: actions.openURL, config: config, logo: logo,
+        case .about: AboutTab(version: actions.version, open: actions.openURL, canUpdate: actions.canCheckForUpdates,
+                              checkUpdates: actions.checkForUpdates, quit: actions.quit, config: config, logo: logo,
                               choose: actions.chooseLogo, write: actions.write, live: live)
         }
     }
@@ -981,6 +986,9 @@ private struct SoundRow: View {
 private struct AboutTab: View {
     let version: String
     let open: (String) -> Void
+    let canUpdate: Bool
+    let checkUpdates: () -> Void
+    let quit: () -> Void
     let config: GzymsConfig
     let logo: NSImage?
     let choose: () -> Void
@@ -1026,10 +1034,14 @@ private struct AboutTab: View {
     private var columns: some View {
         Columns {
             Section(title: "Gzyms") {
-                Row(title: "Version \(version)", note: "Updates come with the first release.") { EmptyView() }
+                Row(title: "Version \(version)", note: canUpdate ? nil : "Updates come with the first release.") {
+                    if canUpdate { Button("Check for Updates…", action: checkUpdates) }
+                }
+                Row(title: "Tutorial", note: "The keys in 5 minutes.") { Button("Learn Gzyms…") { open(tutorialURL.absoluteString) } }
                 Row(title: "Website") { Button("gzyms.dev") { open("https://gzyms.dev") } }
                 Row(title: "Source") { Button("GitHub") { open("https://github.com/zalewskigrzegorz/gzyms") } }
                 Row(title: "Changes") { Button("Changelog") { open("https://github.com/zalewskigrzegorz/gzyms/commits/main") } }
+                Row(title: "Quit", note: "Shortcut: ⌘Q while Settings is in front.") { Button("Quit Gzyms", action: quit) }
             }
             Section(title: "Your logo") {
                 Row(title: "Logo on the bar", note: logoNote) {

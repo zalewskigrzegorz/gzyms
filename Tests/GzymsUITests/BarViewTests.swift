@@ -285,6 +285,10 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
                              devices: ["MacBook Pro Speakers", "Shure MV7"], workspaceNames: [1: "chat", 2: "term"], actions: actions).frame(width: 1000, height: 900),
                 "settings-\(tab.rawValue)")
     }
+    var updating = actions
+    updating.canCheckForUpdates = true
+    preview(SettingsView(tab: .constant(.about), config: config, problems: [], broken: false, apps: apps,
+                         devices: [], live: false, actions: updating).frame(width: 1000, height: 900), "settings-about-updates")
     preview(SettingsView(tab: .constant(.notifications), config: config, problems: [], broken: false, apps: apps,
                          devices: [], actions: actions).frame(width: 1800, height: 700), "settings-notifications-wide")
     preview(SettingsView(tab: .constant(.apps), config: config, problems: [], broken: false, apps: apps,

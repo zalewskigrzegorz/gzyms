@@ -1130,7 +1130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startSettings() {
         model.seenApps = ((try? JSONDecoder().decode([String].self, from: Data(contentsOf: seenAppsFile))) ?? []).compactMap(seenApp)
-        model.onMenu = { [weak self] in self?.showMenu() }
+        model.onLogo = { [weak self] in self?.toggleSettings(nil) }
         settingsObserver = DistributedNotificationCenter.default().addObserver(forName: settingsName, object: nil, queue: .main) { note in
             let tab = (note.object as? String).flatMap(SettingsTab.init(rawValue:))
             MainActor.assumeIsolated { [weak self] in self?.toggleSettings(tab) }
@@ -1145,33 +1145,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showMenu() {
-        log("bar: logo clicked, menu shown")
-        let menu = NSMenu()
-        let open = NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
-        open.target = self
-        menu.addItem(open)
-        let grants = NSMenuItem(title: "Permissions…", action: #selector(menuPermissions), keyEquivalent: "")
-        grants.target = self
-        menu.addItem(grants)
-        let update = NSMenuItem(title: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
-        update.target = updater
-        menu.addItem(update)
-        let check = NSMenuItem(title: "Check Notification Settings…", action: #selector(menuCheckNotifications), keyEquivalent: "")
-        check.target = self
-        menu.addItem(check)
-        let learn = NSMenuItem(title: "Learn Gzyms…", action: #selector(menuLearn), keyEquivalent: "")
-        learn.target = self
-        menu.addItem(learn)
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit Gzyms", action: #selector(menuQuit), keyEquivalent: "q")
-        quit.target = self
-        menu.addItem(quit)
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-    }
-
-    @objc private func menuSettings() { toggleSettings(nil) }
-    @objc private func menuPermissions() { wizard.show(on: focusedScreen()); checkGrants() }
     /// Marks each app whose macOS notification settings keep opening the original from working (Settings → Apps).
     /// The file opens only with Full Disk Access, so it is read off the main thread.
     private func refreshAppWarnings() {
@@ -1283,10 +1256,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.makeKeyAndOrderFront(nil)
     }
 
-    @objc private func menuCheckNotifications() { toggleSettings(.apps) }  // the warnings sit next to each app
-    @objc private func menuLearn() { NSWorkspace.shared.open(tutorialURL) }
-    @objc private func menuQuit() { NSApp.terminate(nil) }
-
     /// A tab opens on that tab (and stays open); no tab toggles.
     private func toggleSettings(_ tab: SettingsTab?) {
         if let tab { model.settingsTab = tab }
@@ -1303,6 +1272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let screen = focusedScreen() else { return }
         settings.show(on: screen)
+        if model.settingsTab == .permissions { checkGrants() }  // opened straight on it: the tab-change hook never fires
         log("settings: open \(model.settingsTab.rawValue)")
     }
 
@@ -1368,6 +1338,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return zip
         }
         a.version = gzymsVersion
+        a.canCheckForUpdates = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil
+        a.checkForUpdates = { [weak self] in
+            self?.settings.stepBack()  // Sparkle's window must come over the floating panel
+            self?.updater.checkForUpdates(nil)
+        }
+        a.quit = { NSApp.terminate(nil) }
         a.openURL = { [weak self] s in
             self?.settings.stepBack()
             if let url = URL(string: s) { NSWorkspace.shared.open(url) }

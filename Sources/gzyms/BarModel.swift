@@ -33,7 +33,7 @@ final class BarModel {
     @ObservationIgnored var onOpenNote: (String) -> Void = { _ in }
     @ObservationIgnored var onRemoveNote: (String) -> Void = { _ in }
     @ObservationIgnored var onAltNote: (String) -> Void = { _ in }
-    @ObservationIgnored var onMenu: () -> Void = {}
+    @ObservationIgnored var onLogo: () -> Void = {}
     // Settings panel
     var settingsTab = SettingsTab.general { didSet { onSettingsTab() } }
     @ObservationIgnored var onSettingsTab: () -> Void = {}
@@ -130,7 +130,7 @@ struct PanelRoot: View {
                     // Read when called: the left side sits in an equatable Redraw that keeps its first closures, and a bar drawn
                     // before the app delegate set them stayed dead (the logo did nothing for a whole session).
                     inboxes: model.inboxes, onOpenNote: { model.onOpenNote($0) }, onRemoveNote: { model.onRemoveNote($0) },
-                    onMenu: { model.onMenu() }, grantWarning: model.grantWarning, onGrantWarning: model.onGrantWarning, secureInput: model.secureInput,
+                    onLogo: { model.onLogo() }, grantWarning: model.grantWarning, onGrantWarning: model.onGrantWarning, secureInput: model.secureInput,
                     meetingPill: model.meetingPill, onMeetingPill: model.onMeetingPill, logo: model.customLogo,
                     media: mediaItems(model.nowPlaying, tabs: model.tabs, now: context.date.timeIntervalSince1970), onMusic: model.onMusic,
                     pluginPills: model.pluginPills, onPluginEvent: model.onPluginEvent,

@@ -110,7 +110,7 @@ public struct BarView: View {
     let inboxes: [String?: [GzymsNotification]]
     var onOpenNote: (String) -> Void = { _ in }
     var onRemoveNote: (String) -> Void = { _ in }
-    var onMenu: () -> Void = {}
+    var onLogo: () -> Void = {}
     let grantWarning: Bool
     var onGrantWarning: () -> Void = {}
     /// macOS Secure Input is on: no key reaches the tap, so the leader does nothing.
@@ -197,7 +197,7 @@ public struct BarView: View {
                 icon: @escaping (String) -> NSImage?, onSelect: @escaping (Int) -> Void = { _ in },
                 onCPUPopup: @escaping (Bool) -> Void = { _ in },
                 inboxes: [String?: [GzymsNotification]] = [:], onOpenNote: @escaping (String) -> Void = { _ in },
-                onRemoveNote: @escaping (String) -> Void = { _ in }, onMenu: @escaping () -> Void = {},
+                onRemoveNote: @escaping (String) -> Void = { _ in }, onLogo: @escaping () -> Void = {},
                 grantWarning: Bool = false, onGrantWarning: @escaping () -> Void = {}, secureInput: Bool = false,
                 meetingPill: String? = nil, onMeetingPill: @escaping () -> Void = {}, logo: NSImage? = nil,
                 media: [MediaItem] = [], onMusic: @escaping (MusicAction) -> Void = { _ in },
@@ -216,7 +216,7 @@ public struct BarView: View {
         self.battery = battery; self.batteryWarning = batteryWarning; self.audio = audio; self.onAudioChange = onAudioChange; self.onTestSound = onTestSound
         self.micLevel = micLevel; self.onMicMute = onMicMute; self.onMicPopup = onMicPopup
         self.icon = icon; self.onSelect = onSelect; self.onCPUPopup = onCPUPopup
-        self.inboxes = inboxes; self.onOpenNote = onOpenNote; self.onRemoveNote = onRemoveNote; self.onMenu = onMenu
+        self.inboxes = inboxes; self.onOpenNote = onOpenNote; self.onRemoveNote = onRemoveNote; self.onLogo = onLogo
         self.grantWarning = grantWarning; self.onGrantWarning = onGrantWarning; self.secureInput = secureInput
         self.meetingPill = meetingPill; self.onMeetingPill = onMeetingPill
     }
@@ -229,7 +229,7 @@ public struct BarView: View {
                 Redraw(logo, workspaces, inboxes, small) {
                 HStack(spacing: small ? 4 : 6) {
                     // Gzyms' own menu (Settings, Quit), behind the logo.
-                    LogoButton(logo: logo, small: small, onMenu: onMenu).hintTarget("logo", popup: false, action: onMenu)
+                    LogoButton(logo: logo, small: small, onLogo: onLogo).hintTarget("logo", popup: false, action: onLogo)
                     ForEach(workspaces, id: \.number) { ws in
                         WorkspaceItem(ws: ws, small: small, icon: icon, inboxes: inboxes, onOpen: onOpenNote, onRemove: onRemoveNote)
                             .onTapGesture { onSelect(ws.number) }
@@ -1544,11 +1544,11 @@ struct GzymsLogo: View {
     }
 }
 
-/// The logo opens Gzyms' menu: a wider target than the picture, and a soft plate under the pointer so it reads as a button.
+/// The logo opens Settings: a wider target than the picture, and a soft plate under the pointer so it reads as a button.
 private struct LogoButton: View {
     let logo: NSImage?
     let small: Bool
-    let onMenu: () -> Void
+    let onLogo: () -> Void
     @State private var hover = false
     @Environment(\.theme) private var theme
 
@@ -1562,7 +1562,7 @@ private struct LogoButton: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .pointerStyle(.link)
-        .help("Gzyms: Settings and Quit")
-        .onTapGesture(perform: onMenu)
+        .help("Gzyms Settings")
+        .onTapGesture(perform: onLogo)
     }
 }
