@@ -30,6 +30,27 @@ import Testing
     #expect(accept("row3", 21.31))
 }
 
+@Test func filterSaysWhileThePanelCloses() {
+    // A park retry scheduled before the panel opened must not move the closing panel (review C1).
+    var f = BannerFilter()
+    #expect(!f.closing(now: 5))
+    f.note(panelOpen: true, now: 10)
+    #expect(f.closing(now: 10))
+    f.note(panelOpen: false, now: 11)
+    #expect(f.closing(now: 11.5))
+    #expect(!f.closing(now: 11.9))
+}
+
+@Test func filterGivesUpOnTextThatNeverComes() {
+    // An alert with no title and no body would be walked every 20 ms for as long as it is up (review I3).
+    var f = BannerFilter()
+    func retry() -> Bool { f.retry(uuid: "img") }
+    for _ in 0..<BannerFilter.maxRetries { #expect(retry()) }
+    #expect(!retry())
+    let accepted = f.accept(uuid: "img", panelOpen: false, now: 99)
+    #expect(!accepted)  // left to the database row
+}
+
 @Test func filterSkipsWhatWasUpAtStart() {
     var f = BannerFilter()
     func accept(_ u: String) -> Bool { f.accept(uuid: u, panelOpen: false, now: 1) }

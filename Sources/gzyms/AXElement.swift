@@ -45,9 +45,8 @@ enum NCAX {
 
     /// The menu bar clock opens and closes the panel, found by hit testing. Not there when the menu bar is hidden.
     static func pressMenuBarClock() -> Bool {
-        guard let screen = NSScreen.screens.first else { return false }
         let system = AXUIElementCreateSystemWide()
-        let right = Int(screen.frame.maxX)
+        let right = Int(CGDisplayBounds(CGMainDisplayID()).maxX)  // CoreGraphics: fine off the main thread
         for x in stride(from: right - 1, through: right - 500, by: -6) {
             var el: AXUIElement?
             guard AXUIElementCopyElementAtPosition(system, Float(x), 12, &el) == .success, let el,

@@ -40,6 +40,7 @@ final class DeliverySignal: @unchecked Sendable {
         p.standardError = FileHandle.nullDevice
         out.fileHandleForReading.readabilityHandler = { [weak self] h in
             let chunk = h.availableData
+            if chunk.isEmpty { h.readabilityHandler = nil; return }  // end of file: the stream is gone
             self?.queue.async { self?.consume(chunk) }
         }
         p.terminationHandler = { [weak self] _ in

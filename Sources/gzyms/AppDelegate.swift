@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keysObserver: NSObjectProtocol?
     private var nc: NotificationCenterSource?
     private var signal: DeliverySignal?
-    private var banners: BannerSource?
+    private lazy var banners = BannerSource { [weak self] n in self?.bannerArrived(n) }
     private var bannerGuard = BannerGuard()
     /// Notification Center shows no banners although apps send them (`BannerGuard`).
     private var noBanners = false
@@ -381,7 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyNotificationSources()
         // A banner parked off screen goes home when Gzyms quits, so macOS's own is back.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.banners?.stop() }
+            MainActor.assumeIsolated { self?.banners.stopNow() }
         }
         let badges = DockBadges { [weak self] in self?.model.dockBadges = $0 }
         badges.start()
@@ -428,13 +428,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyNotificationSources() {
         guard nc != nil else { return }  // the first load comes before startNotifications
         let c = model.config
-        if c.bannerAX {
-            if banners == nil { banners = BannerSource { [weak self] n in self?.bannerArrived(n) } }
-            banners?.start()
-        } else if let b = banners {
-            b.stop()
-            banners = nil
-        }
+        // Off still keeps the source: clicks go through its queue and its single owner of the panel's window.
+        if c.bannerAX { banners.start() } else { banners.stop() }
         if c.signal, signal == nil {
             let s = DeliverySignal { [weak self] app in self?.pending(app) }
             s.start()
@@ -445,24 +440,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// A banner read through Accessibility. Its database row is skipped, unless the app was not recognised: the row
-    /// brings the bundle id under the same id.
+    /// A banner read through Accessibility. Its database row is skipped, even when the app was not recognised: filed
+    /// under no app, the row's copy would not be found and would show a second banner.
     private func bannerArrived(_ n: GzymsNotification) {
         bannerGuard.banner(at: ProcessInfo.processInfo.systemUptime)
         noBanners = false
-        if n.app != nil { markHandled(n.id) }
+        markHandled(n.id)
         post(n)
     }
 
     /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb, not for apps whose
     /// macOS style is None (they never show a banner), not while the observer is off.
     private func countSignal(_ app: String) {
-        guard model.config.signal, notes.dnd == nil, banners?.attached == true,
+        guard model.config.signal, notes.dnd == nil, banners.attached,
               model.seenApps.first(where: { $0.id == app })?.warning?.contains("Banners off") != true else { return }
         bannerGuard.signal(at: ProcessInfo.processInfo.systemUptime)
         if bannerGuard.warns, !noBanners {
             noBanners = true
-            log("banners: apps send notifications but Notification Center shows no banner. killall NotificationCenter fixes it")
+            log("banners: apps send notifications but Notification Center shows no banner. A Focus, or NC stuck: killall NotificationCenter")
         }
     }
 
@@ -477,7 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func forget(_ id: String) {
         guard let uuid = ncRecordUUID(noteID: id) else { return }
         markHandled(id)
-        banners?.closeParked(uuid: uuid)
+        banners.closeParked(uuid: uuid)
     }
 
     private func wasHandled(_ id: String) -> Bool { handled[id].map { Date().timeIntervalSince($0) < 120 } ?? false }
@@ -646,13 +641,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if model.config.openOriginal, let uuid {
             // The original knows the exact chat or thread: its banner while up, else its row in the panel. Without it, the app.
             let app = b.app
-            NotificationClick.press(uuid: uuid, app: app, live: banners?.liveBanner(uuid: uuid)) { [weak self] pressed in
-                self?.banners?.closeParked(uuid: uuid)
+            NotificationClick.press(uuid: uuid, app: app, via: banners) { [weak self] pressed in
+                self?.banners.closeParked(uuid: uuid)
                 guard !pressed else { return }
                 if let app { Self.openApp(app) } else { log("nc click: \(uuid.prefix(8)) not opened, its app is unknown") }
             }
         } else if let app = b.app {
-            if let uuid { banners?.closeParked(uuid: uuid) }
+            if let uuid { banners.closeParked(uuid: uuid) }
             Self.openApp(app)
         }
         notesChanged()
@@ -1050,9 +1045,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if wizard.isVisible, before.filter(\.grant.required).contains(where: { !$0.granted }) { wizard.orderOut(nil) }
         }
         // Accessibility given after launch: the keyboard tap starts now instead of after a restart.
-        if now.first(where: { $0.grant == .accessibility })?.granted == true { chords.start(); banners?.start() }
+        if now.first(where: { $0.grant == .accessibility })?.granted == true { chords.start(); if model.config.bannerAX { banners.start() } }
         // Taken away while running: stop parking. Without the grant the parked window cannot be moved back either.
-        else if banners?.attached == true { banners?.stop() }
+        else if banners.attached { banners.stop() }
         let watching = wizard.isVisible || (settings.isVisible && model.settingsTab == .permissions)
         grantTimer?.invalidate()
         let t = Timer(timeInterval: watching ? 2 : 30, repeats: false) { [weak self] _ in MainActor.assumeIsolated { self?.checkGrants() } }
@@ -1398,8 +1393,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         h.tabs = model.tabs.count
         h.reader = music.reader
         h.lastSignal = lastSignal
-        h.bannerAXOn = banners?.attached ?? false
-        h.lastBanner = banners?.lastBanner
+        h.bannerAXOn = banners.attached
+        h.lastBanner = banners.lastBanner
         h.nannyRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.notificationnanny.app").isEmpty
         h.noBanners = noBanners
         return h

@@ -8,25 +8,28 @@ import ApplicationServices
 /// - Banner still up (parked by `BannerSource`): activate the app, press the banner.
 /// - Banner gone: open Notification Center, wait for `AXExpanded`, only then park its host window off screen (NC puts
 ///   the window back while it opens, so parking earlier showed the panel), press the row with the record's uuid,
-///   close the panel if NC did not, and put the window home 0.8 s later, once NC has drawn its close.
+///   close the panel if NC did not, and let the window go home once NC has drawn its close.
 /// The old trick parked before the panel opened, took the first window as the panel (since macOS 26 that can be a
 /// banner, an alert or a widget) and never put it back.
+/// Runs on `BannerSource.queue`, with the banners: never on the main thread, one click at a time, one owner of the window.
 /// shortcut: rides on Notification Center's private Accessibility tree, the menu bar clock or globe+N, a macOS update
 /// can break it; then `done(false)` and the caller opens the app as before.
-@MainActor
 enum NotificationClick {
-    /// `uuid` as the panel names the banner (upper case, dashed). Main thread, async steps, ≤ 2.5 s in all.
-    static func press(uuid: String, app: String?, live: AXUIElement?, done: @escaping @MainActor (Bool) -> Void) {
-        guard AXIsProcessTrusted() else { done(false); return }
-        if let live {
-            let t0 = Date()
-            if let app { activate(bundleID: app) }
-            let r = live.press()
-            log("nc click: banner \(uuid.prefix(8)) \(r == .success ? "pressed" : "press failed (\(r.rawValue)), trying the panel") \(ms(since: t0))")
-            if r == .success { done(true); return }
+    /// `uuid` as the panel names the banner (upper case, dashed). ≤ 2.5 s in all; `done` comes on the main thread.
+    static func press(uuid: String, app: String?, via source: BannerSource, done: @escaping @MainActor @Sendable (Bool) -> Void) {
+        source.queue.async {
+            let finish: @Sendable (Bool) -> Void = { ok in DispatchQueue.main.async { MainActor.assumeIsolated { done(ok) } } }
+            guard AXIsProcessTrusted(), !source.pressing else { finish(false); return }
+            if let live = source.liveBanner(uuid: uuid) {
+                let t0 = Date()
+                if let app { activate(bundleID: app) }
+                let r = live.press()
+                log("nc click: banner \(uuid.prefix(8)) \(r == .success ? "pressed" : "press failed (\(r.rawValue)), trying the panel") \(ms(since: t0))")
+                if r == .success { finish(true); return }
+            }
+            guard let nc = source.nc ?? NCApp.find() else { finish(false); return }
+            PanelPress(source: source, nc: nc, uuid: uuid, app: app, done: finish).start()
         }
-        guard let nc = NCApp.find() else { done(false); return }
-        PanelPress(nc: nc, uuid: uuid, app: app, done: done).start()
     }
 
     static func activate(bundleID: String) {
@@ -36,16 +39,16 @@ enum NotificationClick {
     static func ms(since t: Date) -> String { "\(Int(Date().timeIntervalSince(t) * 1000)) ms" }
 }
 
-/// The panel path, one step per main-queue turn, so the bar never waits on it.
-@MainActor
-private final class PanelPress {
-    let nc: NCApp, uuid: String, app: String?, done: @MainActor (Bool) -> Void
+/// The panel path, one step per turn of the banners' queue.
+private final class PanelPress: @unchecked Sendable {
+    let source: BannerSource, nc: NCApp, uuid: String, app: String?, done: @Sendable (Bool) -> Void
     let t0 = Date()
     var wasOpen = false, how = "already open"
-    var host: AXUIElement?, home: CGPoint?
+    var host: AXUIElement?
     var stackPresses = 0, expandedAll = false, reparks = 0
 
-    init(nc: NCApp, uuid: String, app: String?, done: @escaping @MainActor (Bool) -> Void) {
+    init(source: BannerSource, nc: NCApp, uuid: String, app: String?, done: @escaping @Sendable (Bool) -> Void) {
+        self.source = source
         self.nc = nc
         self.uuid = uuid
         self.app = app
@@ -54,11 +57,10 @@ private final class PanelPress {
 
     var elapsed: Double { Date().timeIntervalSince(t0) }
 
-    func after(_ s: Double, _ step: @escaping @MainActor () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + s) { MainActor.assumeIsolated { step() } }
-    }
+    func after(_ s: Double, _ step: @escaping @Sendable () -> Void) { source.queue.asyncAfter(deadline: .now() + s, execute: step) }
 
     func start() {
+        source.pressing = true
         wasOpen = nc.panelOpen  // the user's own panel stays where it is
         if !wasOpen { how = NCAX.toggle() }
         waitOpen()
@@ -70,17 +72,16 @@ private final class PanelPress {
             after(0.005) { self.waitOpen() }
             return
         }
-        if !wasOpen, let h = nc.host, let p = h.point {
+        if !wasOpen, let h = nc.host {
             host = h
-            if !NCAX.isParked(p) { home = p }
-            h.setPoint(CGPoint(x: p.x, y: NCAX.parkedY))
+            source.park(h)
         }
         find()
     }
 
     func find() {
         if let host, let p = host.point, !NCAX.isParked(p) {
-            host.setPoint(CGPoint(x: p.x, y: NCAX.parkedY))  // NC can move it back while it lays the panel out
+            source.park(host)  // NC can move it back while it lays the panel out
             reparks += 1
         }
         guard elapsed < 2.5 else {
@@ -104,7 +105,7 @@ private final class PanelPress {
             expandedAll = true
             NCAX.all(in: w).filter { $0.subrole?.hasSuffix("Stack") == true }.forEach { $0.press() }
         }
-        after(0.01) { self.find() }
+        after(0.02) { self.find() }
     }
 
     func pressRow(_ row: AXUIElement) {
@@ -116,15 +117,13 @@ private final class PanelPress {
         finish(r == .success)
     }
 
-    /// Closes the panel this opened (unless NC did, within 0.3 s), then the window goes home after NC's close animation.
+    /// Closes the panel this opened (unless NC did, within 0.3 s); the window goes home after NC's close animation.
     func finish(_ ok: Bool) {
         done(ok)
-        guard !wasOpen else { return }
+        guard !wasOpen else { source.pressDone(); return }
         after(0.3) {
             if self.nc.panelOpen { _ = NCAX.toggle(prefer: self.how) }
-            self.after(0.8) {
-                if let host = self.host, let home = self.home { host.setPoint(home) }
-            }
+            self.after(0.8) { self.source.pressDone() }
         }
     }
 }
