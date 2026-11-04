@@ -1,6 +1,6 @@
 {
-  "count": 74,
-  "updated": "2026-11-03",
+  "count": 75,
+  "updated": "2026-11-04",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -27,6 +27,7 @@
     "Do Not Disturb with a moon pill",
     "Compact app-icon island",
     "Notifications from other apps",
+    "Banner text within half a second",
     "Open the exact chat from a banner",
     "Notification settings check in the logo menu",
     "Per-app notification rules",
