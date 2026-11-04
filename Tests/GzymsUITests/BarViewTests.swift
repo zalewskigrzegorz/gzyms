@@ -151,6 +151,14 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     preview(BannerView(n: .pending(app: "com.app", at: fixedNow), icon: nil, remaining: nil, total: nil), "banner-pending")
     preview(InboxList(notes: [reminder, older]), "inbox-list")
     preview(BellView(notes: [older], small: false), "bell")
+    // Whose count: the app's own Dock badge, Gzyms's list, both.
+    for theme in Theme.builtIn + ["catppuccin_latte"].compactMap(Theme.named) {
+        let apps = BarWorkspace(number: 1, color: "green", isActive: true, appBundleIDs: ["app", "gzyms", "both", "many"])
+        preview(WorkspaceItem(ws: apps, small: false, icon: { _ in fakeIcon }, inboxes: ["gzyms": [older, reminder], "both": [older], "many": [older, reminder]])
+            .padding(10).background(theme[\.base]).environment(\.theme, theme)
+            .environment(\.dockBadges, ["app": "3", "both": "12", "many": "998"]),
+        "app-counts-\(theme.name)")
+    }
     var np = NowPlaying(title: "Midnight City", artist: "M83", app: "com.spotify.client", appName: "Spotify", playing: true,
                         elapsed: 75, duration: 243, at: Date().timeIntervalSince1970)
     let music = mediaItems(np, tabs: [], now: np.at)
@@ -374,4 +382,20 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     #expect(rows.flatMap { $0.map(\.action) } == [.open, .dismiss, .snooze(minutes: 3), .alt, .next, .previous, nil])
     #expect(ChordHints(snoozeMinutes: nil).rows(alt: nil).count == 1)  // no second action: no alt line
     #expect(ChordHints(snoozeMinutes: nil, note: "No second action").rows(alt: "x") == [[HintItem("No second action")]])
+}
+
+@Test func countSourceSaysWhoseNumberItIs() {
+    #expect(CountSource(app: true, gzyms: false) == .app)
+    #expect(CountSource(app: false, gzyms: true) == .gzyms)
+    #expect(CountSource(app: true, gzyms: true) == .both)
+    #expect(CountSource(app: false, gzyms: false) == nil)
+    #expect(Set([CountSource.app, .gzyms, .both].map(\.fill)).count == 3)
+    #expect(CountSource.text(app: "5", gzyms: 1) == "6")
+    #expect(CountSource.text(app: "5", gzyms: 0) == "5")
+    #expect(CountSource.text(app: "8", gzyms: 3) == "11")
+    #expect(CountSource.text(app: nil, gzyms: 12) == "12")  // the real number, as the app's
+    #expect(CountSource.text(app: "998", gzyms: 5) == "999+")
+    #expect(CountSource.text(app: "•", gzyms: 2) == "2")
+    #expect(CountSource.text(app: "•", gzyms: 0) == "•")
+    #expect(CountSource.text(app: "1K", gzyms: 2) == "1K")
 }

@@ -358,8 +358,10 @@ struct AppIconItem: View {
         .frame(width: side, height: side)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { report(id, $0) }
         .overlay(alignment: .topTrailing) {
-            if !hiddenCounts.contains(id), let text = dockBadges[id] ?? (notes.isEmpty ? nil : badgeText(notes.count)) {
-                CountBadge(text: text).offset(x: 6, y: side < 16 ? -2 : -5)  // small bar on the notch screen: -5 hits the top edge
+            if !hiddenCounts.contains(id), let source = CountSource(app: dockBadges[id] != nil, gzyms: !notes.isEmpty) {
+                // Small, in the icon's corner: never under the workspace's frame or the next icon (Greg), 2 pt out at most.
+                CountBadge(text: CountSource.text(app: dockBadges[id], gzyms: notes.count), fill: source.fill)
+                    .offset(x: side < 16 ? 1 : 2, y: side < 16 ? -1 : -2)
             }
         }
         .modifier(InboxPopover(id: "app:\(id)", notes: notes, onOpen: onOpen, onRemove: onRemove))
@@ -386,17 +388,53 @@ private struct Bump<T: Equatable>: ViewModifier {
     }
 }
 
-/// Red capsule with the count; bumps when the count changes.
+/// Whose count an app's icon shows, each in its own colour: the app's own Dock badge (clearing in Gzyms never zeroes
+/// it, only the app does), Gzyms's list, or both. Every accent reads on `base` (ThemeTests), and the text is `base`.
+enum CountSource: Equatable {
+    case app, gzyms, both
+
+    /// Both: the sum (Greg, 2026-11-04), even where the app counts the same messages. The real number, the app's and
+    /// Gzyms's alike, up to "999+" (one look for all, Greg). "•" alone stays a dot, with Gzyms's count it gives that
+    /// count. Another label ("1K") stays as the app wrote it.
+    static func text(app: String?, gzyms: Int) -> String {
+        func number(_ n: Int) -> String { n > 999 ? "999+" : "\(n)" }
+        guard let app else { return number(gzyms) }
+        if let n = Int(app) { return number(n + gzyms) }
+        if app == "•" { return gzyms > 0 ? number(gzyms) : app }
+        return app
+    }
+
+    init?(app: Bool, gzyms: Bool) {
+        switch (app, gzyms) {
+        case (true, true): self = .both
+        case (true, false): self = .app
+        case (false, true): self = .gzyms
+        case (false, false): return nil
+        }
+    }
+
+    var fill: KeyPath<Theme, String> {
+        switch self {
+        case .app: \.red  // like the Dock's own badge
+        case .gzyms: \.sky
+        case .both: \.mauve
+        }
+    }
+}
+
+/// Small capsule with the count; bumps when the count changes. More digits, a smaller font: "999+" still leaves the
+/// icon in view (Greg).
 struct CountBadge: View {
     let text: String
+    let fill: KeyPath<Theme, String>
     @Environment(\.theme) private var theme
     var body: some View {
-        Text(text.count > 3 ? String(text.prefix(2)) + "+" : text)
-            .font(.system(size: 9, weight: .bold).monospacedDigit())
+        Text(text)
+            .font(.system(size: [7, 7, 6, 5][min(text.count, 4) - 1], weight: .bold).monospacedDigit())
             .foregroundStyle(theme[\.base])
-            .padding(.horizontal, 3)
-            .frame(minWidth: 13, minHeight: 13)
-            .background(Capsule().fill(theme[\.red]))
+            .padding(.horizontal, 1.5)
+            .frame(minWidth: 9, minHeight: 9)
+            .background(Capsule().fill(theme[fill]))
             .fixedSize()
             .bump(on: text, to: 1.7)
     }
