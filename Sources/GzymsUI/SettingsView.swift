@@ -186,7 +186,10 @@ public struct SettingsView: View {
         case .agents: AgentsTab(config: config, write: actions.write, plugins: plugins, actions: actions)
         case .sounds: SoundsTab(config: config, write: actions.write, actions: actions)
         case .shortcuts: ShortcutsTab(config: config, write: actions.write, recording: actions.recording)
-        case .permissions: Section(title: "Permissions") { PermissionsView(states: grants, open: actions.openGrant, restart: actions.restart) }
+        case .permissions: Section(title: "Permissions") {
+            PermissionsView(states: grants, open: actions.openGrant, restart: actions.restart)
+            if actions.hacks().noBanners { Row(title: "No banners", note: HacksTab.noBannersText) { EmptyView() } }
+        }
         case .hacks: HacksTab(config: config, grants: grants, actions: actions, live: live)
         case .debug: DebugTab(config: config, actions: actions)
         case .about: AboutTab(version: actions.version, open: actions.openURL, config: config, logo: logo,
@@ -1090,6 +1093,14 @@ public struct HacksState: Equatable {
     public var reader = ""
     /// When usernoted last said an app sent something.
     public var lastSignal: Date?
+    /// The Accessibility observer on Notification Center is attached.
+    public var bannerAXOn = false
+    /// When the last macOS banner was read.
+    public var lastBanner: Date?
+    /// NotificationNanny runs: two observers fight over one banner.
+    public var nannyRunning = false
+    /// Apps send notifications but Notification Center shows no banner (`BannerGuard`).
+    public var noBanners = false
     public init() {}
 }
 
@@ -1142,15 +1153,20 @@ private struct HacksTab: View {
                     }
                 }
                 Section(title: "Notifications") {
+                    Row(title: "Instant banners",
+                        note: state(bannersState(h), ok: config.bannerAX && h.bannerAXOn && !h.nannyRunning && !h.noBanners)
+                            + " Gzyms reads the macOS banner through Accessibility the moment it shows, and hides it. A macOS update can break it. Then the text comes from the database a few seconds later.") {
+                        Switch(on: config.bannerAX) { actions.write("banner_ax", $0 ? nil : .bool(false), .table(["notifications"])) }
+                    }
                     Row(title: "Open the exact chat",
-                        note: "Opening a notification in Gzyms presses its original in Notification Center through Accessibility, after globe+N. The app then opens the right chat or thread. A macOS update can break it. Then Gzyms opens just the app. Set each app in Apps.") {
+                        note: "Opening a notification in Gzyms presses its macOS banner through Accessibility. Once the banner is gone, it presses its row in Notification Center, hidden off screen. The app then opens the right chat or thread. A macOS update can break it. Then Gzyms opens just the app. Set each app in Apps.") {
                         Switch(on: config.openOriginal) { actions.write("open_original", $0 ? nil : .bool(false), .table(["notifications"])) }
                     }
                     Row(title: "Instant app icons",
-                        note: state(h.lastSignal.map { "Last signal at \($0.formatted(date: .omitted, time: .shortened))." } ?? "No signal since Gzyms started.",
-                                    ok: h.lastSignal != nil)
-                            + " Gzyms follows macOS's notification log, so an app's icon shows at once and the text follows a few seconds later. A macOS update can change the log.") {
-                        docsButton
+                        note: state(!config.signal ? "Off." : h.lastSignal.map { "Last signal at \($0.formatted(date: .omitted, time: .shortened))." } ?? "No signal since Gzyms started.",
+                                    ok: config.signal && h.lastSignal != nil)
+                            + " Gzyms follows macOS's notification log, so an app's icon shows at once and the text follows. A macOS update can change the log. Off: the banner waits for its text.") {
+                        Switch(on: config.signal) { actions.write("signal", $0 ? nil : .bool(false), .table(["notifications"])) }
                     }
                     Row(title: "Notifications from other apps",
                         note: state(fullDisk ? "Full Disk Access is on." : "Full Disk Access is off.", ok: fullDisk)
@@ -1163,6 +1179,16 @@ private struct HacksTab: View {
     }
 
     private var fullDisk: Bool { grants.first { $0.grant == .fullDiskAccess }?.granted == true }
+
+    private func bannersState(_ h: HacksState) -> String {
+        if !config.bannerAX { return "Off." }
+        if h.nannyRunning { return "NotificationNanny is running. Quit it, it takes the same banners." }
+        if h.noBanners { return Self.noBannersText }
+        if !h.bannerAXOn { return "Waiting for Accessibility and Notification Center." }
+        return h.lastBanner.map { "Last banner at \($0.formatted(date: .omitted, time: .shortened))." } ?? "No banner since Gzyms started."
+    }
+
+    static let noBannersText = "Notification Center shows no banners although apps send them, or a Focus is on. Restart it: killall NotificationCenter"
 
     private var docsButton: some View { Button("Docs") { actions.openURL(Self.docs) } }
 
@@ -1340,7 +1366,7 @@ private struct AppsTab: View {
         }
         Section(title: "macOS") {
             Row(title: "Let Gzyms show them, not macOS",
-                note: "The gear next to an app opens its macOS page. Keep Allow notifications, Notification Center and Badge on. Untick Desktop and Lock Screen, and turn the sound off. Gzyms still gets every one, and nothing shows twice.") {
+                note: "The gear next to an app opens its macOS page. Keep Allow notifications, Desktop and Notification Center on. Show previews Always or When unlocked. Turn the sound off. Gzyms reads each banner and hides the macOS one, so nothing shows twice.") {
                 Button("Open Notification settings", action: actions.openNotificationSettings)
             }
             Row(title: "Open the exact chat",
@@ -1367,11 +1393,12 @@ private struct MacNotificationsMock: View {
         VStack(alignment: .leading, spacing: 8) {
             line("Allow notifications", on: true)
             HStack(spacing: 14) {
-                tile("Desktop", on: false)
+                tile("Desktop", on: true)
                 tile("Notification Center", on: true)
                 tile("Lock Screen", on: nil)
             }
-            line("Badge application icon", on: true)
+            line("Show previews", on: true, note: "Always or When unlocked")
+            line("Badge application icon", on: nil)
             line("Play sound for notification", on: false, note: "Gzyms plays it")
         }
         .padding(12)
@@ -1389,7 +1416,7 @@ private struct MacNotificationsMock: View {
         }
     }
 
-    private func line(_ title: String, on: Bool, note: String? = nil) -> some View {
+    private func line(_ title: String, on: Bool?, note: String? = nil) -> some View {
         HStack {
             Text(title).font(.system(size: 11))
             if let note { Text(note).font(.system(size: 11)).foregroundStyle(theme[\.overlay]) }

@@ -1398,6 +1398,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         h.tabs = model.tabs.count
         h.reader = music.reader
         h.lastSignal = lastSignal
+        h.bannerAXOn = banners?.attached ?? false
+        h.lastBanner = banners?.lastBanner
+        h.nannyRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.notificationnanny.app").isEmpty
+        h.noBanners = noBanners
         return h
     }
 
