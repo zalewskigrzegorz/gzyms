@@ -1,5 +1,5 @@
 {
-  "count": 75,
+  "count": 77,
   "updated": "2026-11-04",
   "features": [
     "gzyms notify command",
@@ -31,6 +31,8 @@
     "Open the exact chat from a banner",
     "Notification settings check in the logo menu",
     "Per-app notification rules",
+    "Per-app presets: Banner and sound, Quiet, Count only, Important, Off",
+    "Mirror of each app's macOS notification page with what to change",
     "Phone push (ntfy, Pushover, webhook)",
     "Custom sound per event",
     "Dock badges on the bar",

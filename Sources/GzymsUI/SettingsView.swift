@@ -11,9 +11,9 @@ public enum SettingsTab: String, CaseIterable, Sendable {
 public struct SeenApp: Equatable {
     public var id: String, name: String
     public var icon: NSImage?
-    /// What to change in its macOS notification settings so opening the original works; nil = nothing.
-    public var warning: String?
-    public init(id: String, name: String, icon: NSImage?, warning: String? = nil) { self.id = id; self.name = name; self.icon = icon; self.warning = warning }
+    /// Its macOS notification settings; nil = not read (no Full Disk Access, the switches in Hacks off, a plugin).
+    public var mac: NCAppSettings?
+    public init(id: String, name: String, icon: NSImage?, mac: NCAppSettings? = nil) { self.id = id; self.name = name; self.icon = icon; self.mac = mac }
 }
 
 /// What the panel can ask the app to do. Every setting goes through `write`, which edits one line of `config.toml`.
@@ -78,6 +78,8 @@ public struct SettingsView: View {
     let live: Bool
     let plugins: [PluginStatus]
     let actions: SettingsActions
+    /// The app open on the side of Apps when the panel first draws (snapshots).
+    let openApp: String?
     @State private var headerHeight: CGFloat = 0
     @State private var contentHeight: CGFloat = 0
     @State private var width: CGFloat = 900
@@ -86,8 +88,8 @@ public struct SettingsView: View {
 
     public init(tab: Binding<SettingsTab>, config: GzymsConfig, problems: [String], broken: Bool, apps: [SeenApp],
                 devices: [String], workspaceNames: [Int: String] = [:], grants: [GrantState] = [], calendars: [CalendarInfo] = [],
-                logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], actions: SettingsActions) {
-        self.logo = logo; self.live = live; self.plugins = plugins
+                logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], openApp: String? = nil, actions: SettingsActions) {
+        self.logo = logo; self.live = live; self.plugins = plugins; self.openApp = openApp
         _tab = tab; self.config = config; self.problems = problems; self.broken = broken
         self.apps = apps; self.devices = devices; self.workspaceNames = workspaceNames; self.grants = grants
         self.calendars = calendars; self.actions = actions
@@ -179,7 +181,7 @@ public struct SettingsView: View {
         case .appearance: AppearanceTab(config: config, devices: devices, write: actions.write, openThemes: { tab = .themes })
         case .themes: ThemesTab(config: config, write: actions.write)
         case .notifications: NotificationsTab(config: config, actions: actions)
-        case .apps: AppsTab(config: config, apps: apps, plugins: plugins, actions: actions)
+        case .apps: AppsTab(config: config, apps: apps, plugins: plugins, actions: actions, live: live, selected: openApp)
         case .modules: ModulesTab(config: config, write: actions.write, plugins: plugins)
         case .plugins: PluginsTab(config: config, write: actions.write, plugins: plugins, actions: actions)
         case .calendar: CalendarTab(config: config, calendars: calendars, write: actions.write)
@@ -1317,37 +1319,44 @@ private struct NotificationsTab: View {
 
 }
 
-/// Which apps may show what, and how macOS should hand their notifications over.
+/// Which apps may show what, and how macOS should hand their notifications over. A short list (apps that need a change
+/// in macOS first, the rest folded), a click opens the app on the side (Greg, 2026-11-04: layout X).
 private struct AppsTab: View {
     let config: GzymsConfig
     let apps: [SeenApp]
     let plugins: [PluginStatus]
     let actions: SettingsActions
+    let live: Bool
+    @State var selected: String?
+    @State private var showOK = false
     @State private var dropping = false
     @Environment(\.theme) private var theme
-    private var write: (String, TOMLValue?, ConfigTable) -> Void { actions.write }
 
     var body: some View {
         Columns {
         Section(title: "Apps") {
-            HStack {
-                Text("App"); Spacer(); Color.clear.frame(width: 24)
-                Text("Banner").frame(width: 56); Text("Sound").frame(width: 56); Text("Count").frame(width: 56)
-                Text("Phone").frame(width: 56)
-                Text("Every notification is").frame(width: 150)
+            if !needing.isEmpty {
+                HStack {
+                    Text("\(needing.count) \(needing.count == 1 ? "app needs" : "apps need") a change in macOS.").foregroundStyle(theme[\.peach])
+                    Spacer()
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(theme[\.peach].opacity(0.12)))
+                .padding(.horizontal, 8).padding(.top, 8)
             }
-            .font(.system(size: 11)).foregroundStyle(theme[\.overlay]).padding(.horizontal, 12).padding(.top, 6)
-            ForEach(listed, id: \.id) { app in
-                AppRow(app: app, rule: config.appRules[app.id] ?? AppRule(), write: write) { actions.openAppNotifications(app.id) }
+            ForEach(listed.filter { !isOK($0) }, id: \.id, content: row)
+            let ok = listed.filter(isOK)
+            if !ok.isEmpty {
+                if showOK { ForEach(ok, id: \.id, content: row) } else {
+                    Button("\(ok.count) \(ok.count == 1 ? "app" : "apps") set up right") { showOK = true }
+                        .buttonStyle(.borderless).foregroundStyle(theme[\.overlay])
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 6)
+                }
             }
             if !plugins.isEmpty {
                 Text("Plugins").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 8)
-                ForEach(plugins, id: \.folder) { p in
-                    let id = "plugin:\(p.folder)"
-                    AppRow(app: SeenApp(id: id, name: p.name, icon: nil), rule: config.appRules[id] ?? AppRule(), write: write)
-                }
-                Divider().padding(.horizontal, 12).padding(.top, 4)
+                ForEach(plugins.map { SeenApp(id: "plugin:\($0.folder)", name: $0.name, icon: nil) }, id: \.id, content: row)
             }
             HStack {
                 Text("Drag an app here to set it up before it sends anything")
@@ -1364,18 +1373,60 @@ private struct AppsTab: View {
                 return true
             } isTargeted: { dropping = $0 }
         }
-        Section(title: "macOS") {
-            Row(title: "Let Gzyms show them, not macOS",
-                note: "The gear next to an app opens its macOS page. Keep Allow notifications, Desktop and Notification Center on. Turn the sound off. Set Show previews once, at the top of Notifications, to Always or When Unlocked. Apps on Default follow it. Gzyms reads each banner and hides the macOS one, so nothing shows twice.") {
-                Button("Open Notification settings", action: actions.openNotificationSettings)
+        if let app = (listed + plugins.map { SeenApp(id: "plugin:\($0.folder)", name: $0.name, icon: nil) }).first(where: { $0.id == selected }) {
+            Section(title: app.name) {
+                AppDrawer(app: app, rule: config.appRules[app.id] ?? AppRule(), dnd: config.dndBreaks, live: live, write: actions.write,
+                          macOS: app.id.hasPrefix("plugin:") ? nil : { actions.openAppNotifications(app.id) })
             }
-            Row(title: "Open the exact chat",
-                note: "Set each app as below so a notification opens its chat, thread or event. Its gear opens its page, and a warning next to it says what is off. The switch is in Hacks.") {
-                EmptyView()
+        } else {
+            Section(title: "macOS") {
+                Row(title: "Let Gzyms show them, not macOS",
+                    note: "Keep Allow notifications, Desktop and Notification Center on. Turn the sound off. Set Show previews once, at the top of Notifications, to Always or When Unlocked. Apps on Default follow it. Gzyms reads each banner and hides the macOS one, so nothing shows twice.") {
+                    Button("Open Notification settings", action: actions.openNotificationSettings)
+                }
+                Row(title: "Open the exact chat",
+                    note: "Click an app to see its macOS page as it is now. What to change pulses. The switch is in Hacks.") {
+                    EmptyView()
+                }
+                MacMirror(settings: nil, animate: false).padding(.horizontal, 12).padding(.bottom, 10)
             }
-            MacNotificationsMock().padding(.horizontal, 12).padding(.bottom, 10)
         }
         }
+    }
+
+    /// Read from macOS and nothing to change. Apps not read (no Full Disk Access) stay in the list.
+    private func isOK(_ a: SeenApp) -> Bool { a.mac?.problems.isEmpty == true }
+    private var needing: [SeenApp] { listed.filter { !($0.mac?.problems.isEmpty ?? true) } }
+
+    private func row(_ app: SeenApp) -> some View {
+        let rule = config.appRules[app.id] ?? AppRule()
+        let pick = { selected = selected == app.id ? nil : app.id }
+        return HStack(spacing: 10) {
+            Group {
+                if let icon = app.icon { Image(nsImage: icon).resizable() } else { Color.clear }
+            }
+            .frame(width: 18, height: 18)
+            Text(app.name).lineLimit(1)
+            Spacer()
+            Text(AppPreset(rule)?.title ?? "Custom").font(.system(size: 12)).foregroundStyle(theme[\.overlay])
+            if let mac = app.mac, !mac.unsupported {
+                let n = mac.problems.count
+                HStack(spacing: 5) {
+                    Circle().fill(n == 0 ? theme[\.green] : theme[\.peach]).frame(width: 7, height: 7)
+                    Text(n == 0 ? "OK" : "\(n) in macOS")
+                }
+                .font(.system(size: 12)).foregroundStyle(n == 0 ? theme[\.overlay] : theme[\.peach])
+                .frame(width: 84, alignment: .leading)
+            } else {
+                Color.clear.frame(width: 84, height: 1)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(selected == app.id ? theme[\.surface] : .clear).padding(.horizontal, 4))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: pick)
+        .settingsSlot(choose: pick)
+        .help(app.mac?.warning ?? "")
     }
 
     /// Seen apps plus apps with a rule, by name.
@@ -1385,49 +1436,179 @@ private struct AppsTab: View {
     }
 }
 
-/// The per-app page of System Settings → Notifications, drawn with the boxes Gzyms needs: easier to copy than a list.
-private struct MacNotificationsMock: View {
+extension AppPreset {
+    var title: String {
+        switch self {
+        case .full: "Banner and sound"
+        case .quiet: "Quiet"
+        case .count: "Count only"
+        case .important: "Important"
+        case .off: "Off"
+        }
+    }
+
+    func note(dnd: Set<DNDBreak>) -> String {
+        switch self {
+        case .full: "Banner, Gzyms sound and a count on the bar."
+        case .quiet: "Banner without sound. A count on the bar."
+        case .count: "No banner and no sound. An icon with a number on the bar."
+        case .important: dnd.contains(.critical)
+            ? "Like Banner and sound, as critical. It breaks through Do Not Disturb."
+            : "Like Banner and sound, as critical. Tick critical under Do Not Disturb in Notifications to break through it."
+        case .off: "Gzyms skips it. Nothing shows and nothing lands in the list."
+        }
+    }
+}
+
+/// One app on the side of Settings → Apps: how Gzyms shows it, every switch under More, its macOS page below.
+private struct AppDrawer: View {
+    let app: SeenApp
+    let rule: AppRule
+    let dnd: Set<DNDBreak>
+    let live: Bool
+    let write: (String, TOMLValue?, ConfigTable) -> Void
+    /// Opens the app's macOS notification page; nil for plugins, which have none.
+    var macOS: (() -> Void)?
+    @State private var more = false
     @Environment(\.theme) private var theme
+
+    private var table: ConfigTable { .table(["notifications", "apps", app.id]) }
+    /// A value back at its default removes the line, so the file only says what differs.
+    private func set(_ key: String, _ on: Bool) { write(key, on ? nil : .bool(false), table) }
+
+    private func apply(_ p: AppPreset) {
+        let r = p.applied(to: rule)
+        set("banner", r.banner); set("sound", r.sound); set("count", r.count)
+        write("level", r.level == .normal ? nil : .string(r.level.rawValue), table)
+        write("skip", r.skip ? .bool(true) : nil, table)
+    }
+
+    var body: some View {
+        let preset = AppPreset(rule)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("How Gzyms shows it").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+            Picker("", selection: Binding(get: { preset }, set: { if let p = $0 { apply(p) } })) {
+                ForEach(AppPreset.allCases, id: \.self) { Text($0.title).tag(Optional($0)) }
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            .settingsSlot { apply(AppPreset.allCases[((preset.flatMap { AppPreset.allCases.firstIndex(of: $0) } ?? -1) + 1) % AppPreset.allCases.count]) }
+            Text(preset?.note(dnd: dnd) ?? "Custom. Set by hand under More.").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+        }
+        .padding(12)
+        DisclosureGroup(isExpanded: $more) {
+            VStack(spacing: 0) {
+                Row(title: "Banner") { Switch(on: rule.banner) { set("banner", $0) } }
+                Row(title: "Sound", note: "Gzyms plays it") { Switch(on: rule.sound) { set("sound", $0) } }
+                Row(title: "Count on the bar") { Switch(on: rule.count) { set("count", $0) } }
+                Row(title: "Phone", note: "every notification of this app, whatever its level") {
+                    Switch(on: rule.phone) { write("phone", $0 ? .bool(true) : nil, table) }
+                }
+                Row(title: "Every notification is", note: rule.level == .armageddon ? "Every screen flashes red with a sound until you click it." : nil) {
+                    menu(rule.level, [(AppLevel.normal, "normal"), (.critical, "critical"), (.armageddon, "armageddon")], width: 150) { l in
+                        write("level", l == .normal ? nil : .string(l.rawValue), table)
+                    }
+                }
+                Row(title: "Skip it") { Switch(on: rule.skip) { write("skip", $0 ? .bool(true) : nil, table) } }
+            }
+        } label: {
+            Text("More").onTapGesture { more.toggle() }.settingsSlot { more.toggle() }
+        }
+        .padding(.horizontal, 12)
+        if let macOS {
+            HStack {
+                Text("In macOS").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+                Spacer()
+                Button("Open in System Settings", action: macOS)
+            }
+            .padding(.horizontal, 12).padding(.top, 10)
+            if let mac = app.mac, mac.unsupported {
+                Text(mac.warning ?? "").padding(12)
+            } else if let mac = app.mac {
+                MacMirror(settings: mac, animate: live).padding(.horizontal, 12).padding(.bottom, 10)
+            } else {
+                Text("Gzyms cannot read its macOS settings. It needs Full Disk Access, and Open the exact chat or Read banners on in Hacks.")
+                    .font(.system(size: 11)).foregroundStyle(theme[\.overlay]).padding(12)
+            }
+        }
+    }
+}
+
+/// An app's page in System Settings → Notifications, drawn as macOS draws it, so the box to click is found by its shape
+/// (Greg, 2026-11-04: variant A). What to change is ringed and says what to do. nil = the page as Gzyms wants it.
+struct MacMirror: View {
+    let settings: NCAppSettings?
+    var animate = true
+    @State private var dim = false
+    @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    private var shown: NCAppSettings { settings ?? NCAppSettings() }
+    private func wrong(_ bad: Bool) -> Bool { settings != nil && bad }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            line("Allow notifications", on: true)
-            HStack(spacing: 14) {
-                tile("Desktop", on: true)
-                tile("Notification Center", on: true)
-                tile("Lock Screen", on: nil)
+            line("Allow notifications", fix: nil) { mark(true) }
+            HStack(alignment: .top, spacing: 14) {
+                tile("Desktop", on: shown.desktop, fix: wrong(!shown.desktop) ? "Tick" : nil)
+                tile("Notification Center", on: shown.center, fix: wrong(!shown.center) ? "Tick" : nil)
+                tile("Lock Screen", on: nil, fix: nil)
             }
-            line("Show previews", on: true, note: "Default, with the top setting Always or When Unlocked")
-            line("Badge application icon", on: nil)
-            line("Play sound for notification", on: false, note: "Gzyms plays it")
+            .padding(.top, 4)
+            line("Alert Style", fix: nil) {
+                Text(settings == nil ? "either" : shown.persistent ? "Persistent" : "Temporary").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+            }
+            line("Show previews", fix: wrong(shown.previewsHidden) ? (shown.previews == 0 ? "Default follows the top of Notifications. Set it there." : "Default, When Unlocked or Always") : nil) {
+                Text(settings == nil ? "Default" : ["Default", "Never", "When Unlocked", "Always"][min(max(shown.previews, 0), 3)])
+                    .font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+            }
+            line("Badge application icon", fix: nil) { mark(nil) }
+            line("Play sound for notification", fix: wrong(shown.sound) ? "Turn off. Gzyms plays it" : nil) { mark(shown.sound) }
+            if wrong(shown.shortcutOff) {
+                Text("The globe+N shortcut is off. Turn on Show Notification Center in Keyboard Shortcuts.")
+                    .font(.system(size: 11)).foregroundStyle(theme[\.peach])
+            }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(theme[\.base]))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme[\.overlay].opacity(0.4)))
+        .onAppear { if animate, !still { withAnimation(.easeInOut(duration: 0.8).repeatForever()) { dim = true } } }
+    }
+
+    /// The pulsing ring around what to change.
+    private func ring(_ on: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 6).strokeBorder(on ? theme[\.peach].opacity(dim ? 0.3 : 1) : .clear, lineWidth: 2)
     }
 
     /// nil = either way.
-    private func tile(_ title: String, on: Bool?) -> some View {
+    private func tile(_ title: String, on: Bool?, fix: String?) -> some View {
         VStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 4).fill(theme[\.surface]).frame(width: 90, height: 44)
-                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(on == true ? theme[\.green] : .clear, lineWidth: 2))
             Text(title).font(.system(size: 11))
             mark(on)
+            if let fix { Text(fix).font(.system(size: 10, weight: .semibold)).foregroundStyle(theme[\.peach]) }
         }
+        .padding(4)
+        .overlay(ring(fix != nil))
     }
 
-    private func line(_ title: String, on: Bool?, note: String? = nil) -> some View {
-        HStack {
-            Text(title).font(.system(size: 11))
-            if let note { Text(note).font(.system(size: 11)).foregroundStyle(theme[\.overlay]) }
-            Spacer()
-            mark(on)
+    private func line<V: View>(_ title: String, fix: String?, @ViewBuilder value: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(title).font(.system(size: 11))
+                Spacer()
+                value()
+            }
+            if let fix { Text(fix).font(.system(size: 10, weight: .semibold)).foregroundStyle(theme[\.peach]) }
         }
+        .padding(.horizontal, 6).padding(.vertical, 3)
+        .overlay(ring(fix != nil))
     }
 
+    /// The page as Gzyms wants it marks wanted values green and unwanted red; the real page shows what is set.
     private func mark(_ on: Bool?) -> some View {
-        Image(systemName: on == nil ? "minus.square" : on! ? "checkmark.square.fill" : "square")
-            .foregroundStyle(on == nil ? theme[\.overlay] : on! ? theme[\.green] : theme[\.red])
+        let color = on == nil ? theme[\.overlay] : settings != nil ? theme[\.text] : on! ? theme[\.green] : theme[\.red]
+        return Image(systemName: on == nil ? "minus.square" : on! ? "checkmark.square.fill" : "square")
+            .foregroundStyle(color)
             .help(on == nil ? "Either way" : on! ? "On" : "Off")
     }
 }
@@ -1489,45 +1670,5 @@ private struct LetterRow: View {
                     return .handled
                 }
         }
-    }
-}
-
-private struct AppRow: View {
-    let app: SeenApp
-    let rule: AppRule
-    let write: (String, TOMLValue?, ConfigTable) -> Void
-    /// Opens the app's macOS notification page; nil for plugins, which have none.
-    var macOS: (() -> Void)?
-    @Environment(\.theme) private var theme
-
-    private var table: ConfigTable { .table(["notifications", "apps", app.id]) }
-    /// A value back at its default removes the line, so the file only says what differs.
-    private func set(_ key: String, _ on: Bool) { write(key, on ? nil : .bool(false), table) }
-
-    var body: some View {
-        HStack {
-            if let icon = app.icon { Image(nsImage: icon).resizable().frame(width: 18, height: 18) }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(app.name).lineLimit(1)
-                if let warning = app.warning {
-                    Label(warning, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(theme[\.peach])
-                        .fixedSize()
-                }
-            }
-            Spacer()
-            Group {
-                if let macOS { Button(action: macOS) { Image(systemName: "gearshape") }.buttonStyle(.borderless).help("Its macOS notification settings") }
-            }
-            .frame(width: 24)
-            Switch(on: rule.banner) { set("banner", $0) }.frame(width: 56)
-            Switch(on: rule.sound) { set("sound", $0) }.frame(width: 56)
-            Switch(on: rule.count) { set("count", $0) }.frame(width: 56)
-            Switch(on: rule.phone) { write("phone", $0 ? .bool(true) : nil, table) }.frame(width: 56)
-            menu(rule.level, [(AppLevel.normal, "normal"), (.critical, "critical"), (.armageddon, "armageddon")], width: 150) { l in
-                write("level", l == .normal ? nil : .string(l.rawValue), table)
-            }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 4)
-        .help(rule.level == .armageddon ? "Every screen flashes red with a sound until you click it." : "")
     }
 }

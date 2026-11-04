@@ -45,15 +45,21 @@ private func blob(_ req: [String: Any]) throws -> Data {
     let data = try prefs([("com.ok", banners, 3), ("com.alerts", alerts, 2), ("com.none", none, 3), ("com.nc", banners | 0x1, 3),
                           ("com.sound", banners | 0x4, 3), ("com.never", banners, 1), ("com.global", banners, nil), ("com.default", banners, 0),
                           ("com.two", none | 0x4, 3), ("com.unseen", none, 1)], global: 1)
-    #expect(ncSettingsWarnings(prefs: data, apps: seen, hotkeys: nil) ==
+    func warnings(_ prefs: Data, _ apps: [String]? = nil, hotkeys: Data? = nil) -> [String: String]? {
+        ncAppSettings(prefs: prefs, apps: apps ?? seen, hotkeys: hotkeys)?.compactMapValues(\.warning)
+    }
+    #expect(warnings(data) ==
             ["com.none": "Banners off", "com.nc": "Notification Center off", "com.sound": "Sound on", "com.never": "Previews off",
              "com.global": "Previews off", "com.default": "Previews off", "com.two": "Banners off, Sound on"])
-    #expect(ncSettingsWarnings(prefs: try prefs([("com.global", banners, nil)], global: 2), apps: seen, hotkeys: nil) == [:])
+    #expect(warnings(try prefs([("com.global", banners, nil)], global: 2)) == [:])
     let off = try PropertyListSerialization.data(fromPropertyList: ["AppleSymbolicHotKeys": ["163": ["enabled": false]]], format: .binary, options: 0)
-    #expect(ncSettingsWarnings(prefs: try prefs([("com.ok", banners, 3)]), apps: seen, hotkeys: off) == ["com.ok": "globe+N shortcut off"])
-    #expect(ncSettingsWarnings(prefs: try prefs([("com.apple.mail", banners, 3)]), apps: ["com.apple.mail"], hotkeys: nil) ==
+    #expect(warnings(try prefs([("com.ok", banners, 3)]), hotkeys: off) == ["com.ok": "globe+N shortcut off"])
+    #expect(warnings(try prefs([("com.apple.mail", banners, 3)]), ["com.apple.mail"]) ==
             ["com.apple.mail": "macOS does not let you set notifications for Mail."])
-    #expect(ncSettingsWarnings(prefs: Data("nope".utf8), apps: seen, hotkeys: nil) == nil)
+    #expect(warnings(Data("nope".utf8)) == nil)
+    // The mirror needs the tiles as they are, not just what is wrong.
+    let spark = try #require(ncAppSettings(prefs: try prefs([("com.spark", 0x10 | 0x1, 2)]), apps: ["com.spark"], hotkeys: nil)?["com.spark"])
+    #expect(spark == NCAppSettings(desktop: true, persistent: true, center: false, sound: false, previews: 2))
 }
 
 @Test func recordWithoutTitleUsesBody() throws {

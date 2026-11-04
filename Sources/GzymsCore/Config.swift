@@ -283,6 +283,7 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         if let v = r.sound { rule.sound = v }
         if let v = r.count { rule.count = v }
         if let v = r.phone { rule.phone = v }
+        if let v = r.skip { rule.skip = v }
         if let l = r.level {
             if let level = AppLevel(rawValue: l) { rule.level = level }
             else { problems.append("notifications.apps.\"\(app)\".level: \"\(l)\" must be normal, critical or armageddon, kept normal") }
@@ -548,11 +549,11 @@ private struct RawPhone: Decodable {
 }
 
 private struct RawAppRule: Decodable {
-    var banner: Bool?, sound: Bool?, count: Bool?, phone: Bool?
+    var banner: Bool?, sound: Bool?, count: Bool?, phone: Bool?, skip: Bool?
     var level: String?
     /// Paths relative to the app's table; the loader puts `notifications.apps."<id>".` in front.
     var problems: [String] = []
-    enum CodingKeys: String, CodingKey { case banner, sound, count, level, phone }
+    enum CodingKeys: String, CodingKey { case banner, sound, count, level, phone, skip }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         banner = lenient(c, .banner, "banner", &problems)
@@ -560,7 +561,8 @@ private struct RawAppRule: Decodable {
         count = lenient(c, .count, "count", &problems)
         level = lenient(c, .level, "level", &problems)
         phone = lenient(c, .phone, "phone", &problems)
-        problems += try unknownKeys(in: decoder, known: ["banner", "sound", "count", "level", "phone"], prefix: "")
+        skip = lenient(c, .skip, "skip", &problems)
+        problems += try unknownKeys(in: decoder, known: ["banner", "sound", "count", "level", "phone", "skip"], prefix: "")
     }
 }
 

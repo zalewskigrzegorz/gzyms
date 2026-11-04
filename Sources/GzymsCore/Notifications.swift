@@ -23,8 +23,10 @@ public struct AppRule: Equatable, Sendable {
     public var level = AppLevel.normal
     /// Every notification of this app goes to the phone when left alone, whatever its level.
     public var phone = false
-    public init(banner: Bool = true, sound: Bool = true, count: Bool = true, level: AppLevel = .normal, phone: Bool = false) {
-        self.banner = banner; self.sound = sound; self.count = count; self.level = level; self.phone = phone
+    /// Gzyms drops every notification of this app: no banner, no list, no phone (preset Off).
+    public var skip = false
+    public init(banner: Bool = true, sound: Bool = true, count: Bool = true, level: AppLevel = .normal, phone: Bool = false, skip: Bool = false) {
+        self.banner = banner; self.sound = sound; self.count = count; self.level = level; self.phone = phone; self.skip = skip
     }
 
     /// A rule only raises: an app set to critical still sends its own armageddon.
@@ -38,6 +40,33 @@ public struct AppRule: Equatable, Sendable {
 }
 
 public enum AppLevel: String, Sendable { case normal, critical, armageddon }
+
+/// One choice in Settings → Apps instead of four switches and a level (Greg, 2026-11-04). The phone stays its own switch.
+public enum AppPreset: String, CaseIterable, Sendable {
+    case full, quiet, count, important, off
+
+    public var rule: AppRule {
+        switch self {
+        case .full: AppRule()
+        case .quiet: AppRule(sound: false)
+        case .count: AppRule(banner: false, sound: false)
+        case .important: AppRule(level: .critical)
+        case .off: AppRule(skip: true)
+        }
+    }
+
+    /// The preset a rule matches, phone aside. nil = set by hand under More.
+    public init?(_ rule: AppRule) {
+        if rule.skip { self = .off; return }
+        var r = rule
+        r.phone = false
+        guard let p = Self.allCases.first(where: { $0.rule == r }) else { return nil }
+        self = p
+    }
+
+    /// `rule` with this preset's switches and the phone left as it was.
+    public func applied(to rule: AppRule) -> AppRule { var r = self.rule; r.phone = rule.phone; return r }
+}
 
 /// The key of a notification's rule: its app's bundle id, or `plugin:<folder>` for a plugin's own.
 public func ruleKey(_ n: GzymsNotification) -> String? {
@@ -251,6 +280,7 @@ public struct NotificationStore: Sendable {
     public mutating func post(_ n: GzymsNotification, now: Double) {
         var n = n
         let rule = appRules.rule(for: n)
+        if rule.skip { return }
         n.level = rule.raise(n.level)
         // Banner off: straight into the count, unless it is loud enough that it must be seen.
         if !rule.banner, n.level != .critical, n.level != .armageddon, !contains(n.id) {

@@ -26,33 +26,62 @@ public func ncRecordUUID(noteID: String) -> String? {
 /// Apps whose original cannot be opened this way (Greg, 2026-11-02: Mail cannot be set up for it): a click opens just the app.
 public let ncOpenOriginalUnsupported: Set<String> = ["com.apple.mail"]
 
-/// Per app, what keeps Gzyms from reading its banner or opening its original (the warning sign in Settings → Apps),
-/// from macOS's per-app notification settings (`apps` in usernoted's group plist). Read by flipping the boxes live on
-/// macOS 27 (2026-11-04): `flags` 0x1 = Notification Center off, 0x4 = Play sound on (Gzyms plays it),
-/// 0x8 = Desktop with Temporary banners, 0x10 = Desktop with Persistent alerts, neither = Desktop off (no banner to read).
-/// `content_visibility` (Show previews): 0 = Default (the top-level value), 1 = Never (a placeholder, no text),
-/// 2 = When Unlocked, 3 = Always. Lock Screen and the badge do not matter.
-/// Only `apps` (the ones Gzyms has seen) are checked. nil = the settings could not be read.
-public func ncSettingsWarnings(prefs: Data, apps: [String], hotkeys: Data?) -> [String: String]? {
+/// One app's page in System Settings → Notifications, as far as Gzyms cares (Settings → Apps draws it).
+public struct NCAppSettings: Equatable, Sendable {
+    /// The Desktop tile: off means no banner to read.
+    public var desktop = true
+    /// Alert Style Persistent instead of Temporary.
+    public var persistent = false
+    /// The Notification Center tile: off means no row to press.
+    public var center = true
+    /// Play sound for notification: on means two sounds, macOS and Gzyms.
+    public var sound = false
+    /// Show previews: 0 = Default, 1 = Never, 2 = When Unlocked, 3 = Always.
+    public var previews = 0
+    /// The top of Notifications says Never, so Default hides the text too.
+    public var defaultHidden = false
+    /// The globe+N shortcut is off: no way to the panel. Not per app, but every app needs it.
+    public var shortcutOff = false
+    /// Mail: macOS lets nothing be set for it.
+    public var unsupported = false
+    public init(desktop: Bool = true, persistent: Bool = false, center: Bool = true, sound: Bool = false, previews: Int = 0,
+                defaultHidden: Bool = false, shortcutOff: Bool = false, unsupported: Bool = false) {
+        self.desktop = desktop; self.persistent = persistent; self.center = center; self.sound = sound; self.previews = previews
+        self.defaultHidden = defaultHidden; self.shortcutOff = shortcutOff; self.unsupported = unsupported
+    }
+
+    public var previewsHidden: Bool { previews == 1 || (previews == 0 && defaultHidden) }
+    /// What to change in macOS, in the order of its page. Empty = set up right.
+    public var problems: [String] {
+        if unsupported { return [] }
+        return [(!desktop, "Banners off"), (!center, "Notification Center off"), (previewsHidden, "Previews off"),
+                (sound, "Sound on"), (shortcutOff, "globe+N shortcut off")].filter(\.0).map(\.1)
+    }
+    public var warning: String? {
+        unsupported ? "macOS does not let you set notifications for Mail." : problems.isEmpty ? nil : problems.joined(separator: ", ")
+    }
+}
+
+/// Per app, macOS's notification settings (`apps` in usernoted's group plist): what keeps Gzyms from reading its banner
+/// or opening its original. Read by flipping the boxes live on macOS 27 (2026-11-04): `flags` 0x1 = Notification Center
+/// off, 0x4 = Play sound on (Gzyms plays it), 0x8 = Desktop with Temporary banners, 0x10 = Desktop with Persistent alerts,
+/// neither = Desktop off (no banner to read). `content_visibility` (Show previews): 0 = Default (the top-level value),
+/// 1 = Never (a placeholder, no text), 2 = When Unlocked, 3 = Always. Lock Screen and the badge do not matter.
+/// Only `apps` (the ones Gzyms has seen) are read. nil = the settings could not be read.
+public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [String: NCAppSettings]? {
     guard let plist = try? PropertyListSerialization.propertyList(from: prefs, format: nil) as? [String: Any],
           let list = plist["apps"] as? [[String: Any]] else { return nil }
     // shortcut: an unset entry keeps the shortcut's default (on); an edited one says enabled = false.
     let keys = hotkeys.flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
     let entry = (keys?["AppleSymbolicHotKeys"] as? [String: Any])?["163"] as? [String: Any]
     let shortcutOff = entry?["enabled"] as? Bool == false
-    let globalPreviews = plist["content_visibility"] as? Int
-    var out: [String: String] = [:]
+    let defaultHidden = plist["content_visibility"] as? Int == 1
+    var out: [String: NCAppSettings] = [:]
     for a in list {
         guard let id = a["bundle-id"] as? String, apps.contains(id), let flags = a["flags"] as? Int else { continue }
-        if ncOpenOriginalUnsupported.contains(id) { out[id] = "macOS does not let you set notifications for Mail."; continue }
-        let own = a["content_visibility"] as? Int ?? 0
-        var wrong: [String] = []
-        if flags & 0x18 == 0 { wrong.append("Banners off") }
-        if flags & 0x1 != 0 { wrong.append("Notification Center off") }
-        if (own == 0 ? globalPreviews : own) == 1 { wrong.append("Previews off") }
-        if flags & 0x4 != 0 { wrong.append("Sound on") }
-        if shortcutOff { wrong.append("globe+N shortcut off") }
-        if !wrong.isEmpty { out[id] = wrong.joined(separator: ", ") }
+        out[id] = NCAppSettings(desktop: flags & 0x18 != 0, persistent: flags & 0x10 != 0, center: flags & 0x1 == 0,
+                                sound: flags & 0x4 != 0, previews: a["content_visibility"] as? Int ?? 0, defaultHidden: defaultHidden,
+                                shortcutOff: shortcutOff, unsupported: ncOpenOriginalUnsupported.contains(id))
     }
     return out
 }

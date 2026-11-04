@@ -276,7 +276,9 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
 @MainActor @Test func settingsPreviews() {
     var config = GzymsConfig.defaults
     config.appRules["com.tinyspeck.slackmacgap"] = AppRule(sound: false, level: .critical)
-    let apps = [SeenApp(id: "com.tinyspeck.slackmacgap", name: "Slack", icon: nil, warning: "Notification Center off, Sound on"), SeenApp(id: "com.readdle.SparkDesktop", name: "Spark", icon: nil)]
+    let apps = [SeenApp(id: "com.tinyspeck.slackmacgap", name: "Slack", icon: nil, mac: NCAppSettings(center: false, sound: true)),
+                SeenApp(id: "com.readdle.SparkDesktop", name: "Spark", icon: nil),
+                SeenApp(id: "com.apple.MobileSMS", name: "Messages", icon: nil, mac: NCAppSettings())]
     let actions = SettingsActions { _, _, _ in }
     for tab in SettingsTab.allCases {
         preview(SettingsView(tab: .constant(tab), config: config, problems: [], broken: false, apps: apps,
@@ -287,6 +289,9 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
                          devices: [], actions: actions).frame(width: 1800, height: 700), "settings-notifications-wide")
     preview(SettingsView(tab: .constant(.apps), config: config, problems: [], broken: false, apps: apps,
                          devices: [], actions: actions).frame(width: 1800, height: 700), "settings-apps-wide")
+    // The app open on the side: preset, More folded, its macOS page with what to change ringed.
+    preview(SettingsView(tab: .constant(.apps), config: config, problems: [], broken: false, apps: apps, devices: [], live: false,
+                         openApp: "com.tinyspeck.slackmacgap", actions: actions).frame(width: 1200, height: 900), "settings-apps-drawer")
     preview(SettingsView(tab: .constant(.general), config: config, problems: ["config.toml could not be read: line 3"], broken: true,
                          apps: [], devices: [], actions: actions).frame(width: 1000, height: 400), "settings-broken")
     let pr = PluginStatus(folder: "pr-watch", name: "PR watch", description: "Your PRs on the bar", enabled: true, running: true, options: [

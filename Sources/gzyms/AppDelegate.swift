@@ -456,7 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The per-app warnings say which apps never show a banner; read once a minute, not only when Settings opens.
         if warningsRead.map({ Date().timeIntervalSince($0) > 60 }) ?? true { warningsRead = Date(); refreshAppWarnings() }
         guard model.config.signal, notes.dnd == nil, banners.attached,
-              model.seenApps.first(where: { $0.id == app })?.warning?.contains("Banners off") != true else { return }
+              model.seenApps.first(where: { $0.id == app })?.mac?.desktop != false else { return }
         bannerGuard.signal(at: ProcessInfo.processInfo.systemUptime)
         if bannerGuard.warns, !noBanners {
             noBanners = true
@@ -483,6 +483,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// From `gzyms notify` or from another app through Notification Center.
     private func post(_ n: GzymsNotification) {
         if let app = n.app, !n.compact { remember(app) }
+        // Off in Settings → Apps: no armageddon sound either (the store drops it too).
+        guard !notes.appRules.rule(for: n).skip else { return }
         notes.post(n, now: ProcessInfo.processInfo.systemUptime)
         logNote(n, "posted")
         var loud = n
@@ -1172,11 +1174,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let home = FileManager.default.homeDirectoryForCurrentUser
             let prefs = try? Data(contentsOf: home.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences/group.com.apple.usernoted.plist"))
             let hotkeys = try? Data(contentsOf: home.appending(path: "Library/Preferences/com.apple.symbolichotkeys.plist"))
-            let warnings = on ? prefs.flatMap { ncSettingsWarnings(prefs: $0, apps: ids, hotkeys: hotkeys) } ?? [:] : [:]
+            let settings = on ? prefs.flatMap { ncAppSettings(prefs: $0, apps: ids, hotkeys: hotkeys) } ?? [:] : [:]
             DispatchQueue.main.async { MainActor.assumeIsolated { [weak self] in
                 guard let self else { return }
-                let apps = self.model.seenApps.map { a in var a = a; a.warning = warnings[a.id]; return a }
-                if apps != self.model.seenApps { self.model.seenApps = apps; log("nc settings: \(warnings.count) apps set up wrong") }
+                let apps = self.model.seenApps.map { a in var a = a; a.mac = settings[a.id]; return a }
+                if apps != self.model.seenApps {
+                    self.model.seenApps = apps
+                    log("nc settings: \(settings.values.filter { $0.warning != nil }.count) apps set up wrong")
+                }
             } }
         }
     }

@@ -279,6 +279,24 @@ private func ignoreAll(_ s: inout NotificationStore) {
     #expect(AppRule().raise(.warning) == .warning)
 }
 
+@Test func presetsMapToRulesAndBack() {
+    for p in AppPreset.allCases { #expect(AppPreset(p.rule) == p) }  // also: no two presets share a rule
+    #expect(AppPreset(AppRule()) == .full)  // an app nobody set up
+    #expect(AppPreset(AppRule(phone: true)) == .full)  // the phone is its own switch
+    #expect(AppPreset(AppRule(sound: false, count: false)) == nil)  // Custom
+    #expect(AppPreset(AppRule(level: .armageddon)) == nil)
+    #expect(AppPreset(AppRule(banner: false, skip: true)) == .off)  // skip wins over the rest
+    #expect(AppPreset.quiet.applied(to: AppRule(level: .critical, phone: true, skip: true)) == AppRule(sound: false, phone: true))
+}
+
+@Test func aSkippedAppNeverLands() {
+    var s = NotificationStore()
+    s.appRules["com.app"] = AppRule(skip: true)
+    s.post(note("a", level: .critical), now: 0)
+    s.post(.pending(app: "com.app", at: Date()), now: 0)
+    #expect(s.banner == nil && s.queue.isEmpty && s.count("com.app") == 0)
+}
+
 @Test func aMeetingReminderNeverExpires() {
     var s = NotificationStore()
     var n = note("meeting-a")
