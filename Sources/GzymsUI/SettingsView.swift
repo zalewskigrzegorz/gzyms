@@ -1380,7 +1380,7 @@ private struct AppsTab: View {
         if let app = (listed + plugins.map { SeenApp(id: "plugin:\($0.folder)", name: $0.name, icon: nil) }).first(where: { $0.id == selected }) {
             Section(title: app.name) {
                 AppDrawer(app: app, rule: config.appRules[app.id] ?? AppRule(), dnd: config.dndBreaks, live: live, write: actions.write,
-                          hasPage: !app.id.hasPrefix("plugin:"))
+                          macOS: app.id.hasPrefix("plugin:") ? nil : { actions.openAppNotifications(app.id) })
             }
         }
         }
@@ -1459,8 +1459,8 @@ private struct AppDrawer: View {
     let dnd: Set<DNDBreak>
     let live: Bool
     let write: (String, TOMLValue?, ConfigTable) -> Void
-    /// Plugins have no macOS page.
-    let hasPage: Bool
+    /// Opens the app's macOS notification page; nil for plugins, which have none.
+    var macOS: (() -> Void)?
     @State private var more = false
     @Environment(\.theme) private var theme
 
@@ -1505,7 +1505,9 @@ private struct AppDrawer: View {
             Text("More").onTapGesture { more.toggle() }.settingsSlot { more.toggle() }
         }
         .padding(.horizontal, 12)
-        if hasPage {
+        if let macOS {
+            HStack { Spacer(); Button("Open in System Settings", action: macOS) }
+                .padding(.horizontal, 12).padding(.top, 6)
             if let mac = app.mac, mac.unsupported {
                 Text(mac.warning ?? "").padding(12)
             } else if let mac = app.mac {
