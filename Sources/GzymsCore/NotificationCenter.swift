@@ -46,21 +46,23 @@ public struct NCAppSettings: Equatable, Sendable {
     public var shortcutOff = false
     /// Mail: macOS lets nothing be set for it.
     public var unsupported = false
+    /// A system agent System Settings does not list (BTMNotificationAgent): no page to open, nothing to change.
+    public var hidden = false
     /// Its page has these rows only when the app asked for a badge or a sound (`auth`).
     public var hasBadge = true, hasSound = true
     public init(allowed: Bool = true, desktop: Bool = true, persistent: Bool = false, center: Bool = true, sound: Bool = false, previews: Int = 0,
-                defaultHidden: Bool = false, shortcutOff: Bool = false, unsupported: Bool = false, hasBadge: Bool = true, hasSound: Bool = true) {
+                defaultHidden: Bool = false, shortcutOff: Bool = false, unsupported: Bool = false, hasBadge: Bool = true, hasSound: Bool = true, hidden: Bool = false) {
         self.allowed = allowed; self.desktop = desktop; self.persistent = persistent; self.center = center; self.sound = sound; self.previews = previews
         self.defaultHidden = defaultHidden; self.shortcutOff = shortcutOff; self.unsupported = unsupported
-        self.hasBadge = hasBadge; self.hasSound = hasSound
+        self.hasBadge = hasBadge; self.hasSound = hasSound; self.hidden = hidden
     }
 
     public var previewsHidden: Bool { previews == 1 || (previews == 0 && defaultHidden) }
     /// Everything its own page can fix is set: the step-by-step setup moves on. The globe+N shortcut is not on that page.
-    public var pageDone: Bool { unsupported || (allowed && desktop && center && !sound && !previewsHidden) }
+    public var pageDone: Bool { unsupported || hidden || (allowed && desktop && center && !sound && !previewsHidden) }
     /// What to change in macOS, in the order of its page. Empty = set up right.
     public var problems: [String] {
-        if unsupported { return [] }
+        if unsupported || hidden { return [] }
         return [(!allowed, "Notifications off"), (!desktop, "Banners off"), (!center, "Notification Center off"), (previewsHidden, "Previews off"),
                 (sound, "Sound on"), (shortcutOff, "globe+N shortcut off")].filter(\.0).map(\.1)
     }
@@ -76,8 +78,8 @@ public struct NCAppSettings: Equatable, Sendable {
 /// 1 = Never (a placeholder, no text), 2 = When Unlocked, 3 = Always. Lock Screen and the badge do not matter.
 /// `auth` is what the app asked for (1 badge, 2 sound, 4 alert): without 2 its page has no sound switch, and 0x4 means nothing
 /// (Xcode, `auth` 4, 2026-11-04). No `auth` = assume it can play one.
-/// 0x02000000 = Allow notifications on (measured on Comet, 2026-11-04). Apple's own and older apps say it with 0x10000000
-/// instead (Calendar, Mail, Kandji), so an app with neither is off.
+/// 0x02000000 = Allow notifications on (measured on Comet, then Calendar listed Off without it, 2026-11-04).
+/// 0x01000000 = a system agent System Settings does not list (BTMNotificationAgent, tccd; no listed app has it).
 /// Only `apps` (the ones Gzyms has seen) are read. nil = the settings could not be read.
 public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [String: NCAppSettings]? {
     guard let plist = try? PropertyListSerialization.propertyList(from: prefs, format: nil) as? [String: Any],
@@ -94,10 +96,10 @@ public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [Strin
         guard let raw = a["bundle-id"] as? String, let id = wanted[raw.lowercased()], let flags = a["flags"] as? Int else { continue }
         let auth = a["auth"] as? Int
         let hasSound = auth.map { $0 & 0x2 != 0 } ?? true
-        out[id] = NCAppSettings(allowed: flags & 0x1200_0000 != 0, desktop: flags & 0x18 != 0, persistent: flags & 0x10 != 0, center: flags & 0x1 == 0,
+        out[id] = NCAppSettings(allowed: flags & 0x0200_0000 != 0, desktop: flags & 0x18 != 0, persistent: flags & 0x10 != 0, center: flags & 0x1 == 0,
                                 sound: flags & 0x4 != 0 && hasSound, previews: a["content_visibility"] as? Int ?? 0, defaultHidden: defaultHidden,
                                 shortcutOff: shortcutOff, unsupported: ncOpenOriginalUnsupported.contains(id),
-                                hasBadge: auth.map { $0 & 0x1 != 0 } ?? true, hasSound: hasSound)
+                                hasBadge: auth.map { $0 & 0x1 != 0 } ?? true, hasSound: hasSound, hidden: flags & 0x0100_0000 != 0)
     }
     return out
 }
