@@ -393,8 +393,9 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     #expect(CountSource.text(app: "5", gzyms: 1) == "6")
     #expect(CountSource.text(app: "5", gzyms: 0) == "5")
     #expect(CountSource.text(app: "8", gzyms: 3) == "11")
+    #expect(CountSource.text(app: "9223372036854775807", gzyms: 1) == "99+")
     #expect(CountSource.text(app: nil, gzyms: 12) == "12")  // the real number, as the app's
-    #expect(CountSource.text(app: "998", gzyms: 5) == "999+")
+    #expect(CountSource.text(app: "98", gzyms: 5) == "99+")
     #expect(CountSource.text(app: "•", gzyms: 2) == "2")
     #expect(CountSource.text(app: "•", gzyms: 0) == "•")
     #expect(CountSource.text(app: "1K", gzyms: 2) == "1K")

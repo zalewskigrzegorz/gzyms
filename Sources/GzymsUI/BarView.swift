@@ -394,12 +394,12 @@ enum CountSource: Equatable {
     case app, gzyms, both
 
     /// Both: the sum (Greg, 2026-11-04), even where the app counts the same messages. The real number, the app's and
-    /// Gzyms's alike, up to "999+" (one look for all, Greg). "•" alone stays a dot, with Gzyms's count it gives that
+    /// Gzyms's alike, up to "99+" (one look for all, nobody reads past it, Greg). "•" alone stays a dot, with Gzyms's count it gives that
     /// count. Another label ("1K") stays as the app wrote it.
     static func text(app: String?, gzyms: Int) -> String {
-        func number(_ n: Int) -> String { n > 999 ? "999+" : "\(n)" }
+        func number(_ n: Int) -> String { n > 99 ? "99+" : "\(n)" }
         guard let app else { return number(gzyms) }
-        if let n = Int(app) { return number(n + gzyms) }
+        if let n = Int(app) { return number(min(n, 100) + gzyms) }  // a huge badge must not overflow the sum
         if app == "•" { return gzyms > 0 ? number(gzyms) : app }
         return app
     }
@@ -422,7 +422,7 @@ enum CountSource: Equatable {
     }
 }
 
-/// Small capsule with the count; bumps when the count changes. More digits, a smaller font: "999+" still leaves the
+/// Small capsule with the count; bumps when the count changes. More digits, a smaller font: "99+" still leaves the
 /// icon in view (Greg).
 struct CountBadge: View {
     let text: String
