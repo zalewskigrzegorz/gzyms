@@ -26,6 +26,20 @@ private func tab(_ id: String, _ playing: Bool, url: String = "https://www.youtu
     #expect(book.live(now: 101 + NowPlaying.idleAfter).isEmpty)
 }
 
+@Test func aTabWithManyClipsIsOneEntryThePlayingOneElseTheLastPlayed() {
+    func feed(_ playing: Int?) -> BrowserTab {
+        BrowserTab(id: "f", url: "https://x.com/home", media: (0..<5).map { .init(i: $0, title: "Clip \($0)", playing: $0 == playing) })
+    }
+    var book = TabBook()
+    book.report(feed(1), now: 100)
+    book.report(feed(3), now: 101)
+    #expect(book.live(now: 101).flatMap(\.media).map(\.i) == [3])
+    book.report(feed(nil), now: 102)
+    #expect(book.live(now: 102).flatMap(\.media).map(\.i) == [3])  // all paused: the one played last
+    book.report(feed(1), now: 103)
+    #expect(book.live(now: 103).flatMap(\.media).map(\.i) == [1])
+}
+
 @Test func itemsKeepAFixedOrderAndTheMainOneIsTheFirstThatPlays() {
     var np = NowPlaying(title: "Song", artist: "Band", app: "rocks.spotifast.Spotifast", appName: "Spotifast", playing: false, at: 1000)
     np.others = [MediaSource(app: "com.apple.Music", appName: "Music", title: "Other", playing: false),

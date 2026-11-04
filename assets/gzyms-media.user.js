@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        Gzyms media
 // @namespace   dev.gzyms
-// @version     0.2.0
+// @version     0.3.0
 // @description Tells Gzyms (127.0.0.1:47100) what video and audio this tab plays, and takes its play, pause, next, previous and go-to.
 // @match       *://*/*
 // @downloadURL http://127.0.0.1:47100/gzyms-media.user.js
@@ -30,10 +30,32 @@
     ms.setActionHandler = typeof exportFunction === 'function' ? exportFunction(wrap, page) : wrap;
   }
 
-  const media = () => [...document.querySelectorAll('video, audio')].filter((e) => e.currentSrc || e.srcObject);
+  // A call is not media: a camera or WebRTC stream comes as a MediaStream (every Meet tile is its own <video>).
+  // The host list backs that up for meeting sites that render calls another way.
+  const meeting = /(^|\.)(meet\.google\.com|zoom\.us|teams\.microsoft\.com|teams\.live\.com)$/.test(location.hostname);
+  const stream = (e) => Object.prototype.toString.call(e.srcObject) === '[object MediaStream]';
+  const media = () => [...document.querySelectorAll('video, audio')].filter((e) => e.currentSrc && !stream(e));
+
+  // Each element keeps its number while it lives, so a command still finds it after a feed loads more clips.
+  const ids = new WeakMap();
+  let nextId = 0;
+  const key = (e) => { if (!ids.has(e)) ids.set(e, nextId++); return ids.get(e); };
+  // When an element last played with sound; a muted autoplay preview never gets one.
+  const heard = new WeakMap();
+
+  // The tab's one entry: what plays with sound now, else what did last.
+  function pick() {
+    const now = Date.now();
+    let best = null;
+    for (const e of media()) {
+      if (!e.paused && !e.ended && !e.muted && e.volume > 0) heard.set(e, now);
+      if (heard.has(e) && (!best || heard.get(e) > heard.get(best))) best = e;
+    }
+    return best;
+  }
 
   function run({ i, cmd }) {
-    const e = media()[i];
+    const e = media().find((x) => key(x) === i);
     if (cmd === 'focus') {
       // Gecko ignores window.focus() from a page; Tampermonkey's highlight-only notification activates the tab instead.
       const how = typeof GM_notification === 'function' ? 'highlight' : 'window.focus';
@@ -59,10 +81,11 @@
   }
 
   function report() {
-    const list = media().map((e, i) => ({
-      i, kind: e.tagName.toLowerCase(), playing: !e.paused && !e.ended,
+    const e = pick();
+    const list = e ? [{
+      i: key(e), kind: e.tagName.toLowerCase(), playing: !e.paused && !e.ended,
       title: (ms && ms.metadata && ms.metadata.title) || document.title,
-    }));
+    }] : [];
     // A tab without media stays silent; one last report when its media goes, so Gzyms drops it.
     if (!list.length && !had) return;
     had = list.length > 0;
@@ -77,5 +100,5 @@
     });
   }
 
-  setInterval(report, 1000);
+  if (!meeting) setInterval(report, 1000);
 })();

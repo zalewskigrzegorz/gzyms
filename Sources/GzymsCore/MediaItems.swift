@@ -31,7 +31,8 @@ public enum TabCommand: String, Sendable { case play, pause, toggle, next, previ
 
 /// The tabs heard from lately. A tab reports every second, so one silent for 3 s is gone (closed, reloaded,
 /// the browser quit). Media that never played (a muted preview, a page opened and left) stay out, and paused
-/// media leave after `NowPlaying.idleAfter`, like a paused song.
+/// media leave after `NowPlaying.idleAfter`, like a paused song. A tab is one entry: the media that plays, else the
+/// one played last, even if an older userscript sends a whole feed of clips.
 public struct TabBook: Sendable {
     private var tabs: [String: (tab: BrowserTab, seen: Double)] = [:]
     private var played: [String: Double] = [:]
@@ -48,8 +49,10 @@ public struct TabBook: Sendable {
     public func live(now: Double) -> [BrowserTab] {
         tabs.values.filter { now - $0.seen < 3 }.map(\.tab).sorted { $0.id < $1.id }.compactMap { t in
             var t = t
-            t.media = t.media.filter { m in played["\(t.id)#\(m.i)"].map { now - $0 < NowPlaying.idleAfter } ?? false }
-            return t.media.isEmpty ? nil : t
+            let recent = t.media.compactMap { m in played["\(t.id)#\(m.i)"].flatMap { now - $0 < NowPlaying.idleAfter ? (m, $0) : nil } }
+            guard let one = recent.first(where: { $0.0.playing }) ?? recent.max(by: { $0.1 < $1.1 }) else { return nil }
+            t.media = [one.0]
+            return t
         }
     }
 }
