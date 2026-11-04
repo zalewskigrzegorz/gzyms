@@ -84,7 +84,7 @@ final class NotificationCenterSource: @unchecked Sendable {
             return
         }
         db = handle
-        lastDelivered = latest(handle) ?? 0  // only what arrives from now on, never the history
+        lastDelivered = ncReadFrom(0, delivered: latest(handle) ?? 0, now: Date().timeIntervalSinceReferenceDate)  // from now on, never the history
         read(show: false)  // the rows at that last moment count as seen
         watch()
         // Safety net, as in the spike: a file event can be missed (SQLite resets or replaces the WAL).
@@ -138,7 +138,7 @@ final class NotificationCenterSource: @unchecked Sendable {
             guard let id = sqlite3_column_text(st, 0).map({ String(cString: $0) }), seen[id] == nil else { continue }
             let delivered = sqlite3_column_double(st, 2)
             seen[id] = delivered
-            lastDelivered = max(lastDelivered, delivered)
+            lastDelivered = ncReadFrom(lastDelivered, delivered: delivered, now: Date().timeIntervalSinceReferenceDate)
             guard let app = sqlite3_column_text(st, 1).map({ String(cString: $0) }), let bytes = sqlite3_column_blob(st, 3) else { continue }
             let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(st, 3)))
             if let n = ncNotification(key: id, app: app, delivered: delivered, data: data) { found.append(n) }

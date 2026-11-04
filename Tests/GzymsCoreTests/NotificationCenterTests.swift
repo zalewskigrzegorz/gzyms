@@ -97,3 +97,10 @@ private func blob(_ req: [String: Any]) throws -> Data {
     #expect(deliveredApp(line.replacingOccurrences(of: "updatedExisting: false", with: "updatedExisting: true")) == nil)
     #expect(deliveredApp("Removing something") == nil)
 }
+
+@Test func aReminderFiledForLaterDoesNotHideTheRowsBeforeIt() {
+    let now = 800_000_000.0
+    #expect(ncReadFrom(now - 10, delivered: now - 5, now: now) == now - 5)
+    #expect(ncReadFrom(now - 10, delivered: now + 3600, now: now) == now)  // Calendar's 00:00 reminder
+    #expect(ncReadFrom(now, delivered: now - 30, now: now) == now)  // never back
+}

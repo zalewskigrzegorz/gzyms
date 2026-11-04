@@ -14,6 +14,11 @@ public func ncNotification(key: String, app: String, delivered: Double, data: Da
                              link: nil, altLink: nil, sound: "message", at: Date(timeIntervalSinceReferenceDate: delivered))
 }
 
+/// Where the next database read starts: the newest delivery seen, but never later than `now` (both in seconds since
+/// 2001). Calendar files a reminder at its event's time, hours ahead; as the start that hid every row until then
+/// (live test 2026-11-04).
+public func ncReadFrom(_ last: Double, delivered: Double, now: Double) -> Double { max(last, min(delivered, now)) }
+
 /// The record's uuid as Notification Center's own panel names the banner (its AX identifier), from a note's id.
 /// nil for notes that did not come from the database.
 public func ncRecordUUID(noteID: String) -> String? {
