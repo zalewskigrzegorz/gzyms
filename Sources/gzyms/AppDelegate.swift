@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bannerGuard = BannerGuard()
     /// Notification Center shows no banners although apps send them (`BannerGuard`).
     private var noBanners = false
+    private var warningsRead: Date?
     /// `nc-` notes opened, dismissed or already shown from their banner, so their database row ~5 s later is skipped.
     private var handled: [String: Date] = [:]
     /// For Settings → Hacks: the delivery log is alive.
@@ -452,6 +453,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb, not for apps whose
     /// macOS style is None (they never show a banner), not while the observer is off.
     private func countSignal(_ app: String) {
+        // The per-app warnings say which apps never show a banner; read once a minute, not only when Settings opens.
+        if warningsRead.map({ Date().timeIntervalSince($0) > 60 }) ?? true { warningsRead = Date(); refreshAppWarnings() }
         guard model.config.signal, notes.dnd == nil, banners.attached,
               model.seenApps.first(where: { $0.id == app })?.warning?.contains("Banners off") != true else { return }
         bannerGuard.signal(at: ProcessInfo.processInfo.systemUptime)
