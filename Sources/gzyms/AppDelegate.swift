@@ -407,6 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dismissBanner()
         }
         island.onHover = { [weak self] on in
+            self?.chords.hover(on)
             self?.notes.hover(on, now: ProcessInfo.processInfo.systemUptime)
             self?.notesChanged()
         }

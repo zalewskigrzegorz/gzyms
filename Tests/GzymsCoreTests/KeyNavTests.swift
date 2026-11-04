@@ -225,6 +225,34 @@ private func onWithBanner(_ verbs: Verbs = Verbs()) -> KeyNav {
     }
 }
 
+@Test func hoverTakesTheShownLettersWithoutTheLeader() {
+    for (letter, action) in [("o", ChordAction.open), ("x", .dismiss), ("a", .alt), ("n", .next)] {
+        var n = KeyNav()
+        play(&n, [.banner(up: true), .hover(true)])
+        let r = n.handle(.key(.letter(letter)), now: 5)
+        #expect(r.swallow && r.actions == [.banner(action)], "\(letter)")
+        #expect(!n.on, "\(letter) does not turn the mode on")
+    }
+    var n = KeyNav()
+    play(&n, [.banner(up: true), .hover(true)])
+    #expect(n.handle(.key(.letter("z")), now: 5).swallow)
+    #expect(n.handle(.tick, now: 5.8).actions == [.banner(.snooze(minutes: 3))])
+    #expect(!n.handle(.key(.letter("j")), now: 6).swallow, "j is not shown")
+    #expect(!n.handle(.key(.letter("e")), now: 6).swallow, "a hint letter is the bar's")
+    #expect(!n.handle(.key(.modified), now: 6).swallow)
+}
+
+@Test func hoverOffOrBannerGoneOrModifierLeaderPassesLetters() {
+    var n = KeyNav()
+    play(&n, [.banner(up: true), .hover(true), .hover(false)])
+    #expect(!n.handle(.key(.letter("o")), now: 5).swallow)
+    play(&n, [.hover(true), .banner(up: false), .banner(up: true)], from: 6)
+    #expect(!n.handle(.key(.letter("o")), now: 9).swallow, "a new banner needs a new hover")
+    var m = KeyNav(modifierLeader: true)
+    play(&m, [.banner(up: true), .hover(true)])
+    #expect(!m.handle(.key(.letter("o")), now: 5).swallow, "its hints show the held chord")
+}
+
 @Test func bannerVerbsIgnoredWithoutBanner() {
     var n = on()
     let r = n.handle(.key(.letter("o")), now: 5)

@@ -57,6 +57,8 @@ public enum NavEvent: Equatable, Sendable {
     case tick
     /// A popup opened (or closed, nil) outside the mode, by the mouse; the targets are its bar's.
     case popup(String?, [HintTarget])
+    /// The pointer went onto (true) or off the banner.
+    case hover(Bool)
 }
 
 /// Who the keys are for: the bar (the leader's mode), or a window that takes a few of them while it is up,
@@ -112,6 +114,8 @@ public struct KeyNav: Sendable {
     /// A popup the mouse opened while the mode was off: its keys turn the mode on there (Greg, 2026-11-02).
     public private(set) var mouse: String?
     private var mouseTargets: [HintTarget] = []
+    /// The pointer is on the banner: it shows the hints, so their letters act without the leader.
+    public private(set) var hovered = false
     private var targets: [HintTarget] = []
     private var pending: [HintTarget] = []
     private var held = false
@@ -167,7 +171,10 @@ public struct KeyNav: Sendable {
             return (false, [])
         case .banner(let up):
             bannerUp = up
-            if !up { zs = 0 }  // a snooze is for the banner it was typed on
+            if !up { zs = 0; hovered = false }  // a snooze is for the banner it was typed on; gone, no exit event comes
+            return (false, [])
+        case .hover(let h):
+            hovered = h
             return (false, [])
         case .tick:
             guard zs > 0, !held, now - zAt >= Self.snoozeSettle - 1e-9 else { return (false, []) }
@@ -194,6 +201,12 @@ public struct KeyNav: Sendable {
             if modifierLeader, held, !on {
                 // Held alone, the modifier is someone else's shortcut, except for the banner's verbs.
                 guard bannerUp, case .letter(let c) = k, let a = banner(c, now: now) else { return (false, []) }
+                return (true, a.actions)
+            }
+            // Over the banner, the letters its hints show (j and k are not shown). A modifier leader's hints
+            // name the held chord, which the branch above takes.
+            if !on, !held, !modifierLeader, hovered, bannerUp, case .letter(let c) = k, c != "j", c != "k",
+               let a = banner(c, now: now) {
                 return (true, a.actions)
             }
             if !on, let id = mouse, isPopupKey(k) {

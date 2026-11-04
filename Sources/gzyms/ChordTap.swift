@@ -54,10 +54,13 @@ final class ChordTap {
     /// The hints the leader would show, for the pointer over the banner.
     var hoverHints: ChordHints {
         core.peek { s in
-            guard case .modifier(let m)? = s.leader else { return ChordHints(snoozeMinutes: nil, verbs: s.verbs) }
+            guard case .modifier(let m)? = s.leader else { return ChordHints(snoozeMinutes: s.nav.snoozePreview, verbs: s.verbs) }
             return ChordHints(snoozeMinutes: nil, verbs: s.verbs, hold: String(Leader.modifier(m).symbol.prefix(1)))
         }
     }
+
+    /// The pointer went onto or off the banner: while on it, the letters its hints show act.
+    func hover(_ on: Bool) { core.navEvent(.hover(on)) }
 
     /// `[keys]`: a new leader, timeout, hint letters or verbs end a running mode.
     func configureNav(leader: Leader?, idleTimeout: Double, hintChars: String, verbs: Verbs) {
@@ -243,10 +246,10 @@ final class TapCore: Sendable {
             if s.leaderHeld { flags.remove(mine) }
         default: break
         }
-        guard type == .keyDown, s.nav.on || s.leaderHeld || s.nav.mouse != nil else { return false }
+        guard type == .keyDown, s.nav.on || s.leaderHeld || s.nav.mouse != nil || s.nav.hovered else { return false }
         var k = navKey(keyCode, flags: flags)
-        // Held without the mode, the modifier takes the stack's letters only while banners wait.
-        if s.leaderHeld, !s.nav.on, !s.queued, case .letter(let c) = k, ["j", "k", s.verbs.next, s.verbs.prev].contains(c) { k = .modified }
+        // Held without the mode (or the pointer on the banner), the stack's letters count only while banners wait.
+        if s.leaderHeld || s.nav.hovered, !s.nav.on, !s.queued, case .letter(let c) = k, ["j", "k", s.verbs.next, s.verbs.prev].contains(c) { k = .modified }
         return nav(&s, .key(k), out: &out, core: core)
     }
 
