@@ -275,3 +275,12 @@ import Testing
     #expect(!off.config.openOriginal)
     #expect(off.problems.isEmpty)
 }
+
+@Test func bannerAXAndSignalDefaultOnAndParse() {
+    #expect(loadConfig(toml: nil).config.bannerAX)
+    #expect(loadConfig(toml: nil).config.signal)
+    let off = loadConfig(toml: "[notifications]\nbanner_ax = false\nsignal = false\n")
+    #expect(!off.config.bannerAX)
+    #expect(!off.config.signal)
+    #expect(off.problems.isEmpty)
+}

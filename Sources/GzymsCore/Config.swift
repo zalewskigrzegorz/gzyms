@@ -32,6 +32,12 @@ public struct GzymsConfig: Equatable, Sendable {
     /// `[notifications] open_original` (experimental): opening another app's notification presses its original in
     /// Notification Center, so the app opens the exact chat or thread. Off: just the app.
     public var openOriginal = true
+    /// `[notifications] banner_ax` (experimental): reads another app's macOS banner through Accessibility the moment
+    /// it shows, and parks the real one off screen. Off: the text comes from the database a few seconds later.
+    public var bannerAX = true
+    /// `[notifications] signal`: the app's icon shows the instant macOS logs a delivery, before the text.
+    /// Off: the banner waits for its text.
+    public var signal = true
     /// `[hacks] browser_media`: the loopback server for the browser userscript, so tabs with video show in the music
     /// pill. Off until turned on in Settings → Hacks: it opens a port on 127.0.0.1.
     public var browserMedia = false
@@ -250,6 +256,8 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         else { problems.append("dnd.breaks_through: \(bad.joined(separator: ", ")) must be \(DNDBreak.allCases.map(\.rawValue).joined(separator: ", ")), kept armageddon and meetings") }
     }
     if let v = raw.notifications?.openOriginal { config.openOriginal = v }
+    if let v = raw.notifications?.bannerAX { config.bannerAX = v }
+    if let v = raw.notifications?.signal { config.signal = v }
     if let v = raw.hacks?.browser_media { config.browserMedia = v }
     if let names = raw.notifications?.priority {
         let bad = names.filter { DNDBreak(rawValue: $0) == nil }
@@ -464,8 +472,13 @@ private struct RawNotifications: Decodable {
     var phone: RawPhone?
     var priority: [String]?
     var openOriginal: Bool?
+    var bannerAX: Bool?
+    var signal: Bool?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case sounds, keys, hold, levels, apps, letters, phone, priority, openOriginal = "open_original" }
+    enum CodingKeys: String, CodingKey {
+        case sounds, keys, hold, levels, apps, letters, phone, priority, signal
+        case openOriginal = "open_original", bannerAX = "banner_ax"
+    }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         sounds = lenient(c, .sounds, "notifications.sounds", &unknown)
@@ -477,7 +490,10 @@ private struct RawNotifications: Decodable {
         phone = lenient(c, .phone, "notifications.phone", &unknown)
         priority = lenient(c, .priority, "notifications.priority", &unknown)
         openOriginal = lenient(c, .openOriginal, "notifications.open_original", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone", "priority", "open_original"], prefix: "notifications.")
+        bannerAX = lenient(c, .bannerAX, "notifications.banner_ax", &unknown)
+        signal = lenient(c, .signal, "notifications.signal", &unknown)
+        unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone", "priority",
+                                                        "open_original", "banner_ax", "signal"], prefix: "notifications.")
         unknown += (levels?.unknown ?? []) + (apps?.unknown ?? []) + (letters?.unknown ?? []) + (phone?.unknown ?? [])
     }
 }
