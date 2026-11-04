@@ -83,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsKeyObserver: NSObjectProtocol?
     /// System Settings opened from Settings → Apps: read every second while it runs, and the way back when it quits.
     private var systemSettingsWatch: (timer: Timer, observer: NSObjectProtocol)?
+    private lazy var setupPanel = AppSetupPanel(model: model, skip: { [weak self] in self?.nextSetupApp() },
+                                                stop: { [weak self] in self?.finishAppSetup() })
+    /// The step-by-step setup waits a moment on an app set up right, so the ring is seen going out.
+    private var setupAdvance: DispatchWorkItem?
     private let seenAppsFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Gzyms/seen-apps.json")
     private lazy var messages = GzymsMessagePanel(model: model)
@@ -1184,6 +1188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.model.seenApps = apps
                     log("nc settings: \(settings.values.filter { $0.warning != nil }.count) apps set up wrong")
                 }
+                self.checkAppSetup()
             } }
         }
     }
@@ -1204,6 +1209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { [weak self] in
                 guard let self, self.systemSettingsWatch != nil else { return }
                 self.stopWatchingSystemSettings()
+                if self.model.appSetup != nil { self.finishAppSetup(); return }
                 self.refreshAppWarnings()
                 guard self.settings.isVisible else { return }
                 log("settings: back from System Settings")
@@ -1219,6 +1225,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         w.timer.invalidate()
         NSWorkspace.shared.notificationCenter.removeObserver(w.observer)
         systemSettingsWatch = nil
+    }
+
+    /// One app's own page in System Settings → Notifications, watched while open.
+    private func openAppPage(_ id: String) {
+        settings.stepBack()
+        // Mail's page does not open by its id (Greg, 2026-11-01): the list opens, Mail is one click from there.
+        let page = id == "com.apple.mail" ? "" : "?id=\(id)"
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension\(page)") { NSWorkspace.shared.open(url) }
+        watchSystemSettings()
+    }
+
+    /// Settings → Apps, step by step: each app's page in turn, the helper beside it, the next one once macOS says so.
+    private func startAppSetup(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        model.appSetup = (ids, 0)
+        log("app setup: \(ids.count) apps")
+        setupPanel.show(on: focusedScreen())
+        openAppPage(ids[0])
+    }
+
+    private func checkAppSetup() {
+        guard let s = model.appSetup, setupAdvance == nil,
+              model.seenApps.first(where: { $0.id == s.queue[s.at] })?.mac?.pageDone == true else { return }
+        let work = DispatchWorkItem { MainActor.assumeIsolated { [weak self] in
+            guard let self, self.model.appSetup?.at == s.at else { return }
+            self.nextSetupApp()
+        } }
+        setupAdvance = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: work)
+    }
+
+    /// Done or skipped: the next app's page, or the end.
+    private func nextSetupApp() {
+        setupAdvance?.cancel()
+        setupAdvance = nil
+        guard var s = model.appSetup else { return }
+        s.at += 1
+        guard s.at < s.queue.count else { finishAppSetup(); return }
+        model.appSetup = s
+        log("app setup: step \(s.at + 1) of \(s.queue.count)")
+        openAppPage(s.queue[s.at])
+        checkAppSetup()  // set up already, while an earlier one was open
+    }
+
+    /// The end, Stop, or System Settings quit: back to Settings → Apps.
+    private func finishAppSetup() {
+        setupAdvance?.cancel()
+        setupAdvance = nil
+        guard model.appSetup != nil else { return }
+        model.appSetup = nil
+        setupPanel.orderOut(nil)
+        log("app setup: finished")
+        refreshAppWarnings()
+        guard settings.isVisible else { return }
+        NSApp.activate()
+        settings.makeKeyAndOrderFront(nil)
     }
 
     @objc private func menuCheckNotifications() { toggleSettings(.apps) }  // the warnings sit next to each app
@@ -1324,13 +1386,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                       body: "Phone push works.", link: nil, altLink: nil, sound: nil, at: Date())
             self?.sendToPhone(n, done: done)
         }
-        a.openAppNotifications = { [weak self] id in
-            self?.settings.stepBack()
-            // Mail's page does not open by its id (Greg, 2026-11-01): the list opens, Mail is one click from there.
-            let page = id == "com.apple.mail" ? "" : "?id=\(id)"
-            if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension\(page)") { NSWorkspace.shared.open(url) }
-            self?.watchSystemSettings()
-        }
+        a.openAppNotifications = { [weak self] id in self?.openAppPage(id) }
+        a.setUpApps = { [weak self] ids in self?.startAppSetup(ids) }
         a.openNotificationSettings = { [weak self] in
             self?.settings.stepBack()
             if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) }

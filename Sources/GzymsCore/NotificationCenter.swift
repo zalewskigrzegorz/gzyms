@@ -44,13 +44,18 @@ public struct NCAppSettings: Equatable, Sendable {
     public var shortcutOff = false
     /// Mail: macOS lets nothing be set for it.
     public var unsupported = false
+    /// Its page has these rows only when the app asked for a badge or a sound (`auth`).
+    public var hasBadge = true, hasSound = true
     public init(desktop: Bool = true, persistent: Bool = false, center: Bool = true, sound: Bool = false, previews: Int = 0,
-                defaultHidden: Bool = false, shortcutOff: Bool = false, unsupported: Bool = false) {
+                defaultHidden: Bool = false, shortcutOff: Bool = false, unsupported: Bool = false, hasBadge: Bool = true, hasSound: Bool = true) {
         self.desktop = desktop; self.persistent = persistent; self.center = center; self.sound = sound; self.previews = previews
         self.defaultHidden = defaultHidden; self.shortcutOff = shortcutOff; self.unsupported = unsupported
+        self.hasBadge = hasBadge; self.hasSound = hasSound
     }
 
     public var previewsHidden: Bool { previews == 1 || (previews == 0 && defaultHidden) }
+    /// Everything its own page can fix is set: the step-by-step setup moves on. The globe+N shortcut is not on that page.
+    public var pageDone: Bool { unsupported || (desktop && center && !sound && !previewsHidden) }
     /// What to change in macOS, in the order of its page. Empty = set up right.
     public var problems: [String] {
         if unsupported { return [] }
@@ -81,9 +86,12 @@ public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [Strin
     var out: [String: NCAppSettings] = [:]
     for a in list {
         guard let id = a["bundle-id"] as? String, apps.contains(id), let flags = a["flags"] as? Int else { continue }
+        let auth = a["auth"] as? Int
+        let hasSound = auth.map { $0 & 0x2 != 0 } ?? true
         out[id] = NCAppSettings(desktop: flags & 0x18 != 0, persistent: flags & 0x10 != 0, center: flags & 0x1 == 0,
-                                sound: flags & 0x4 != 0 && (a["auth"] as? Int).map { $0 & 0x2 != 0 } ?? true, previews: a["content_visibility"] as? Int ?? 0, defaultHidden: defaultHidden,
-                                shortcutOff: shortcutOff, unsupported: ncOpenOriginalUnsupported.contains(id))
+                                sound: flags & 0x4 != 0 && hasSound, previews: a["content_visibility"] as? Int ?? 0, defaultHidden: defaultHidden,
+                                shortcutOff: shortcutOff, unsupported: ncOpenOriginalUnsupported.contains(id),
+                                hasBadge: auth.map { $0 & 0x1 != 0 } ?? true, hasSound: hasSound)
     }
     return out
 }

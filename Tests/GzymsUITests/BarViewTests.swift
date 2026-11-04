@@ -325,6 +325,8 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
 @MainActor @Test func permissionsPreviews() {
     let states = [GrantState(grant: .accessibility, granted: true), GrantState(grant: .fullDiskAccess, granted: false)]
     preview(PermissionsWizardView(states: states, open: { _ in }, later: {}), "wizard-missing-fda")
+    preview(AppSetupView(app: SeenApp(id: "com.x", name: "Messages", icon: nil, mac: NCAppSettings(desktop: false, sound: true)),
+                         step: 2, total: 4, skip: {}, stop: {}), "app-setup")
     preview(BarView(workspaces: [], small: false, notch: nil, stale: false, now: fixedNow, icon: { _ in nil }, grantWarning: true),
             "bar-grant-revoked", width: 900)
 }

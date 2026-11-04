@@ -35,6 +35,8 @@ public struct SettingsActions {
     public var openNotificationSettings: () -> Void = {}
     /// One app's own page in System Settings → Notifications, by bundle id.
     public var openAppNotifications: (String) -> Void = { _ in }
+    /// Opens these apps' macOS pages one after another, with a helper next to System Settings.
+    public var setUpApps: ([String]) -> Void = { _ in }
     /// Sends a test to `[notifications.phone] url`; the line says how it went.
     public var playSound: (SoundEvent) -> Void = { _ in }
     /// Picks an audio file for the event and writes it to `[sounds]`.
@@ -1339,6 +1341,8 @@ private struct AppsTab: View {
                 HStack {
                     Text("\(needing.count) \(needing.count == 1 ? "app needs" : "apps need") a change in macOS.").foregroundStyle(theme[\.peach])
                     Spacer()
+                    let fixable = needing.filter { $0.mac?.pageDone == false }.map(\.id)
+                    if !fixable.isEmpty { Button("Set up step by step") { actions.setUpApps(fixable) } }
                 }
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 8).fill(theme[\.peach].opacity(0.12)))
@@ -1533,8 +1537,9 @@ private struct AppDrawer: View {
     }
 }
 
-/// An app's page in System Settings → Notifications, drawn as macOS draws it, so the box to click is found by its shape
-/// (Greg, 2026-11-04: variant A). What to change is ringed and says what to do. nil = the page as Gzyms wants it.
+/// An app's page in System Settings → Notifications, drawn as macOS 27 draws it: the same cards, rows and order, so the
+/// switch to click is found by where it sits (Greg, 2026-11-04: variant A). What to change is ringed and says what to do.
+/// nil = the page as Gzyms wants it.
 struct MacMirror: View {
     let settings: NCAppSettings?
     var animate = true
@@ -1547,53 +1552,79 @@ struct MacMirror: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            line("Allow notifications", fix: nil) { mark(true) }
-            HStack(alignment: .top, spacing: 14) {
-                tile("Desktop", on: shown.desktop, fix: wrong(!shown.desktop) ? "Tick" : nil)
-                tile("Notification Center", on: shown.center, fix: wrong(!shown.center) ? "Tick" : nil)
-                tile("Lock Screen", on: nil, fix: nil)
+            card { row("Allow notifications", fix: nil) { toggle(true) } }
+            card {
+                HStack(alignment: .top, spacing: 12) {
+                    tile("Desktop", on: shown.desktop, fix: wrong(!shown.desktop) ? "Tick" : nil)
+                    tile("Notification Center", on: shown.center, fix: wrong(!shown.center) ? "Tick" : nil)
+                    tile("Lock Screen", on: nil, fix: nil)
+                }
+                .frame(maxWidth: .infinity)
+                Divider()
+                row("Alert Style", fix: nil) {
+                    HStack(spacing: 10) {
+                        radio("Temporary", on: settings.map { !$0.persistent })
+                        radio("Persistent", on: settings.map(\.persistent))
+                    }
+                }
             }
-            .padding(.top, 4)
-            line("Alert Style", fix: nil) {
-                Text(settings == nil ? "either" : shown.persistent ? "Persistent" : "Temporary").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+            if shown.hasBadge || shown.hasSound {
+                card {
+                    if shown.hasBadge { row("Badge application icon", fix: nil) { toggle(nil) } }
+                    if shown.hasBadge && shown.hasSound { Divider() }
+                    if shown.hasSound { row("Play sound for notification", fix: wrong(shown.sound) ? "Turn off. Gzyms plays it" : nil) { toggle(shown.sound) } }
+                }
             }
-            line("Show previews", fix: wrong(shown.previewsHidden) ? (shown.previews == 0 ? "Default follows the top of Notifications. Set it there." : "Default, When Unlocked or Always") : nil) {
-                Text(settings == nil ? "Default" : ["Default", "Never", "When Unlocked", "Always"][min(max(shown.previews, 0), 3)])
+            card {
+                row("Show previews", fix: wrong(shown.previewsHidden)
+                    ? (shown.previews == 0 ? "Default follows the top of Notifications. Set it there or pick When Unlocked here." : "Pick Default, When Unlocked or Always")
+                    : nil) {
+                    HStack(spacing: 4) {
+                        Text(["Default", "Never", "When Unlocked", "Always"][min(max(shown.previews, 0), 3)])
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 8))
+                    }
                     .font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+                }
+                Divider()
+                row("Notification grouping", fix: nil) { Text("either").font(.system(size: 11)).foregroundStyle(theme[\.overlay]) }
+                Divider()
+                row("Summarize notifications", fix: nil) { toggle(nil) }
             }
-            line("Badge application icon", fix: nil) { mark(nil) }
-            line("Play sound for notification", fix: wrong(shown.sound) ? "Turn off. Gzyms plays it" : nil) { mark(shown.sound) }
             if wrong(shown.shortcutOff) {
                 Text("The globe+N shortcut is off. Turn on Show Notification Center in Keyboard Shortcuts.")
                     .font(.system(size: 11)).foregroundStyle(theme[\.peach])
             }
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).fill(theme[\.base]))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme[\.overlay].opacity(0.4)))
         .onAppear { if animate, !still { dim = true } }
     }
 
-    /// The pulsing ring around what to change. Only its opacity animates, so a ring never lingers on a box set right.
+    private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 6) { content() }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(theme[\.surface].opacity(0.7)))
+    }
+
+    /// The pulsing ring around what to change. Only its opacity animates, so a ring never lingers on a switch set right.
     private func ring(_ on: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 6).strokeBorder(on ? theme[\.peach] : .clear, lineWidth: 2)
-            .opacity(dim ? 0.3 : 1)
-            .animation(dim ? .easeInOut(duration: 0.8).repeatForever() : nil, value: dim)
+        RoundedRectangle(cornerRadius: 6).strokeBorder(on ? theme[\.peach] : .clear, lineWidth: 2.5)
+            .opacity(dim ? 0.4 : 1)
+            .animation(dim ? .easeInOut(duration: 0.7).repeatForever() : nil, value: dim)
     }
 
     /// nil = either way.
     private func tile(_ title: String, on: Bool?, fix: String?) -> some View {
         VStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 4).fill(theme[\.surface]).frame(width: 90, height: 44)
-            Text(title).font(.system(size: 11))
-            mark(on)
+            RoundedRectangle(cornerRadius: 4).fill(theme[\.base]).frame(width: 76, height: 44)
+            Text(title).font(.system(size: 11)).lineLimit(1).fixedSize()
+            Image(systemName: on == false ? "circle" : "checkmark.circle.fill")
+                .foregroundStyle(on == nil ? theme[\.overlay] : settings == nil ? theme[\.green] : theme[\.text])
             if let fix { Text(fix).font(.system(size: 10, weight: .semibold)).foregroundStyle(theme[\.peach]) }
         }
         .padding(4)
         .overlay(ring(fix != nil))
     }
 
-    private func line<V: View>(_ title: String, fix: String?, @ViewBuilder value: () -> V) -> some View {
+    private func row<V: View>(_ title: String, fix: String?, @ViewBuilder value: () -> V) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(title).font(.system(size: 11))
@@ -1602,16 +1633,25 @@ struct MacMirror: View {
             }
             if let fix { Text(fix).font(.system(size: 10, weight: .semibold)).foregroundStyle(theme[\.peach]) }
         }
-        .padding(.horizontal, 6).padding(.vertical, 3)
+        .padding(.horizontal, 4).padding(.vertical, 3)
         .overlay(ring(fix != nil))
     }
 
-    /// The page as Gzyms wants it marks wanted values green and unwanted red; the real page shows what is set.
-    private func mark(_ on: Bool?) -> some View {
-        let color = on == nil ? theme[\.overlay] : settings != nil ? theme[\.text] : on! ? theme[\.green] : theme[\.red]
-        return Image(systemName: on == nil ? "minus.square" : on! ? "checkmark.square.fill" : "square")
-            .foregroundStyle(color)
+    /// A macOS switch. nil = either way. On the page as Gzyms wants it, a wanted on is green.
+    private func toggle(_ on: Bool?) -> some View {
+        let fill = on == true ? (settings == nil ? theme[\.green] : theme[\.sky]) : theme[\.overlay].opacity(on == nil ? 0.25 : 0.5)
+        return Capsule().fill(fill).frame(width: 26, height: 15)
+            .overlay(alignment: on == true ? .trailing : .leading) { Circle().fill(.white.opacity(on == nil ? 0.5 : 1)).padding(2) }
             .help(on == nil ? "Either way" : on! ? "On" : "Off")
+    }
+
+    private func radio(_ title: String, on: Bool?) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: on == true ? "largecircle.fill.circle" : "circle")
+                .foregroundStyle(on == true ? theme[\.sky] : theme[\.overlay])
+            Text(title).foregroundStyle(theme[\.overlay])
+        }
+        .font(.system(size: 11))
     }
 }
 

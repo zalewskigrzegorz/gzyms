@@ -40,6 +40,8 @@ final class BarModel {
     var configProblems: [String] = []
     var configBroken = false
     var seenApps: [SeenApp] = []
+    /// Settings → Apps, step by step: the apps to set up in macOS, and which one is open now. nil = not running.
+    var appSetup: (queue: [String], at: Int)?
     var grants: [GrantState] = []
     /// Every calendar macOS knows, for the Calendar tab (filled once the calendar plugin has read).
     var calendars: [CalendarInfo] = []
