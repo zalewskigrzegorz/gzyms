@@ -35,6 +35,8 @@ public struct SettingsActions {
     public var openNotificationSettings: () -> Void = {}
     /// One app's own page in System Settings → Notifications, by bundle id.
     public var openAppNotifications: (String) -> Void = { _ in }
+    /// Takes an app off the Apps list: forgets it was seen and drops its rule.
+    public var forgetApp: (String) -> Void = { _ in }
     /// Opens these apps' macOS pages one after another, with a helper next to System Settings.
     public var setUpApps: ([String]) -> Void = { _ in }
     /// Sends a test to `[notifications.phone] url`; the line says how it went.
@@ -1380,7 +1382,9 @@ private struct AppsTab: View {
         if let app = (listed + plugins.map { SeenApp(id: "plugin:\($0.folder)", name: $0.name, icon: nil) }).first(where: { $0.id == selected }) {
             Section(title: app.name) {
                 AppDrawer(app: app, rule: config.appRules[app.id] ?? AppRule(), dnd: config.dndBreaks, live: live, write: actions.write,
-                          macOS: app.id.hasPrefix("plugin:") ? nil : { actions.openAppNotifications(app.id) })
+                          readable: listed.contains { $0.mac != nil },
+                          macOS: app.id.hasPrefix("plugin:") ? nil : { actions.openAppNotifications(app.id) },
+                          forget: { selected = nil; actions.forgetApp(app.id) })
             }
         }
         }
@@ -1423,7 +1427,9 @@ private struct AppsTab: View {
 
     /// Seen apps plus apps with a rule, by name.
     private var listed: [SeenApp] {
-        let ruled = config.appRules.keys.filter { id in !id.hasPrefix("plugin:") && !apps.contains { $0.id == id } }.map { SeenApp(id: $0, name: $0, icon: nil) }
+        // A rule back at its defaults (an app removed from the list leaves its empty table) lists nothing.
+        let ruled = config.appRules.filter { id, rule in !id.hasPrefix("plugin:") && rule != AppRule() && !apps.contains { $0.id == id } }
+            .keys.map { SeenApp(id: $0, name: $0, icon: nil) }
         return (apps + ruled).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 }
@@ -1459,8 +1465,11 @@ private struct AppDrawer: View {
     let dnd: Set<DNDBreak>
     let live: Bool
     let write: (String, TOMLValue?, ConfigTable) -> Void
+    /// macOS settings are read for other apps: one without any has no page there.
+    let readable: Bool
     /// Opens the app's macOS notification page; nil for plugins, which have none.
     var macOS: (() -> Void)?
+    var forget: (() -> Void)?
     @State private var more = false
     @Environment(\.theme) private var theme
 
@@ -1506,14 +1515,18 @@ private struct AppDrawer: View {
         }
         .padding(.horizontal, 12)
         if let macOS {
-            HStack { Spacer(); Button("Open in System Settings", action: macOS) }
-                .padding(.horizontal, 12).padding(.top, 6)
+            HStack {
+                if let forget { Button("Remove from list", action: forget) }
+                Spacer()
+                if app.mac != nil || !readable { Button("Open in System Settings", action: macOS) }
+            }
+            .padding(.horizontal, 12).padding(.top, 6)
             if let mac = app.mac, mac.unsupported {
                 Text(mac.warning ?? "").padding(12)
             } else if let mac = app.mac {
                 MacMirror(settings: mac, animate: live).id(app.id).padding(.horizontal, 12).padding(.vertical, 10)
             } else {
-                Text("Needs Full Disk Access to read macOS.")
+                Text(readable ? "macOS has no settings for this app. It may be gone." : "Needs Full Disk Access to read macOS.")
                     .font(.system(size: 11)).foregroundStyle(theme[\.overlay]).padding(12)
             }
         }

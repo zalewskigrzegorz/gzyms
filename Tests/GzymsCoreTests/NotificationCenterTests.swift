@@ -68,6 +68,7 @@ private func blob(_ req: [String: Any]) throws -> Data {
                                                                                 ["bundle-id": "apple", "flags": 0x3088_0012]]],
                                                    format: .binary, options: 0)
     #expect(ncAppSettings(prefs: comet, apps: ["c.off", "c.on", "apple"], hotkeys: nil)?.compactMapValues(\.warning) == ["c.off": "Notifications off"])
+    #expect(ncAppSettings(prefs: comet, apps: ["C.ON"], hotkeys: nil)?.keys.first == "C.ON")  // matched whatever the case
     // An app that never asked for sound has no sound switch: its 0x4 is no warning (Xcode, auth 4).
     let xcode = try PropertyListSerialization.data(fromPropertyList: ["apps": [["bundle-id": "com.x", "flags": 0x1280200e, "auth": 4],
                                                                                 ["bundle-id": "com.m", "flags": 0x1280200e, "auth": 7]]],

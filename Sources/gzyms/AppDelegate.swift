@@ -1388,6 +1388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         a.openAppNotifications = { [weak self] id in self?.openAppPage(id) }
         a.setUpApps = { [weak self] ids in self?.startAppSetup(ids) }
+        a.forgetApp = { [weak self] id in self?.forget(app: id) }
         a.openNotificationSettings = { [weak self] in
             self?.settings.stepBack()
             if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) }
@@ -1526,13 +1527,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         remember(id)
     }
 
+    /// Off the Apps list until it sends something again.
+    private func forget(app id: String) {
+        model.seenApps.removeAll { $0.id == id }
+        saveSeenApps()
+        for key in ["banner", "sound", "count", "level", "phone", "skip"] { writeSetting(key, nil, .table(["notifications", "apps", id])) }
+        log("settings: \(id) removed from the list")
+    }
+
+    private func saveSeenApps() {
+        try? FileManager.default.createDirectory(at: seenAppsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(model.seenApps.map(\.id)).write(to: seenAppsFile, options: .atomic)
+    }
+
     /// The Notifications tab lists every app that ever sent something. Kept outside the config folder (not a setting).
     private func remember(_ app: String) {
         guard !model.seenApps.contains(where: { $0.id == app }), let s = seenApp(app) else { return }
         model.seenApps.append(s)
-        let ids = model.seenApps.map(\.id)
-        try? FileManager.default.createDirectory(at: seenAppsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? JSONEncoder().encode(ids).write(to: seenAppsFile, options: .atomic)
+        saveSeenApps()
     }
 
     private func seenApp(_ id: String) -> SeenApp? {

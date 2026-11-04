@@ -87,9 +87,11 @@ public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [Strin
     let entry = (keys?["AppleSymbolicHotKeys"] as? [String: Any])?["163"] as? [String: Any]
     let shortcutOff = entry?["enabled"] as? Bool == false
     let defaultHidden = plist["content_visibility"] as? Int == 1
+    // macOS keeps some ids in another case than the app reports (com.apple.BTMNotificationAgent).
+    let wanted = Dictionary(apps.map { ($0.lowercased(), $0) }, uniquingKeysWith: { a, _ in a })
     var out: [String: NCAppSettings] = [:]
     for a in list {
-        guard let id = a["bundle-id"] as? String, apps.contains(id), let flags = a["flags"] as? Int else { continue }
+        guard let raw = a["bundle-id"] as? String, let id = wanted[raw.lowercased()], let flags = a["flags"] as? Int else { continue }
         let auth = a["auth"] as? Int
         let hasSound = auth.map { $0 & 0x2 != 0 } ?? true
         out[id] = NCAppSettings(allowed: flags & 0x1200_0000 != 0, desktop: flags & 0x18 != 0, persistent: flags & 0x10 != 0, center: flags & 0x1 == 0,
