@@ -60,6 +60,11 @@ private func blob(_ req: [String: Any]) throws -> Data {
     // The mirror needs the tiles as they are, not just what is wrong.
     let spark = try #require(ncAppSettings(prefs: try prefs([("com.spark", 0x10 | 0x1, 2)]), apps: ["com.spark"], hotkeys: nil)?["com.spark"])
     #expect(spark == NCAppSettings(desktop: true, persistent: true, center: false, sound: false, previews: 2))
+    // An app that never asked for sound has no sound switch: its 0x4 is no warning (Xcode, auth 4).
+    let xcode = try PropertyListSerialization.data(fromPropertyList: ["apps": [["bundle-id": "com.x", "flags": 0x1280200e, "auth": 4],
+                                                                                ["bundle-id": "com.m", "flags": 0x1280200e, "auth": 7]]],
+                                                   format: .binary, options: 0)
+    #expect(ncAppSettings(prefs: xcode, apps: ["com.x", "com.m"], hotkeys: nil)?.mapValues(\.sound) == ["com.x": false, "com.m": true])
 }
 
 @Test func recordWithoutTitleUsesBody() throws {

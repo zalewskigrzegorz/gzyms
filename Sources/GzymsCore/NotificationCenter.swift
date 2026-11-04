@@ -67,6 +67,8 @@ public struct NCAppSettings: Equatable, Sendable {
 /// off, 0x4 = Play sound on (Gzyms plays it), 0x8 = Desktop with Temporary banners, 0x10 = Desktop with Persistent alerts,
 /// neither = Desktop off (no banner to read). `content_visibility` (Show previews): 0 = Default (the top-level value),
 /// 1 = Never (a placeholder, no text), 2 = When Unlocked, 3 = Always. Lock Screen and the badge do not matter.
+/// `auth` is what the app asked for (1 badge, 2 sound, 4 alert): without 2 its page has no sound switch, and 0x4 means nothing
+/// (Xcode, `auth` 4, 2026-11-04). No `auth` = assume it can play one.
 /// Only `apps` (the ones Gzyms has seen) are read. nil = the settings could not be read.
 public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [String: NCAppSettings]? {
     guard let plist = try? PropertyListSerialization.propertyList(from: prefs, format: nil) as? [String: Any],
@@ -80,7 +82,7 @@ public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [Strin
     for a in list {
         guard let id = a["bundle-id"] as? String, apps.contains(id), let flags = a["flags"] as? Int else { continue }
         out[id] = NCAppSettings(desktop: flags & 0x18 != 0, persistent: flags & 0x10 != 0, center: flags & 0x1 == 0,
-                                sound: flags & 0x4 != 0, previews: a["content_visibility"] as? Int ?? 0, defaultHidden: defaultHidden,
+                                sound: flags & 0x4 != 0 && (a["auth"] as? Int).map { $0 & 0x2 != 0 } ?? true, previews: a["content_visibility"] as? Int ?? 0, defaultHidden: defaultHidden,
                                 shortcutOff: shortcutOff, unsupported: ncOpenOriginalUnsupported.contains(id))
     }
     return out

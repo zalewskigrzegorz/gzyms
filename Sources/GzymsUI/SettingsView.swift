@@ -1520,11 +1520,11 @@ private struct AppDrawer: View {
                 Spacer()
                 Button("Open in System Settings", action: macOS)
             }
-            .padding(.horizontal, 12).padding(.top, 10)
+            .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
             if let mac = app.mac, mac.unsupported {
                 Text(mac.warning ?? "").padding(12)
             } else if let mac = app.mac {
-                MacMirror(settings: mac, animate: live).padding(.horizontal, 12).padding(.bottom, 10)
+                MacMirror(settings: mac, animate: live).id(app.id).padding(.horizontal, 12).padding(.bottom, 10)
             } else {
                 Text("Gzyms cannot read its macOS settings. It needs Full Disk Access, and Open the exact chat or Read banners on in Hacks.")
                     .font(.system(size: 11)).foregroundStyle(theme[\.overlay]).padding(12)
@@ -1571,12 +1571,14 @@ struct MacMirror: View {
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(theme[\.base]))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme[\.overlay].opacity(0.4)))
-        .onAppear { if animate, !still { withAnimation(.easeInOut(duration: 0.8).repeatForever()) { dim = true } } }
+        .onAppear { if animate, !still { dim = true } }
     }
 
-    /// The pulsing ring around what to change.
+    /// The pulsing ring around what to change. Only its opacity animates, so a ring never lingers on a box set right.
     private func ring(_ on: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 6).strokeBorder(on ? theme[\.peach].opacity(dim ? 0.3 : 1) : .clear, lineWidth: 2)
+        RoundedRectangle(cornerRadius: 6).strokeBorder(on ? theme[\.peach] : .clear, lineWidth: 2)
+            .opacity(dim ? 0.3 : 1)
+            .animation(dim ? .easeInOut(duration: 0.8).repeatForever() : nil, value: dim)
     }
 
     /// nil = either way.

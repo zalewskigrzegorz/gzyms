@@ -81,6 +81,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appsObservers: [NSObjectProtocol] = []
     private lazy var settings = SettingsPanel(model: model, actions: settingsActions())
     private var settingsKeyObserver: NSObjectProtocol?
+    /// System Settings opened from Settings → Apps: read every second while it runs, and the way back when it quits.
+    private var systemSettingsWatch: (timer: Timer, observer: NSObjectProtocol)?
     private let seenAppsFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Gzyms/seen-apps.json")
     private lazy var messages = GzymsMessagePanel(model: model)
@@ -1186,6 +1188,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The mirror in Settings → Apps follows each click in System Settings. When System Settings quits, HyprMac
+    /// moves to another app's workspace, so Settings comes back to the front (Greg, 2026-11-04).
+    private func watchSystemSettings() {
+        guard systemSettingsWatch == nil else { return }
+        let started = Date()
+        let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            MainActor.assumeIsolated { [weak self] in
+                // shortcut: a System Settings left open stops being watched after 15 min; reopening the page starts it again.
+                if Date().timeIntervalSince(started) > 900 { self?.stopWatchingSystemSettings() } else { self?.refreshAppWarnings() }
+            }
+        }
+        let observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { n in
+            guard (n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == "com.apple.systempreferences" else { return }
+            MainActor.assumeIsolated { [weak self] in
+                guard let self, self.systemSettingsWatch != nil else { return }
+                self.stopWatchingSystemSettings()
+                self.refreshAppWarnings()
+                guard self.settings.isVisible else { return }
+                log("settings: back from System Settings")
+                NSApp.activate()
+                self.settings.makeKeyAndOrderFront(nil)
+            }
+        }
+        systemSettingsWatch = (timer, observer)
+    }
+
+    private func stopWatchingSystemSettings() {
+        guard let w = systemSettingsWatch else { return }
+        w.timer.invalidate()
+        NSWorkspace.shared.notificationCenter.removeObserver(w.observer)
+        systemSettingsWatch = nil
+    }
+
     @objc private func menuCheckNotifications() { toggleSettings(.apps) }  // the warnings sit next to each app
     @objc private func menuLearn() { NSWorkspace.shared.open(tutorialURL) }
     @objc private func menuQuit() { NSApp.terminate(nil) }
@@ -1294,10 +1329,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Mail's page does not open by its id (Greg, 2026-11-01): the list opens, Mail is one click from there.
             let page = id == "com.apple.mail" ? "" : "?id=\(id)"
             if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension\(page)") { NSWorkspace.shared.open(url) }
+            self?.watchSystemSettings()
         }
         a.openNotificationSettings = { [weak self] in
             self?.settings.stepBack()
             if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) }
+            self?.watchSystemSettings()
         }
         return a
     }
