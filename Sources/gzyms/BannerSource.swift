@@ -160,15 +160,19 @@ final class BannerSource {
         for id in live.keys where !current.contains(id) { live[id] = nil }
         // Text not there yet: again in 20 ms. Held back by the panel's close: again once the grace is over.
         if notReady || held { sweepLater(notReady ? 0.02 : BannerFilter.grace + 0.05) }
-        if live.isEmpty, !homes.isEmpty, restoreWork == nil {
-            let work = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                restoreWork = nil
-                if live.isEmpty { restoreHomes() }
-            }
-            restoreWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+        if live.isEmpty, !homes.isEmpty, restoreWork == nil { restoreLater() }
+    }
+
+    /// Home 1.5 s after the last banner went, never while the panel is open: that would put the panel on screen.
+    private func restoreLater() {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            restoreWork = nil
+            guard live.isEmpty else { return }
+            if nc?.panelOpen == true { restoreLater() } else { restoreHomes() }
         }
+        restoreWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
     }
 
     private func sweepLater(_ delay: Double) {

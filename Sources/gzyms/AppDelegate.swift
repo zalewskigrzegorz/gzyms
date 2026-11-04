@@ -574,7 +574,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pluginHost.send(plugin: owner.plugin, alt ? .notifyAlt : .notifyOpen, id: owner.id)  // the plugin knows where it leads
         } else if model.config.openOriginal, let uuid = ncRecordUUID(noteID: b.id), let app = b.app, !ncOpenOriginalUnsupported.contains(app) {
             // The original in Notification Center knows the exact chat or thread; without it, just the app.
-            NotificationClick.press(uuid: uuid) { pressed in if !pressed { Self.openApp(app) } }
+            NotificationClick.press(uuid: uuid, app: app, live: nil) { pressed in if !pressed { Self.openApp(app) } }
         } else if let app = b.app {
             Self.openApp(app)
         }
