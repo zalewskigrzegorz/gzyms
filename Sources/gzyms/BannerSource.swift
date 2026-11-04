@@ -45,6 +45,20 @@ final class BannerSource: @unchecked Sendable {
     /// Idempotent. Without Accessibility or Notification Center, tries again every 10 s.
     func start() { queue.async { self.startOnQueue() } }
 
+    /// What `gzyms debug notifications` asks of the observer; read on `queue`, so a stalled Notification Center never
+    /// blocks the caller. `done` comes on `queue`.
+    struct Debug: Sendable {
+        var running = false, ncPid: pid_t?, panelOpen: Bool?, hostParked: Bool?, heldByGzyms = false, live = 0, pressing = false, attachTries = 0
+    }
+
+    func debug(_ done: @escaping @Sendable (Debug) -> Void) {
+        queue.async {
+            let w = self.host?.window ?? self.nc?.host
+            done(Debug(running: self.running, ncPid: self.nc?.pid, panelOpen: self.nc?.panelOpen, hostParked: w?.point.map(NCAX.isParked),
+                       heldByGzyms: self.host != nil, live: self.live.count, pressing: self.pressing, attachTries: self.attachTries))
+        }
+    }
+
     /// Removes the observer and puts the parked window home.
     func stop() { queue.async { self.stopOnQueue() } }
 

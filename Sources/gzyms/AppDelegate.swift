@@ -48,6 +48,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bannerGuard = BannerGuard()
     /// Notification Center shows no banners although apps send them (`BannerGuard`).
     private var noBanners = false
+    /// The last banner Gzyms showed from another app, and the way it got here (`gzyms debug notifications`). Never its text.
+    private var lastShown: (app: String?, at: Date, path: String)?
+    private var debugObserver: NSObjectProtocol?
+    /// Secure Input held since (system uptime), and whether the anomaly for this stretch is written.
+    private var secureSince: TimeInterval?
+    private var secureLogged = false
     private var warningsRead: Date?
     /// `nc-` notes opened, dismissed or already shown from their banner, so their database row ~5 s later is skipped.
     private var handled: [String: Date] = [:]
@@ -364,6 +370,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 notesChanged()
             }
         }
+        debugObserver = DistributedNotificationCenter.default().addObserver(forName: debugName, object: nil, queue: .main) { note in
+            let message = note.object as? String
+            MainActor.assumeIsolated { [weak self] in self?.answerDebug(message) }
+        }
         model.onOpenNote = { [weak self] in self?.open($0) }
         model.onAltNote = { [weak self] in self?.open($0, alt: true) }
         model.onRemoveNote = { [weak self] id in
@@ -374,6 +384,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chords.onMute = { [weak self] in self?.micMute.toggle(self?.model.audio); self?.refreshAudio() }
         chords.onNav = { [weak self] in self?.applyNav($0, $1) }
         chords.onArmageddon = { [weak self] in self?.armageddon.open() }
+        chords.onDisabled = { [weak self] why, count in
+            self?.anomalies.write(kind: "tap_disabled", detail: ["by": why, "count": String(count)])
+        }
         model.onTestSound = { [weak self] in self?.play(.message) }
         chords.start()
         startKeys()
@@ -381,6 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             for var n in list where !wasHandled(n.id) {
                 n.app = n.app.map(AppIcons.bundleID(matching:))
+                lastShown = (n.app, Date(), "database")
                 post(n)
             }
         }
@@ -453,6 +467,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func bannerArrived(_ n: GzymsNotification) {
         bannerGuard.banner(at: ProcessInfo.processInfo.systemUptime)
         noBanners = false
+        lastShown = (n.app, Date(), "ax")
         markHandled(n.id)
         post(n)
     }
@@ -528,6 +543,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 let on = IsSecureEventInputEnabled()
                 if on != self.model.secureInput { self.model.secureInput = on; log("keys: secure input \(on ? "on" : "off")") }
+                let now = ProcessInfo.processInfo.systemUptime
+                if !on { self.secureSince = nil; self.secureLogged = false }
+                else if let since = self.secureSince {
+                    if !self.secureLogged, now - since >= 60 {
+                        self.secureLogged = true
+                        self.anomalies.write(kind: "secure_input_long", detail: ["owner": self.secureInputOwner() ?? "unknown", "seconds": String(Int(now - since))])
+                    }
+                } else { self.secureSince = now }
             }
         }
         t.tolerance = 0.5
@@ -1508,6 +1531,112 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.pluginHost.stopAll() }
         }
+    }
+
+    // MARK: - `gzyms debug`
+
+    /// The CLI asks, the bar answers into a file named by the request's id: this process holds the grants.
+    private func answerDebug(_ message: String?) {
+        guard let message, let (id, topics) = debugRequestParts(message) else { return }
+        let dir = DebugCommand.dir, fm = FileManager.default
+        for f in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where f.hasPrefix("debug-") && f.hasSuffix(".json") {
+            let url = dir.appendingPathComponent(f)
+            if let m = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date, Date().timeIntervalSince(m) > 60 { try? fm.removeItem(at: url) }
+        }
+        let file = DebugCommand.replyFile(id)
+        let wantKeys = topics.contains("keys")
+        guard topics.contains("notifications") else {
+            try? keysDebug().wire().write(to: file, options: .atomic)
+            return
+        }
+        let ids = model.seenApps.map(\.id)
+        banners.debug { [weak self] b in
+            // Read fresh, whatever Settings last showed: this is the answer to "what does Gzyms read from macOS".
+            DispatchQueue.global(qos: .utility).async {
+                let home = FileManager.default.homeDirectoryForCurrentUser
+                let prefs = try? Data(contentsOf: home.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences/group.com.apple.usernoted.plist"))
+                let hotkeys = try? Data(contentsOf: home.appending(path: "Library/Preferences/com.apple.symbolichotkeys.plist"))
+                let macOS = prefs.flatMap { ncAppSettings(prefs: $0, apps: ids, hotkeys: hotkeys) }
+                DispatchQueue.main.async { MainActor.assumeIsolated {
+                    guard let self else { return }
+                    var r = self.notificationsDebug(b, macOS: macOS)
+                    if wantKeys { r.add(self.keysDebug()) }
+                    try? r.wire().write(to: file, options: .atomic)
+                } }
+            }
+        }
+    }
+
+    private func notificationsDebug(_ b: BannerSource.Debug, macOS: [String: NCAppSettings]?) -> DebugReport {
+        var r = DebugReport()
+        let c = model.config
+        r.add("config.banner_ax", c.bannerAX)
+        r.add("config.open_original", c.openOriginal)
+        r.add("config.signal", c.signal)
+        r.add("grant.accessibility", AXIsProcessTrusted())
+        r.add("grant.full_disk_access", NotificationCenterSource.hasAccess())
+        r.add("observer.running", b.running)
+        r.add("observer.attached", banners.attached)
+        r.add("observer.attach_tries", String(b.attachTries))
+        let ncNow = NSRunningApplication.runningApplications(withBundleIdentifier: NCAX.bundleID).first?.processIdentifier
+        r.add("notification_center.pid", ncNow.map(String.init) ?? "not running")
+        r.add("notification_center.pid_observed", b.ncPid.map(String.init) ?? "none")
+        r.add("notification_center.panel_open", b.panelOpen.map { $0 ? "yes" : "no" } ?? "unknown")
+        r.add("host_window.parked", b.hostParked.map { $0 ? "yes" : "no" } ?? "no host window found")
+        r.add("host_window.held_by_gzyms", b.heldByGzyms)
+        r.add("banners.parked_now", String(b.live))
+        r.add("click.in_progress", b.pressing)
+        if let l = lastShown { r.add("last_banner", "\(l.app ?? "unknown app"), \(debugAgo(l.at)), via \(l.path)") } else { r.add("last_banner", "none since start") }
+        r.add("last_ax_read", debugAgo(banners.lastBanner))
+        r.add("last_delivery_signal", debugAgo(lastSignal))
+        let now = ProcessInfo.processInfo.systemUptime
+        r.add("guard.signals_without_banner", String(bannerGuard.signals))
+        r.add("guard.first_signal", bannerGuard.firstSignal.map { "\(Int(now - $0)) s ago" } ?? "none")
+        r.add("guard.warns", bannerGuard.warns)
+        r.add("guard.no_banners_flag", noBanners)
+        r.add("dnd", notes.dnd != nil)
+        r.add("notificationnanny.running", !NSRunningApplication.runningApplications(withBundleIdentifier: "com.notificationnanny.app").isEmpty)
+        r.add("macos.globe_n_shortcut", macOS?.values.contains { $0.shortcutOff } == true ? "off" : "on")
+        guard let macOS else { r.add("apps", "macOS notification settings could not be read"); return r }
+        for a in model.seenApps { r.add("app.\(a.id)", macOS[a.id]?.debugLine ?? "not in macOS's list") }
+        return r
+    }
+
+    private func keysDebug() -> DebugReport {
+        var r = DebugReport()
+        let t = chords.debug
+        let now = ProcessInfo.processInfo.systemUptime
+        r.add("grant.accessibility", AXIsProcessTrusted())
+        r.add("tap.created", t.made)
+        r.add("tap.enabled", t.enabled.map { $0 ? "yes" : "no" } ?? "no tap")
+        r.add("tap.disabled_by_macos", t.disabledCount == 0 ? "never since start"
+              : "\(t.disabledCount) since start, last by \(t.lastDisabled ?? "?") \(t.lastDisabledUptime.map { "\(Int(now - $0)) s ago" } ?? "")")
+        let secure = IsSecureEventInputEnabled()
+        r.add("secure_input", secure)
+        if secure {
+            r.add("secure_input.owner", secureInputOwner() ?? "unknown")
+            r.add("secure_input.held_for", secureSince.map { "\(Int(now - $0)) s" } ?? "unknown")
+        }
+        r.add("leader", t.leader ?? "none")
+        r.add("leader.held", t.leaderHeld)
+        r.add("mode.on", t.modeOn)
+        r.add("mode.popup", t.popup ?? "none")
+        r.add("mode.paused_by_recorder", t.paused)
+        r.add("banner.up", t.bannerUp)
+        r.add("banner.hovered", t.hovered)
+        r.add("armageddon.up", t.armageddon)
+        r.add("frontmost_app", NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none")
+        r.add("gzyms_key_window", NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "none")
+        return r
+    }
+
+    /// Who holds Secure Keyboard Entry: the session's `kCGSSessionSecureInputPID`, as a process name.
+    private func secureInputOwner() -> String? {
+        guard IsSecureEventInputEnabled(), let d = CGSessionCopyCurrentDictionary() as? [String: Any],
+              let pid = d["kCGSSessionSecureInputPID"] as? Int else { return nil }
+        var buf = [CChar](repeating: 0, count: 256)
+        let name = NSRunningApplication(processIdentifier: pid_t(pid))?.localizedName ?? (proc_name(pid_t(pid), &buf, UInt32(buf.count)) > 0 ? String(cString: buf) : "?")
+        return "\(name) (pid \(pid))"
     }
 
     private func hacksState() -> HacksState {

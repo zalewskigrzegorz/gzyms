@@ -12,7 +12,7 @@ private let allText = skillTopics.compactMap { skillText(topic: $0) }.joined(sep
 
 @Test func everyCommandIsInTheSkill() {
     let commands = ["gzyms notify", "gzyms set", "gzyms unset", "gzyms theme --list", "gzyms theme ", "gzyms settings",
-                    "gzyms hud", "gzyms report", "gzyms dnd", "breaks_through", "gzyms plugin list", "gzyms plugin new", "gzyms plugin add",
+                    "gzyms hud", "gzyms report", "gzyms debug", "gzyms dnd", "breaks_through", "gzyms plugin list", "gzyms plugin new", "gzyms plugin add",
                     "gzyms plugin remove", "gzyms skill plugins", "gzyms skill install"]
     for c in commands { #expect(allText.contains(c), "\(c) missing from skill/*.md") }
 }

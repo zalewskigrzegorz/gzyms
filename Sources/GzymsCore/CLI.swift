@@ -22,6 +22,8 @@ public let cliTable: [CLICommand] = [
     .init(name: "dnd", usage: "on [minutes]|off", summary: "Turn Do Not Disturb on or off.", words: ["on", "off"]),
     .init(name: "notifications", usage: "[--json] | dismiss <id> | clear", summary: "List the notifications Gzyms holds, dismiss one or clear the lists.",
           words: ["--json", "dismiss", "clear"]),
+    .init(name: "debug", usage: "[notifications|keys] [--json]", summary: "Ask the running Gzyms what it sees: notification setup, keys.",
+          words: ["--json"] + debugTopics),
     .init(name: "hud", usage: "", summary: "Open the usage HUD, a second call closes it.", words: []),
     .init(name: "report", usage: "", summary: "Put a zip for a bug report on the Desktop.", words: []),
     .init(name: "plugin", usage: "list|new <name>|add <name>|remove <name>", summary: "Manage plugins.", words: ["list", "new", "add", "remove"]),

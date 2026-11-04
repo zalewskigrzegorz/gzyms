@@ -14,6 +14,8 @@ final class ChordTap {
     var onMute: () -> Void = {}
     /// Enter or the open letter while the armageddon is up.
     var onArmageddon: () -> Void = {}
+    /// macOS switched the tap off (`timeout` or `user input`) and it was switched on again: the reason and how many so far.
+    var onDisabled: (String, Int) -> Void = { _, _ in }
     /// The keyboard mode: its state after each key (nil = off) and what to do.
     var onNav: (NavSnapshot?, [NavAction]) -> Void = { _, _ in }
     /// What the hints point at when the mode starts: the focused bar's targets, kept fresh by the app.
@@ -42,11 +44,15 @@ final class ChordTap {
                 switch out {
                 case .mute: self.onMute()
                 case .armageddon: self.onArmageddon()
+                case .disabled(let why, let count): self.onDisabled(why, count)
                 case .nav(let shown, let actions): self.onNav(shown, actions)
                 }
             }
         }
     }
+
+    /// For `gzyms debug keys`.
+    var debug: TapDebug { core.debug }
 
     /// What the banner's hint row shows right now; nil = none.
     var hints: ChordHints? { core.hints }
@@ -92,7 +98,26 @@ final class ChordTap {
     }
 }
 
-enum TapOutput: Sendable { case mute, armageddon, nav(NavSnapshot?, [NavAction]) }
+enum TapOutput: Sendable { case mute, armageddon, nav(NavSnapshot?, [NavAction]), disabled(String, Int) }
+
+/// What `gzyms debug keys` says about the tap.
+struct TapDebug: Sendable {
+    var made = false
+    /// nil = no tap yet.
+    var enabled: Bool?
+    var disabledCount = 0
+    var lastDisabled: String?
+    var lastDisabledUptime: Double?
+    var leader: String?
+    var leaderHeld = false
+    var modeOn = false
+    var typed = ""
+    var popup: String?
+    var hovered = false
+    var paused = false
+    var bannerUp = false
+    var armageddon = false
+}
 
 /// The keyboard mode as the bar draws it.
 struct NavSnapshot: Sendable {
@@ -121,6 +146,10 @@ final class TapCore: Sendable {
         /// Fires once, `KeyNav.snoozeSettle` after a z, so a pending snooze settles.
         var snoozeTimer: CFRunLoopTimer?
         var runLoop: CFRunLoop?
+        /// macOS switched the tap off: how often since start, why last, when (system uptime).
+        var disabledCount = 0
+        var lastDisabled: String?
+        var lastDisabledUptime: Double?
     }
 
     private let state = Mutex(State())
@@ -138,6 +167,15 @@ final class TapCore: Sendable {
         case "ctrl": .maskControl
         case "alt": .maskAlternate
         default: .maskCommand
+        }
+    }
+
+    var debug: TapDebug {
+        state.withLock { s in
+            TapDebug(made: s.tap != nil, enabled: s.tap.map { CGEvent.tapIsEnabled(tap: $0) }, disabledCount: s.disabledCount,
+                     lastDisabled: s.lastDisabled, lastDisabledUptime: s.lastDisabledUptime, leader: s.leader?.symbol, leaderHeld: s.leaderHeld,
+                     modeOn: s.nav.on, typed: s.nav.typed, popup: s.nav.popup, hovered: s.nav.hovered, paused: s.paused,
+                     bannerUp: s.bannerUp, armageddon: s.armageddon)
         }
     }
 
@@ -186,6 +224,11 @@ final class TapCore: Sendable {
                                out: inout [TapOutput], core: TapCore) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = s.tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            let why = type == .tapDisabledByTimeout ? "timeout" : "user input"
+            s.disabledCount += 1
+            s.lastDisabled = why
+            s.lastDisabledUptime = ProcessInfo.processInfo.systemUptime
+            out.append(.disabled(why, s.disabledCount))
             log("chords: tap re-enabled")
             // Keys went past the tap meanwhile: a mode left on would no longer match what the apps saw.
             s.leaderHeld = false

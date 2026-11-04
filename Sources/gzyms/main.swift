@@ -30,6 +30,7 @@ if args.first == "settings" { SettingsCommand.run(args.dropFirst().first) }
 if args.first == "keys" { KeysCommand.run(args.dropFirst().first) }
 if args.first == "dnd" { DNDCommand.run(Array(args.dropFirst())) }
 if args.first == "notifications" { NotificationsCommand.run(Array(args.dropFirst())) }
+if args.first == "debug" { DebugCommand.run(Array(args.dropFirst())) }
 if args.first == "report" { Report.run() }
 if args.first == "completions" { CompletionsCommand.run(Array(args.dropFirst())) }
 if args.first == "message" { MessageCommand.run(args.dropFirst().first) }

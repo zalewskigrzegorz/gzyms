@@ -3,8 +3,9 @@
 /// no banner between them, the first at least 2 minutes back. Only a warning: Gzyms never restarts NC itself.
 /// Times are seconds; the caller counts only while `signal` is on and Gzyms's do not disturb is off.
 public struct BannerGuard {
-    private var firstSignal: Double?
-    private var signals = 0
+    /// Read by `gzyms debug`.
+    public private(set) var firstSignal: Double?
+    public private(set) var signals = 0
     public private(set) var warns = false
 
     public init() {}

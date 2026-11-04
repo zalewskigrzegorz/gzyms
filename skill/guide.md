@@ -48,6 +48,21 @@ gzyms notifications clear      # empties every list; banners in the stack stay
 
 Each row has `id`, `source` (an app's bundle id, `plugin:<folder>`, `meeting`, or `bell` for one with no app), `level`, `title`, `subtitle`, `body`, `at`, `place` and `position`. `place` is `stack` (position 1 is on screen, the rest wait in the stack), `waiting` (no room in the stack yet, in the order they come up), `list` (in its app's list) or `snoozed` (`back` says when it returns). `heard` says whether its sound played. `dnd` is set while Do Not Disturb is on. The small app-icon island that shows before a text arrives is never listed. The text is the user's private data: do not quote it outside the conversation, and dismiss or clear only when they ask. `gzyms hud` shows the same stack and waiting line on its Queues tab.
 
+## Asking the running bar: gzyms debug
+
+Run `gzyms debug` when something does not show or a key does nothing, before you guess. The running bar holds Full Disk Access and Accessibility, so it answers for you: one fact per line, never the text of a notification. It needs the bar running.
+
+```
+gzyms debug                  # everything below
+gzyms debug notifications    # how Gzyms reads macOS banners
+gzyms debug keys             # the key tap and the keyboard mode
+gzyms debug --json           # one flat object, every value a string
+```
+
+- `notifications`: the switches that matter (`config.banner_ax`, `config.open_original`, `config.signal`), the Accessibility and Full Disk Access grants, whether the observer is attached to Notification Center (and its pid), whether the panel is open, whether the host window is parked off screen and by Gzyms, the last banner (app, how long ago, `via ax` or `via database`), the banner guard (deliveries counted with no banner after them, `guard.warns`), Do Not Disturb, and one `app.<bundle id>` line per app with what macOS says: `allow`, `banners` (temporary, persistent, off), `center`, `sound`, `previews`, and `problems:` when something there keeps Gzyms from reading its banner.
+- `keys`: whether the tap exists and is enabled, how often macOS switched it off (`tap.disabled_by_macos`, with the reason, then Gzyms switches it on again), Secure Keyboard Entry (`secure_input`, and while it is held `secure_input.owner`, the process holding it, and how long), the leader, whether the mode is on, a popup open, a banner up, the frontmost app, and whether a Gzyms window is the key window.
+- A tap switched off by macOS, or Secure Input held for a minute, also lands in `anomalies.jsonl` (`tap_disabled`, `secure_input_long`).
+
 ## Settings: gzyms set and gzyms unset
 
 ```sh
