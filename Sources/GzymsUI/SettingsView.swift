@@ -1380,19 +1380,7 @@ private struct AppsTab: View {
         if let app = (listed + plugins.map { SeenApp(id: "plugin:\($0.folder)", name: $0.name, icon: nil) }).first(where: { $0.id == selected }) {
             Section(title: app.name) {
                 AppDrawer(app: app, rule: config.appRules[app.id] ?? AppRule(), dnd: config.dndBreaks, live: live, write: actions.write,
-                          macOS: app.id.hasPrefix("plugin:") ? nil : { actions.openAppNotifications(app.id) })
-            }
-        } else {
-            Section(title: "macOS") {
-                Row(title: "Let Gzyms show them, not macOS",
-                    note: "Keep Allow notifications, Desktop and Notification Center on. Turn the sound off. Set Show previews once, at the top of Notifications, to Always or When Unlocked. Apps on Default follow it. Gzyms reads each banner and hides the macOS one, so nothing shows twice.") {
-                    Button("Open Notification settings", action: actions.openNotificationSettings)
-                }
-                Row(title: "Open the exact chat",
-                    note: "Click an app to see its macOS page as it is now. What to change pulses. The switch is in Hacks.") {
-                    EmptyView()
-                }
-                MacMirror(settings: nil, animate: false).padding(.horizontal, 12).padding(.bottom, 10)
+                          hasPage: !app.id.hasPrefix("plugin:"))
             }
         }
         }
@@ -1471,8 +1459,8 @@ private struct AppDrawer: View {
     let dnd: Set<DNDBreak>
     let live: Bool
     let write: (String, TOMLValue?, ConfigTable) -> Void
-    /// Opens the app's macOS notification page; nil for plugins, which have none.
-    var macOS: (() -> Void)?
+    /// Plugins have no macOS page.
+    let hasPage: Bool
     @State private var more = false
     @Environment(\.theme) private var theme
 
@@ -1490,21 +1478,20 @@ private struct AppDrawer: View {
     var body: some View {
         let preset = AppPreset(rule)
         VStack(alignment: .leading, spacing: 8) {
-            Text("How Gzyms shows it").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
             Picker("", selection: Binding(get: { preset }, set: { if let p = $0 { apply(p) } })) {
                 ForEach(AppPreset.allCases, id: \.self) { Text($0.title).tag(Optional($0)) }
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
             .settingsSlot { apply(AppPreset.allCases[((preset.flatMap { AppPreset.allCases.firstIndex(of: $0) } ?? -1) + 1) % AppPreset.allCases.count]) }
-            Text(preset?.note(dnd: dnd) ?? "Custom. Set by hand under More.").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+            .help(preset?.note(dnd: dnd) ?? "Custom. Set by hand under More.")
         }
         .padding(12)
         DisclosureGroup(isExpanded: $more) {
             VStack(spacing: 0) {
                 Row(title: "Banner") { Switch(on: rule.banner) { set("banner", $0) } }
-                Row(title: "Sound", note: "Gzyms plays it") { Switch(on: rule.sound) { set("sound", $0) } }
+                Row(title: "Sound") { Switch(on: rule.sound) { set("sound", $0) } }
                 Row(title: "Count on the bar") { Switch(on: rule.count) { set("count", $0) } }
-                Row(title: "Phone", note: "every notification of this app, whatever its level") {
+                Row(title: "Phone") {
                     Switch(on: rule.phone) { write("phone", $0 ? .bool(true) : nil, table) }
                 }
                 Row(title: "Every notification is", note: rule.level == .armageddon ? "Every screen flashes red with a sound until you click it." : nil) {
@@ -1518,19 +1505,13 @@ private struct AppDrawer: View {
             Text("More").onTapGesture { more.toggle() }.settingsSlot { more.toggle() }
         }
         .padding(.horizontal, 12)
-        if let macOS {
-            HStack {
-                Text("In macOS").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
-                Spacer()
-                Button("Open in System Settings", action: macOS)
-            }
-            .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+        if hasPage {
             if let mac = app.mac, mac.unsupported {
                 Text(mac.warning ?? "").padding(12)
             } else if let mac = app.mac {
-                MacMirror(settings: mac, animate: live).id(app.id).padding(.horizontal, 12).padding(.bottom, 10)
+                MacMirror(settings: mac, animate: live).id(app.id).padding(.horizontal, 12).padding(.vertical, 10)
             } else {
-                Text("Gzyms cannot read its macOS settings. It needs Full Disk Access, and Open the exact chat or Read banners on in Hacks.")
+                Text("Needs Full Disk Access to read macOS.")
                     .font(.system(size: 11)).foregroundStyle(theme[\.overlay]).padding(12)
             }
         }
@@ -1552,7 +1533,7 @@ struct MacMirror: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            card { row("Allow notifications", fix: nil) { toggle(true) } }
+            card { row("Allow notifications", fix: wrong(!shown.allowed) ? "Turn on" : nil) { toggle(shown.allowed) } }
             card {
                 HStack(alignment: .top, spacing: 12) {
                     tile("Desktop", on: shown.desktop, fix: wrong(!shown.desktop) ? "Tick" : nil)
@@ -1572,12 +1553,12 @@ struct MacMirror: View {
                 card {
                     if shown.hasBadge { row("Badge application icon", fix: nil) { toggle(nil) } }
                     if shown.hasBadge && shown.hasSound { Divider() }
-                    if shown.hasSound { row("Play sound for notification", fix: wrong(shown.sound) ? "Turn off. Gzyms plays it" : nil) { toggle(shown.sound) } }
+                    if shown.hasSound { row("Play sound for notification", fix: wrong(shown.sound) ? "Turn off" : nil) { toggle(shown.sound) } }
                 }
             }
             card {
                 row("Show previews", fix: wrong(shown.previewsHidden)
-                    ? (shown.previews == 0 ? "Default follows the top of Notifications. Set it there or pick When Unlocked here." : "Pick Default, When Unlocked or Always")
+                    ? (shown.previews == 0 ? "Pick When Unlocked" : "Pick Default")
                     : nil) {
                     HStack(spacing: 4) {
                         Text(["Default", "Never", "When Unlocked", "Always"][min(max(shown.previews, 0), 3)])

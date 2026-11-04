@@ -58,10 +58,16 @@ private func blob(_ req: [String: Any]) throws -> Data {
             ["com.apple.mail": "macOS does not let you set notifications for Mail."])
     #expect(warnings(Data("nope".utf8)) == nil)
     // The mirror needs the tiles as they are, not just what is wrong.
-    let spark = try #require(ncAppSettings(prefs: try prefs([("com.spark", 0x10 | 0x1, 2)]), apps: ["com.spark"], hotkeys: nil)?["com.spark"])
+    let spark = try #require(ncAppSettings(prefs: try prefs([("com.spark", 0x0200_0000 | 0x10 | 0x1, 2)]), apps: ["com.spark"], hotkeys: nil)?["com.spark"])
     #expect(spark == NCAppSettings(desktop: true, persistent: true, center: false, sound: false, previews: 2))
     #expect(NCAppSettings(shortcutOff: true).pageDone && !NCAppSettings(sound: true).pageDone)
     #expect(!NCAppSettings(defaultHidden: true).pageDone && NCAppSettings(previews: 2, defaultHidden: true).pageDone)
+    // Allow notifications off: neither 0x02000000 nor Apple's 0x10000000 (Comet with it off, then on).
+    let comet = try PropertyListSerialization.data(fromPropertyList: ["apps": [["bundle-id": "c.off", "flags": 0x0080_204A],
+                                                                                ["bundle-id": "c.on", "flags": 0x0280_204A],
+                                                                                ["bundle-id": "apple", "flags": 0x3088_0012]]],
+                                                   format: .binary, options: 0)
+    #expect(ncAppSettings(prefs: comet, apps: ["c.off", "c.on", "apple"], hotkeys: nil)?.compactMapValues(\.warning) == ["c.off": "Notifications off"])
     // An app that never asked for sound has no sound switch: its 0x4 is no warning (Xcode, auth 4).
     let xcode = try PropertyListSerialization.data(fromPropertyList: ["apps": [["bundle-id": "com.x", "flags": 0x1280200e, "auth": 4],
                                                                                 ["bundle-id": "com.m", "flags": 0x1280200e, "auth": 7]]],

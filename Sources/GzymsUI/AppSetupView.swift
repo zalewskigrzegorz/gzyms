@@ -29,6 +29,8 @@ public struct AppSetupView: View {
             Text(done ? "Set up right. The next app opens in a moment." : "Click what pulses below on its page in System Settings. Gzyms moves on by itself.")
                 .font(.system(size: 12)).foregroundStyle(done ? theme[\.green] : theme[\.text])
                 .fixedSize(horizontal: false, vertical: true)
+            Text("Turn off your tiling window manager, like HyprMac, while you set up.")
+                .font(.system(size: 11)).foregroundStyle(theme[\.overlay]).fixedSize(horizontal: false, vertical: true)
             MacMirror(settings: app.mac).id(app.id)
             HStack {
                 if !done {
