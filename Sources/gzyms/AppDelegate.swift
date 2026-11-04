@@ -408,7 +408,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         island.onHover = { [weak self] on in
             self?.chords.hover(on)
-            self?.notes.hover(on, now: ProcessInfo.processInfo.systemUptime)
             self?.notesChanged()
         }
         notifyObserver = DistributedNotificationCenter.default().addObserver(forName: notifyName, object: nil, queue: .main) { note in
@@ -554,6 +553,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chords.popup(id)
     }
 
+    /// The banner's countdown stands still while the pointer is on it or the leader shows its hints (Greg, #25).
+    private func syncPause() { notes.hover(island.hovered || chords.hints != nil, now: ProcessInfo.processInfo.systemUptime) }
+
     private func applyNav(_ shown: NavSnapshot?, _ actions: [NavAction]) {
         // The banner's letters work with a held modifier leader too, before any bar was picked.
         for case .banner(let a) in actions { chordAction(a) }
@@ -696,6 +698,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The tap decides on its own thread, from these two values.
         chords.bannerUp = notes.banner != nil
         chords.queued = notes.waiting > 0
+        syncPause()  // a banner that comes while the leader is active stands still from the start
         // Heard when it enters the stack, on screen or waiting, whatever let it in. An armageddon plays its own.
         for n in notes.takeSounds() where n.level != .armageddon { play(n) }
         syncInboxes()

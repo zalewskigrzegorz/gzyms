@@ -66,6 +66,20 @@ func note(_ id: String, _ title: String = "t", app: String? = "com.app", level: 
     #expect(s.inbox("com.app").map(\.title) == ["B"])
 }
 
+/// The leader pauses through the same call as the pointer, so it comes again while already paused (or running).
+@Test func repeatedPauseKeepsTheTimeLeft() {
+    var s = NotificationStore()
+    s.post(note("a"), now: 0)
+    s.hover(true, now: 2)
+    s.hover(true, now: 5)
+    s.hover(false, now: 10)
+    s.hover(false, now: 11)
+    s.tick(now: 13.9)
+    #expect(s.banner != nil)
+    s.tick(now: 14)
+    #expect(s.banner == nil)
+}
+
 @Test func hoverPausesCountdown() {
     var s = NotificationStore()
     s.post(note("a"), now: 0)
