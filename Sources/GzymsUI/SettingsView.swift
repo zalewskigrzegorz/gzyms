@@ -1366,7 +1366,7 @@ private struct AppsTab: View {
         }
         Section(title: "macOS") {
             Row(title: "Let Gzyms show them, not macOS",
-                note: "The gear next to an app opens its macOS page. Keep Allow notifications, Desktop and Notification Center on. Show previews Always or When unlocked. Turn the sound off. Gzyms reads each banner and hides the macOS one, so nothing shows twice.") {
+                note: "The gear next to an app opens its macOS page. Keep Allow notifications, Desktop and Notification Center on. Turn the sound off. Set Show previews once, at the top of Notifications, to Always or When Unlocked. Apps on Default follow it. Gzyms reads each banner and hides the macOS one, so nothing shows twice.") {
                 Button("Open Notification settings", action: actions.openNotificationSettings)
             }
             Row(title: "Open the exact chat",
@@ -1397,7 +1397,7 @@ private struct MacNotificationsMock: View {
                 tile("Notification Center", on: true)
                 tile("Lock Screen", on: nil)
             }
-            line("Show previews", on: true, note: "Always or When unlocked")
+            line("Show previews", on: true, note: "Default, with the top setting Always or When Unlocked")
             line("Badge application icon", on: nil)
             line("Play sound for notification", on: false, note: "Gzyms plays it")
         }

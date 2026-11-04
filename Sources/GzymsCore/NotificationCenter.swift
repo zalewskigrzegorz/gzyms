@@ -26,10 +26,12 @@ public func ncRecordUUID(noteID: String) -> String? {
 /// Apps whose original cannot be opened this way (Greg, 2026-11-02: Mail cannot be set up for it): a click opens just the app.
 public let ncOpenOriginalUnsupported: Set<String> = ["com.apple.mail"]
 
-/// Per app, what keeps opening the original in Notification Center from working (the warning sign in Settings → Apps),
-/// from macOS's per-app notification settings (`apps` in usernoted's group plist). `flags` read by flipping the boxes
-/// live on macOS 27: 0x1 = Notification Center off, 0x4 = Play sound on (Gzyms plays it), 0x8 = Desktop on.
-/// Lock Screen and the badge do not matter.
+/// Per app, what keeps Gzyms from reading its banner or opening its original (the warning sign in Settings → Apps),
+/// from macOS's per-app notification settings (`apps` in usernoted's group plist). Read by flipping the boxes live on
+/// macOS 27 (2026-11-04): `flags` 0x1 = Notification Center off, 0x4 = Play sound on (Gzyms plays it),
+/// 0x8 = Desktop with Temporary banners, 0x10 = Desktop with Persistent alerts, neither = Desktop off (no banner to read).
+/// `content_visibility` (Show previews): 0 = Default (the top-level value), 1 = Never (a placeholder, no text),
+/// 2 = When Unlocked, 3 = Always. Lock Screen and the badge do not matter.
 /// Only `apps` (the ones Gzyms has seen) are checked. nil = the settings could not be read.
 public func ncSettingsWarnings(prefs: Data, apps: [String], hotkeys: Data?) -> [String: String]? {
     guard let plist = try? PropertyListSerialization.propertyList(from: prefs, format: nil) as? [String: Any],
@@ -38,13 +40,16 @@ public func ncSettingsWarnings(prefs: Data, apps: [String], hotkeys: Data?) -> [
     let keys = hotkeys.flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
     let entry = (keys?["AppleSymbolicHotKeys"] as? [String: Any])?["163"] as? [String: Any]
     let shortcutOff = entry?["enabled"] as? Bool == false
+    let globalPreviews = plist["content_visibility"] as? Int
     var out: [String: String] = [:]
     for a in list {
         guard let id = a["bundle-id"] as? String, apps.contains(id), let flags = a["flags"] as? Int else { continue }
         if ncOpenOriginalUnsupported.contains(id) { out[id] = "macOS does not let you set notifications for Mail."; continue }
+        let own = a["content_visibility"] as? Int ?? 0
         var wrong: [String] = []
+        if flags & 0x18 == 0 { wrong.append("Banners off") }
         if flags & 0x1 != 0 { wrong.append("Notification Center off") }
-        if flags & 0x8 != 0 { wrong.append("Desktop on") }
+        if (own == 0 ? globalPreviews : own) == 1 { wrong.append("Previews off") }
         if flags & 0x4 != 0 { wrong.append("Sound on") }
         if shortcutOff { wrong.append("globe+N shortcut off") }
         if !wrong.isEmpty { out[id] = wrong.joined(separator: ", ") }

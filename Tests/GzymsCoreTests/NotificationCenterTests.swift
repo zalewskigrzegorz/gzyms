@@ -29,18 +29,29 @@ private func blob(_ req: [String: Any]) throws -> Data {
 }
 
 @Test func settingsWarnAboutWhatIsWrong() throws {
-    func prefs(_ apps: [(String, Int)]) throws -> Data {
-        try PropertyListSerialization.data(fromPropertyList: ["apps": apps.map { ["bundle-id": $0.0, "flags": $0.1] }], format: .binary, options: 0)
+    /// (bundle id, flags, per-app content_visibility or nil = follows the global one).
+    func prefs(_ apps: [(String, Int, Int?)], global: Int = 3) throws -> Data {
+        let list = apps.map { a -> [String: Any] in
+            var d: [String: Any] = ["bundle-id": a.0, "flags": a.1]
+            if let v = a.2 { d["content_visibility"] = v }
+            return d
+        }
+        return try PropertyListSerialization.data(fromPropertyList: ["apps": list, "content_visibility": global], format: .binary, options: 0)
     }
-    let seen = ["com.chat", "com.mail", "com.ok"]
-    // Flags as macOS 27 wrote them: the right setup, then Desktop and sound on, then everything off.
-    let data = try prefs([("com.ok", 0x1280_3142), ("com.mail", 0x1280_314E), ("com.chat", 0x1280_3143), ("com.unseen", 0x1)])
+    // content_visibility: 0 Default (the global one), 1 Never, 2 When Unlocked, 3 Always.
+    // Flags as macOS 27 wrote them for Script Editor (2026-11-04): 0x8 Temporary, 0x10 Persistent, neither = Desktop off.
+    let banners = 0x0280_204A, alerts = 0x0280_2052, none = 0x0280_2042
+    let seen = ["com.ok", "com.alerts", "com.none", "com.nc", "com.sound", "com.never", "com.global", "com.default", "com.two"]
+    let data = try prefs([("com.ok", banners, 3), ("com.alerts", alerts, 2), ("com.none", none, 3), ("com.nc", banners | 0x1, 3),
+                          ("com.sound", banners | 0x4, 3), ("com.never", banners, 1), ("com.global", banners, nil), ("com.default", banners, 0),
+                          ("com.two", none | 0x4, 3), ("com.unseen", none, 1)], global: 1)
     #expect(ncSettingsWarnings(prefs: data, apps: seen, hotkeys: nil) ==
-            ["com.chat": "Notification Center off", "com.mail": "Desktop on, Sound on"])
+            ["com.none": "Banners off", "com.nc": "Notification Center off", "com.sound": "Sound on", "com.never": "Previews off",
+             "com.global": "Previews off", "com.default": "Previews off", "com.two": "Banners off, Sound on"])
+    #expect(ncSettingsWarnings(prefs: try prefs([("com.global", banners, nil)], global: 2), apps: seen, hotkeys: nil) == [:])
     let off = try PropertyListSerialization.data(fromPropertyList: ["AppleSymbolicHotKeys": ["163": ["enabled": false]]], format: .binary, options: 0)
-    #expect(ncSettingsWarnings(prefs: try prefs([("com.ok", 0x1280_3142)]), apps: seen, hotkeys: off) ==
-            ["com.ok": "globe+N shortcut off"])
-    #expect(ncSettingsWarnings(prefs: try prefs([("com.apple.mail", 0x1280_3142)]), apps: ["com.apple.mail"], hotkeys: nil) ==
+    #expect(ncSettingsWarnings(prefs: try prefs([("com.ok", banners, 3)]), apps: seen, hotkeys: off) == ["com.ok": "globe+N shortcut off"])
+    #expect(ncSettingsWarnings(prefs: try prefs([("com.apple.mail", banners, 3)]), apps: ["com.apple.mail"], hotkeys: nil) ==
             ["com.apple.mail": "macOS does not let you set notifications for Mail."])
     #expect(ncSettingsWarnings(prefs: Data("nope".utf8), apps: seen, hotkeys: nil) == nil)
 }

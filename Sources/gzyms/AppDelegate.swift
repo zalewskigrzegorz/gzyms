@@ -1169,7 +1169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Marks each app whose macOS notification settings keep opening the original from working (Settings → Apps).
     /// The file opens only with Full Disk Access, so it is read off the main thread.
     private func refreshAppWarnings() {
-        let ids = model.seenApps.map(\.id), on = model.config.openOriginal
+        let ids = model.seenApps.map(\.id), on = model.config.openOriginal || model.config.bannerAX
         DispatchQueue.global(qos: .utility).async {
             let home = FileManager.default.homeDirectoryForCurrentUser
             let prefs = try? Data(contentsOf: home.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences/group.com.apple.usernoted.plist"))
