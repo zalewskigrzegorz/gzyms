@@ -36,7 +36,7 @@ final class BannerSource: @unchecked Sendable {
     private var attachTries = 0
     /// A click runs through the panel: no sweep reads its rows, no restore moves its window.
     var pressing = false
-    private var terminateObserver: NSObjectProtocol?
+    private var pidCheck: DispatchSourceTimer?
 
     init(deliver: @escaping @MainActor (GzymsNotification) -> Void) { self.deliver = deliver }
 
@@ -83,20 +83,25 @@ final class BannerSource: @unchecked Sendable {
     private func startOnQueue() {
         guard !running else { return }
         running = true
-        terminateObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: nil) { [weak self] note in
-            let id = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
-            guard let me = self, id == NCAX.bundleID else { return }
-            me.queue.async { me.restarted() }
+        // NC is a background app: no didTerminate for it, and a killed NC sends no Accessibility event either
+        // (live test 2026-11-04). Its pid changing is the sign it came back.
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + 10, repeating: 10, leeway: .seconds(2))
+        t.setEventHandler { [weak self] in
+            guard let self, observer != nil else { return }
+            let pid = NSRunningApplication.runningApplications(withBundleIdentifier: NCAX.bundleID).first?.processIdentifier
+            if pid != nc?.pid { restarted() }
         }
+        t.resume()
+        pidCheck = t
         attach()
     }
 
     private func stopOnQueue() {
         guard running else { return }
         running = false
-        if let terminateObserver { NSWorkspace.shared.notificationCenter.removeObserver(terminateObserver) }
-        terminateObserver = nil
+        pidCheck?.cancel()
+        pidCheck = nil
         attachWork?.cancel()
         detach()
         restoreHome()

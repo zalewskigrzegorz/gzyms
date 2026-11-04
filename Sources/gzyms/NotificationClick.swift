@@ -80,8 +80,10 @@ private final class PanelPress: @unchecked Sendable {
     }
 
     func find() {
-        if let host, let p = host.point, !NCAX.isParked(p) {
-            source.park(host)  // NC can move it back while it lays the panel out
+        // NC can move it back while it lays the panel out. Never once the panel closes: a parked closing panel
+        // left NC showing no banner at all until it was restarted (spike, and again in the live test).
+        if let host, nc.panelOpen, let p = host.point, !NCAX.isParked(p) {
+            source.park(host)
             reparks += 1
         }
         guard elapsed < 2.5 else {
