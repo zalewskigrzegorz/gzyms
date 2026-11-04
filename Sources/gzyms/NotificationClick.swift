@@ -12,7 +12,7 @@ import ApplicationServices
 /// The old trick parked before the panel opened, took the first window as the panel (since macOS 26 that can be a
 /// banner, an alert or a widget) and never put it back.
 /// Runs on `BannerSource.queue`, with the banners: never on the main thread, one click at a time, one owner of the window.
-/// shortcut: rides on Notification Center's private Accessibility tree, the menu bar clock or globe+N, a macOS update
+/// shortcut: rides on Notification Center's private Accessibility tree and globe+N, a macOS update
 /// can break it; then `done(false)` and the caller opens the app as before.
 enum NotificationClick {
     /// `uuid` as the panel names the banner (upper case, dashed). ≤ 2.5 s in all; `done` comes on the main thread.
@@ -122,7 +122,7 @@ private final class PanelPress: @unchecked Sendable {
         done(ok)
         guard !wasOpen else { source.pressDone(); return }
         after(0.3) {
-            if self.nc.panelOpen { _ = NCAX.toggle(prefer: self.how) }
+            if self.nc.panelOpen { _ = NCAX.toggle() }
             self.after(0.8) { self.source.pressDone() }
         }
     }

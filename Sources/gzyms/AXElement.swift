@@ -43,33 +43,15 @@ enum NCAX {
                            title: lines["title"] ?? "", subtitle: lines["subtitle"] ?? "", body: lines["body"] ?? "")
     }
 
-    /// The menu bar clock opens and closes the panel, found by hit testing. Not there when the menu bar is hidden.
-    static func pressMenuBarClock() -> Bool {
-        let system = AXUIElementCreateSystemWide()
-        let right = Int(CGDisplayBounds(CGMainDisplayID()).maxX)  // CoreGraphics: fine off the main thread
-        for x in stride(from: right - 1, through: right - 500, by: -6) {
-            var el: AXUIElement?
-            guard AXUIElementCopyElementAtPosition(system, Float(x), 12, &el) == .success, let el,
-                  el.identifier == "com.apple.menuextra.clock" else { continue }
-            return el.press() == .success
-        }
-        return false
-    }
-
-    /// globe+N, the system shortcut that shows and hides the panel.
-    static func pressGlobeN() {
+    /// globe+N, the system shortcut that shows and hides the panel. Not Nanny's menu bar clock: Gzyms's own bar
+    /// covers it, and a hit test there asks Gzyms's own SwiftUI from a background queue, which crashes (live test 2026-11-04).
+    static func toggle() -> String {
         let source = CGEventSource(stateID: .hidSystemState)
         for down in [true, false] {
             let e = CGEvent(keyboardEventSource: source, virtualKey: 45, keyDown: down)
             e?.flags = .maskSecondaryFn
             e?.post(tap: .cghidEventTap)
         }
-    }
-
-    /// Opens or closes the panel; "clock" or "globeN", so the close goes the way the open went.
-    static func toggle(prefer: String? = nil) -> String {
-        if prefer != "globeN", pressMenuBarClock() { return "clock" }
-        pressGlobeN()
         return "globeN"
     }
 
