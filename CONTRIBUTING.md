@@ -1,5 +1,7 @@
 # Contributing
 
+Start in [Discussions](https://github.com/zalewskigrzegorz/gzyms/discussions): Problems for bugs, Ideas for features. An issue gets opened from the discussion once it is confirmed or picked.
+
 Run `scripts/check.sh` before every deploy. It ends with `ALL GREEN`.
 
 ## Feature list

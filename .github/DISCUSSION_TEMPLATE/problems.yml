@@ -1,0 +1,43 @@
+title: "[Problem] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for telling me. Settings → Debug → Make report… puts a zip on your Desktop. Attach it below. It has the log and your settings, but no notification text, no tokens and no personal names.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you see? A screenshot helps.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to get there
+      placeholder: |
+        1. …
+        2. …
+  - type: input
+    id: version
+    attributes:
+      label: Gzyms version
+      description: Settings → About
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+    validations:
+      required: true
+  - type: checkboxes
+    id: report
+    attributes:
+      label: Report
+      options:
+        - label: I attached the zip from Settings → Debug → Make report

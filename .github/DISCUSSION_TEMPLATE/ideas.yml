@@ -1,0 +1,21 @@
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Look for the same idea first and give it a 👍. That is how the next things get picked.
+  - type: textarea
+    id: what
+    attributes:
+      label: What you want to do
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What would it solve for you?
+  - type: textarea
+    id: today
+    attributes:
+      label: How you do it today
