@@ -394,12 +394,25 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
                          plugins: all, openPlugin: "gh-prs", actions: actions).frame(width: 1400, height: 500), "settings-plugins-changed")
     preview(SettingsView(tab: .constant(.modules), config: config, problems: [], broken: false, apps: [], devices: [],
                          plugins: [pr], actions: actions).frame(width: 1400, height: 900), "settings-built-in")
-    let ag = PluginStatus(folder: "agents", name: "Agents", description: "The coding agents tuios sees", enabled: true, running: true, options: [
+    // Agents have their own tab: on with its options open, edited since the catalog, and not installed yet.
+    let ag = PluginStatus(folder: "agents", name: "Agents", description: "The coding agents tuios sees (Claude Code, Codex and others). Tells you when one waits for you.",
+                          enabled: true, running: true, options: [
         PluginOption(key: "done_after", title: "Done after (min)", kind: .number, defaultValue: .int(3)),
-        PluginOption(key: "terminal", title: "Terminal", kind: .text, defaultValue: .string("Ghostty")),
-    ])
+        PluginOption(key: "sounds", title: "Sounds", kind: .toggle, defaultValue: .bool(true)),
+    ], icon: "sparkles")
+    var agEdited = ag
+    agEdited.catalogNewer = true
+    var agOff = ag
+    agOff.enabled = false
+    agOff.running = false
     preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
-                         plugins: [ag], actions: actions).frame(width: 1400, height: 500), "settings-agents-on")
+                         plugins: [ag], openPlugin: "agents", actions: actions).frame(width: 1400, height: 500), "settings-agents-on")
+    preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
+                         plugins: [agEdited], openPlugin: "agents", actions: actions).frame(width: 1400, height: 500), "settings-agents-changed")
+    preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
+                         plugins: [agOff], actions: actions).frame(width: 1400, height: 300), "settings-agents-off")
+    preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
+                         plugins: [], actions: actions).frame(width: 1400, height: 300), "settings-agents-not-installed")
 }
 
 @Test func everyDeviceKindHasASymbol() {
@@ -450,6 +463,10 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     #expect(s.shown.first?.title == "Sounds")
     s.move(1)
     preview(PaletteView(state: s) { _ in }.themed(.mochaNeon), "palette")
+    for q in ["agents", "tuios", "claude"] {
+        s.query = q
+        #expect(s.shown.first?.title == "Agents", "\(q)")
+    }
     s.query = "zzz"
     #expect(s.shown.isEmpty && s.selected == 0)
     preview(PaletteView(state: s) { _ in }.themed(.mochaNeon), "palette-empty")

@@ -154,7 +154,7 @@ struct GalleryTab: View {
             group("Banner entry and speed (writes config.toml)", motion)
             group("Settings tabs", tabs.map { ($0, ["settings", $0]) })
             group("HUD", [("open or close", ["hud"])])
-            Text("Themes: the Themes tab. File shelf: drag a file anywhere. Agents and log watcher: the Plugins tab.")
+            Text("Themes: the Themes tab. File shelf: drag a file anywhere. Agents: the Agents tab. Log watcher: the Plugins tab.")
                 .font(.caption).foregroundStyle(.secondary)
             if !output.isEmpty { Output(text: output).foregroundStyle(.red) }
         }

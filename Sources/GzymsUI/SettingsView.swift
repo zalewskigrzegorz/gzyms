@@ -220,7 +220,7 @@ public struct SettingsView: View {
         case .modules: ModulesTab(config: config, write: actions.write, plugins: plugins)
         case .plugins: PluginsTab(config: config, write: actions.write, plugins: plugins, actions: actions, selected: openPlugin)
         case .calendar: CalendarTab(config: config, calendars: calendars, write: actions.write)
-        case .agents: AgentsTab(config: config, write: actions.write, plugins: plugins, actions: actions)
+        case .agents: AgentsTab(config: config, write: actions.write, plugins: plugins, actions: actions, open: openPlugin == agentsFolder)
         case .sounds: SoundsTab(config: config, write: actions.write, actions: actions)
         case .shortcuts: ShortcutsTab(config: config, write: actions.write, recording: actions.recording)
         case .permissions: Section(title: "Permissions") {
@@ -664,12 +664,16 @@ private struct PluginsTab: View {
     @Environment(\.theme) private var theme
     @Environment(\.settingsNav) private var nav
 
-    private var addable: [CatalogPlugin] { pluginCatalog.filter { c in !plugins.contains { $0.folder == c.name } } }
+    /// Agents have their own tab, so the list and the catalog leave it out.
+    private var listed: [PluginStatus] { plugins.filter { $0.folder != agentsFolder } }
+    private var addable: [CatalogPlugin] { pluginCatalog.filter { c in c.name != agentsFolder && !plugins.contains { $0.folder == c.name } } }
 
     var body: some View {
         Columns {
             Section(title: "Plugins") {
-                ForEach(plugins, id: \.folder, content: row)
+                ForEach(listed, id: \.folder) { p in
+                    PluginRow(p: p, selected: selected == p.folder, write: write) { selected = selected == p.folder ? nil : p.folder }
+                }
                 Button { adding.toggle() } label: {
                     HStack(spacing: 6) {
                         Image(systemName: adding ? "chevron.down" : "chevron.right").font(.system(size: 9)).frame(width: 12)
@@ -680,7 +684,7 @@ private struct PluginsTab: View {
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 6)
                 if adding { add }
             }
-            if let p = plugins.first(where: { $0.folder == selected }) {
+            if let p = listed.first(where: { $0.folder == selected }) {
                 Section(title: p.name) {
                     PluginDrawer(p: p, config: config, write: write, actions: actions, close: { selected = nil })
                 }
@@ -689,42 +693,6 @@ private struct PluginsTab: View {
         // Esc closes the drawer first, the panel on the next press.
         .onChange(of: selected) { _, s in nav?.escape = s == nil ? nil : { selected = nil } }
         .onDisappear { nav?.escape = nil }
-    }
-
-    private func row(_ p: PluginStatus) -> some View {
-        let pick = { selected = selected == p.folder ? nil : p.folder }
-        let (state, color) = state(p)
-        let symbol = p.icon.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil ? nil : $0 } ?? "puzzlepiece.extension"
-        return HStack(spacing: 10) {
-            Image(systemName: symbol).foregroundStyle(theme[\.overlay]).frame(width: 18, height: 18)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(p.name).lineLimit(1)
-                if let line = p.description.components(separatedBy: ". ").first, !line.isEmpty {
-                    Text(line).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).lineLimit(1)
-                }
-            }
-            Spacer(minLength: 8)
-            HStack(spacing: 5) {
-                Circle().fill(color).frame(width: 7, height: 7)
-                Text(state)
-            }
-            .font(.system(size: 12)).foregroundStyle(color == theme[\.green] ? theme[\.overlay] : color)
-            .frame(width: 104, alignment: .leading)
-            Switch(on: p.enabled) { write("enabled", $0 ? nil : .bool(false), .table(["plugins", p.folder])) }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selected == p.folder ? theme[\.surface] : .clear).padding(.horizontal, 4))
-        .contentShape(Rectangle())
-        .onTapGesture(perform: pick)
-        .settingsSlot(choose: pick)
-        .help(p.problem ?? "")
-    }
-
-    private func state(_ p: PluginStatus) -> (String, Color) {
-        if p.problem != nil { return ("Error", theme[\.red]) }
-        if p.catalogNewer { return ("You changed it", theme[\.peach]) }
-        if !p.enabled { return ("Off", theme[\.overlay]) }
-        return p.running ? ("Running", theme[\.green]) : ("Starting", theme[\.overlay])
     }
 
     /// The catalog's ready plugins, a folder to drop, and the warning that goes with installing one.
@@ -754,6 +722,51 @@ private struct PluginsTab: View {
     }
 }
 
+/// One line of a plugin list: icon, name, what it does, how it is, a switch. Plugins and Agents draw it the same way.
+private struct PluginRow: View {
+    let p: PluginStatus
+    var name: String?
+    let selected: Bool
+    let write: (String, TOMLValue?, ConfigTable) -> Void
+    let pick: () -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        let (state, color) = state
+        let symbol = p.icon.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil ? nil : $0 } ?? "puzzlepiece.extension"
+        return HStack(spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(theme[\.overlay]).frame(width: 18, height: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name ?? p.name).lineLimit(1)
+                if let line = p.description.components(separatedBy: ". ").first, !line.isEmpty {
+                    Text(line).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 5) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text(state)
+            }
+            .font(.system(size: 12)).foregroundStyle(color == theme[\.green] ? theme[\.overlay] : color)
+            .frame(width: 104, alignment: .leading)
+            Switch(on: p.enabled) { write("enabled", $0 ? nil : .bool(false), .table(["plugins", p.folder])) }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(selected ? theme[\.surface] : .clear).padding(.horizontal, 4))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: pick)
+        .settingsSlot(choose: pick)
+        .help(p.problem ?? "")
+    }
+
+    private var state: (String, Color) {
+        if p.problem != nil { return ("Error", theme[\.red]) }
+        if p.catalogNewer { return ("You changed it", theme[\.peach]) }
+        if !p.enabled { return ("Off", theme[\.overlay]) }
+        return p.running ? ("Running", theme[\.green]) : ("Starting", theme[\.overlay])
+    }
+}
+
 /// One plugin on the side of Settings → Plugins: what it does, what is wrong, its update, its options, remove.
 private struct PluginDrawer: View {
     let p: PluginStatus
@@ -761,6 +774,8 @@ private struct PluginDrawer: View {
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let actions: SettingsActions
     let close: () -> Void
+    /// Agents are built in: the switch turns them off, there is nothing to remove.
+    var removable = true
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -782,69 +797,56 @@ private struct PluginDrawer: View {
                 write(o.key, v == o.defaultValue ? nil : v, .table(["plugins", p.folder]))
             }
         }
-        HStack {
-            Button("Remove") { close(); actions.removePlugin(p.folder) }
-            Spacer()
-            Button("Show in Finder") { actions.revealPlugin(p.folder) }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-    }
-}
-
-/// One installed plugin as a section: on or off, show, remove, and its own form drawn from the [[option]]s in its plugin.toml.
-/// The Agents tab uses it; Plugins has the list and the drawer.
-private struct PluginSection: View {
-    let p: PluginStatus
-    let config: GzymsConfig
-    let write: (String, TOMLValue?, ConfigTable) -> Void
-    let actions: SettingsActions
-
-    var body: some View {
-        Section(title: p.name) {
-            Row(title: p.enabled ? (p.running ? "On" : "Starting") : "Off", note: p.problem ?? (p.description.isEmpty ? p.folder : p.description)) {
-                HStack(spacing: 8) {
-                    Button("Show") { actions.revealPlugin(p.folder) }
-                    Button("Remove") { actions.removePlugin(p.folder) }
-                    Switch(on: p.enabled) { write("enabled", $0 ? nil : .bool(false), .table(["plugins", p.folder])) }
-                }
+        if removable {
+            HStack {
+                Button("Remove") { close(); actions.removePlugin(p.folder) }
+                Spacer()
+                Button("Show in Finder") { actions.revealPlugin(p.folder) }
             }
-            if p.catalogNewer {
-                Row(title: "You changed \(p.folder)", note: "Gzyms has a newer version. Update it from the catalog? Your copy is kept as \(p.folder).bak-<date>.") {
-                    Button("Update") { actions.updatePlugin(p.folder) }
-                }
-            }
-            ForEach(p.options, id: \.key) { o in
-                PluginOptionRow(option: o, value: config.pluginOptions[p.folder]?[o.key] ?? o.defaultValue) { v in
-                    write(o.key, v == o.defaultValue ? nil : v, .table(["plugins", p.folder]))
-                }
-            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
         }
     }
 }
 
-/// The agents plugin's own place: its settings when it is there, an Add button when not.
+/// The catalog plugin that holds the agents for now. Settings → Agents shows it, Settings → Plugins does not.
+private let agentsFolder = "agents"
+
+/// Agents: the tuios integration as one row and its options on the side, drawn like Plugins. Not installed: Turn on.
 private struct AgentsTab: View {
     let config: GzymsConfig
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let plugins: [PluginStatus]
     let actions: SettingsActions
+    @State var open = false
     @Environment(\.theme) private var theme
+    @Environment(\.settingsNav) private var nav
 
     var body: some View {
+        let p = plugins.first { $0.folder == agentsFolder }
         Columns {
-            if let p = plugins.first(where: { $0.folder == "agents" }) {
-                PluginSection(p: p, config: config, write: write, actions: actions)
-            } else if let c = pluginCatalog.first(where: { $0.name == "agents" }) {
-                Section(title: "Agents") {
-                    Row(title: "Agents from tuios", note: c.summary) { Button("Add") { actions.addPlugin(c.name) } }
+            Section(title: "Agents") {
+                if let p {
+                    PluginRow(p: p, name: "tuios", selected: open, write: write) { open.toggle() }
+                } else if let c = pluginCatalog.first(where: { $0.name == agentsFolder }) {
+                    Row(title: "tuios", note: c.summary.components(separatedBy: ". ").first ?? c.summary) {
+                        Button("Turn on") { actions.addPlugin(c.name) }
+                    }
+                }
+            }
+            if let p, open {
+                Section(title: "tuios") {
+                    PluginDrawer(p: p, config: config, write: write, actions: actions, close: { open = false }, removable: false)
                 }
             }
             Section(title: "Coming later") {
-                Text("Claude Code and Codex without tuios. Any other tool through gzyms agent set.")
+                Text("Other agent tools come later.")
                     .font(.system(size: 12)).foregroundStyle(theme[\.overlay])
                     .padding(.horizontal, 12).padding(.vertical, 7)
             }
         }
+        // Esc closes the drawer first, the panel on the next press.
+        .onChange(of: open) { _, o in nav?.escape = o ? { open = false } : nil }
+        .onDisappear { nav?.escape = nil }
     }
 }
 
