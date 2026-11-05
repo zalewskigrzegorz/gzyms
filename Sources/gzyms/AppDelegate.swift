@@ -48,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bannerGuard = BannerGuard()
     /// Notification Center shows no banners although apps send them (`BannerGuard`).
     private var noBanners = false
+    private var ncRestart = NCRestartPolicy()
+    private var ncRestartedAt: Date?
     /// The last banner Gzyms showed from another app, and the way it got here (`gzyms debug notifications`). Never its text.
     private var lastShown: (app: String?, at: Date, path: String)?
     private var debugObserver: NSObjectProtocol?
@@ -467,22 +469,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func bannerArrived(_ n: GzymsNotification) {
         bannerGuard.banner(at: ProcessInfo.processInfo.systemUptime)
         noBanners = false
+        ncRestart.bannerShown()
         lastShown = (n.app, Date(), "ax")
         markHandled(n.id)
         post(n)
     }
 
-    /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb, not for apps whose
+    /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb or a macOS Focus, not for apps whose
     /// macOS style is None (they never show a banner), not while the observer is off.
     private func countSignal(_ app: String) {
         // The per-app warnings say which apps never show a banner; read once a minute, not only when Settings opens.
         if warningsRead.map({ Date().timeIntervalSince($0) > 60 }) ?? true { warningsRead = Date(); refreshAppWarnings() }
         guard model.config.signal, notes.dnd == nil, banners.attached,
               model.seenApps.first(where: { $0.id == app })?.mac?.desktop != false else { return }
+        // A Focus holds banners back on purpose: not a hung Notification Center.
+        let assertions = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/DoNotDisturb/DB/Assertions.json")
+        if let data = try? Data(contentsOf: assertions), focusIsOn(assertions: data) { return }
         bannerGuard.signal(at: ProcessInfo.processInfo.systemUptime)
         if bannerGuard.warns, !noBanners {
             noBanners = true
             log("banners: apps send notifications but Notification Center shows no banner. A Focus, or NC stuck: killall NotificationCenter")
+            let now = ProcessInfo.processInfo.systemUptime
+            if ncRestart.stillHung {
+                log("banners: still no banner after the Notification Center restart, not restarting again")
+                anomalies.write(kind: "nc_restart_failed", detail: ["restarts": String(ncRestart.count)])
+            } else if ncRestart.mayAutoRestart(enabled: model.config.ncAutoRestart, at: now) {
+                restartNC(reason: "\(bannerGuard.signals) deliveries without a banner over \(Int(now - (bannerGuard.firstSignal ?? now))) s", auto: true)
+            }
+        }
+    }
+
+    /// `killall NotificationCenter`: macOS starts it again and no notification is lost. The guard starts over and the
+    /// observer attaches to the new process at once. The automatic caller is limited by `NCRestartPolicy`; the button is not.
+    private func restartNC(reason: String, auto: Bool) {
+        ncRestart.restarted(at: ProcessInfo.processInfo.systemUptime)
+        ncRestartedAt = Date()
+        bannerGuard = BannerGuard()
+        noBanners = false
+        log("banners: restarting Notification Center (\(auto ? "automatic" : "button"): \(reason))")
+        anomalies.write(kind: "nc_restart", detail: ["by": auto ? "auto" : "button", "reason": reason, "count": String(ncRestart.count)])
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        p.arguments = ["NotificationCenter"]
+        let banners = banners
+        DispatchQueue.global(qos: .userInitiated).async {
+            do { try p.run(); p.waitUntilExit() } catch { log("banners: killall failed: \(error)") }
+            if p.terminationStatus != 0 { log("banners: killall NotificationCenter exited \(p.terminationStatus)") }
+            banners.ncRestarted()
         }
     }
 
@@ -1356,6 +1389,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var a = SettingsActions { [weak self] key, value, table in self?.writeSetting(key, value, table) }
         a.recording = { [weak self] on in self?.chords.paused = on; self?.settings.recording = on }
         a.hacks = { [weak self] in self?.hacksState() ?? HacksState() }
+        a.restartNotificationCenter = { [weak self] in self?.restartNC(reason: "Settings button", auto: false) }
         a.quitApp = { id in NSRunningApplication.runningApplications(withBundleIdentifier: id).forEach { $0.terminate() } }
         a.chooseApp = { [weak self] in self?.chooseApp() }
         a.chooseLogo = { [weak self] in self?.chooseLogo() }
@@ -1573,6 +1607,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         r.add("config.banner_ax", c.bannerAX)
         r.add("config.open_original", c.openOriginal)
         r.add("config.signal", c.signal)
+        r.add("config.nc_auto_restart", c.ncAutoRestart)
         r.add("grant.accessibility", AXIsProcessTrusted())
         r.add("grant.full_disk_access", NotificationCenterSource.hasAccess())
         r.add("observer.running", b.running)
@@ -1594,6 +1629,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         r.add("guard.first_signal", bannerGuard.firstSignal.map { "\(Int(now - $0)) s ago" } ?? "none")
         r.add("guard.warns", bannerGuard.warns)
         r.add("guard.no_banners_flag", noBanners)
+        r.add("nc_restart.count", String(ncRestart.count))
+        r.add("nc_restart.last", debugAgo(ncRestartedAt))
+        r.add("nc_restart.awaiting_banner", ncRestart.stillHung)
+        r.add("nc_restart.gave_up", ncRestart.stillHung && noBanners)
         r.add("dnd", notes.dnd != nil)
         r.add("notificationnanny.running", !NSRunningApplication.runningApplications(withBundleIdentifier: "com.notificationnanny.app").isEmpty)
         r.add("macos.globe_n_shortcut", macOS?.values.contains { $0.shortcutOff } == true ? "off" : "on")
@@ -1658,6 +1697,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         h.lastBanner = banners.lastBanner
         h.nannyRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.notificationnanny.app").isEmpty
         h.noBanners = noBanners
+        h.ncRestarts = ncRestart.count
+        h.ncLastRestart = ncRestartedAt
+        h.ncStillHung = ncRestart.stillHung && noBanners
         return h
     }
 

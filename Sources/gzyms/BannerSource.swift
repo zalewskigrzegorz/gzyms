@@ -59,6 +59,9 @@ final class BannerSource: @unchecked Sendable {
         }
     }
 
+    /// Gzyms just restarted Notification Center: attach to the new one now, not at the next 10 s pid check.
+    func ncRestarted() { queue.async { self.restarted() } }
+
     /// Removes the observer and puts the parked window home.
     func stop() { queue.async { self.stopOnQueue() } }
 

@@ -284,3 +284,10 @@ import Testing
     #expect(!off.config.signal)
     #expect(off.problems.isEmpty)
 }
+
+@Test func ncAutoRestartDefaultsOffAndParses() {
+    #expect(!loadConfig(toml: nil).config.ncAutoRestart)
+    let on = loadConfig(toml: "[notifications]\nnc_auto_restart = true\n")
+    #expect(on.config.ncAutoRestart)
+    #expect(on.problems.isEmpty)
+}

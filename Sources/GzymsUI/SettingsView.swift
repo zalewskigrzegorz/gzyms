@@ -64,6 +64,8 @@ public struct SettingsActions {
     public var recording: (Bool) -> Void = { _ in }
     /// What Settings → Hacks shows, read fresh every 2 s while that tab is open.
     public var hacks: () -> HacksState = { HacksState() }
+    /// `killall NotificationCenter`; macOS starts it again.
+    public var restartNotificationCenter: () -> Void = {}
     /// Quits a running app by bundle id (Music.app, which takes the media keys).
     public var quitApp: (String) -> Void = { _ in }
     public init(write: @escaping (String, TOMLValue?, ConfigTable) -> Void) { self.write = write }
@@ -198,7 +200,9 @@ public struct SettingsView: View {
         case .shortcuts: ShortcutsTab(config: config, write: actions.write, recording: actions.recording)
         case .permissions: Section(title: "Permissions") {
             PermissionsView(states: grants, open: actions.openGrant, restart: actions.restart)
-            if actions.hacks().noBanners { Row(title: "No banners", note: HacksTab.noBannersText) { EmptyView() } }
+            if actions.hacks().noBanners {
+                Row(title: "No banners", note: HacksTab.noBannersText) { Button("Restart") { actions.restartNotificationCenter() } }
+            }
         }
         case .hacks: HacksTab(config: config, grants: grants, actions: actions, live: live)
         case .debug: DebugTab(config: config, actions: actions)
@@ -1119,6 +1123,10 @@ public struct HacksState: Equatable {
     public var nannyRunning = false
     /// Apps send notifications but Notification Center shows no banner (`BannerGuard`).
     public var noBanners = false
+    /// Notification Center restarts by Gzyms since it started, the last one, and no banner has shown since it.
+    public var ncRestarts = 0
+    public var ncLastRestart: Date?
+    public var ncStillHung = false
     public init() {}
 }
 
@@ -1173,8 +1181,16 @@ private struct HacksTab: View {
                 Section(title: "Notifications") {
                     Row(title: "Instant banners",
                         note: state(bannersState(h), ok: config.bannerAX && h.bannerAXOn && !h.nannyRunning && !h.noBanners)
-                            + " Gzyms reads the macOS banner through Accessibility the moment it shows, and hides it. A macOS update can break it. Then the text comes from the database a few seconds later.") {
+                            + " Gzyms reads the macOS banner through Accessibility the moment it shows, and hides it. A macOS update can break it. Then the text comes from the database a few seconds later. In a macOS Focus (Sleep, Work) banners are held back, so they are not instant either: they come from the database like normal ones.") {
                         Switch(on: config.bannerAX) { actions.write("banner_ax", $0 ? nil : .bool(false), .table(["notifications"])) }
+                    }
+                    Row(title: "Restart a hung Notification Center",
+                        note: state(restartState(h), ok: !h.ncStillHung)
+                            + " When apps send notifications and Notification Center shows none, Gzyms can run killall NotificationCenter. macOS starts it again, nothing is lost, and the screen flickers for a second. The switch does it by itself, at most once in 10 minutes. The button works either way.") {
+                        HStack(spacing: 8) {
+                            Button("Restart") { actions.restartNotificationCenter() }
+                            Switch(on: config.ncAutoRestart) { actions.write("nc_auto_restart", $0 ? .bool(true) : nil, .table(["notifications"])) }
+                        }
                     }
                     Row(title: "Open the exact chat",
                         note: "Opening a notification in Gzyms presses its macOS banner through Accessibility. Once the banner is gone, it presses its row in Notification Center, hidden off screen. The app then opens the right chat or thread. A macOS update can break it. Then Gzyms opens just the app. Set each app in Apps.") {
@@ -1206,7 +1222,14 @@ private struct HacksTab: View {
         return h.lastBanner.map { "Last banner at \($0.formatted(date: .omitted, time: .shortened))." } ?? "No banner since Gzyms started."
     }
 
-    static let noBannersText = "Notification Center shows no banners although apps send them, or a Focus is on. Restart it: killall NotificationCenter"
+    static let noBannersText = "Notification Center shows no banners although apps send them, or a Focus is on. Restart it with the button, or: killall NotificationCenter"
+
+    private func restartState(_ h: HacksState) -> String {
+        var s = config.ncAutoRestart ? "Automatic restart on." : "Automatic restart off."
+        if let at = h.ncLastRestart { s += " Restarted \(h.ncRestarts) time(s), last at \(at.formatted(date: .omitted, time: .shortened))." }
+        if h.ncStillHung { s += " No banner since, so it will not restart again by itself." }
+        return s
+    }
 
     private var docsButton: some View { Button("Docs") { actions.openURL(Self.docs) } }
 

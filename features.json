@@ -1,6 +1,6 @@
 {
-  "count": 81,
-  "updated": "2026-11-04",
+  "count": 82,
+  "updated": "2026-11-05",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -78,6 +78,7 @@
     "Music popup with every media app and Go to",
     "Browser tabs in the music pill",
     "Hacks tab",
+    "Restart a hung Notification Center, by button or automatically",
     "Permissions wizard",
     "Sparkle updates",
     "What's new notes after an update",
