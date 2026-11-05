@@ -809,7 +809,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return }
         flying += 1
         island.fadeNextHide = true
-        FlyToIcon.run(image: image, from: island.avatarRect, to: target) { [weak self] in
+        FlyToIcon.run(image: image, from: island.avatarRect, to: target, pace: island.pace) { [weak self] in
             self?.flying -= 1
             self?.syncInboxes()
         }
@@ -937,9 +937,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyMotion() {
         let c = model.config
-        let on = c.animations && !(c.followReduceMotion && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
-        model.animate = on
-        island.animate = on
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        model.animate = c.animates(reduceMotion: reduce)
+        island.entry = c.entry(reduceMotion: reduce)
+        island.pace = c.animationSpeed.factor
     }
 
     // MARK: - No tiling manager

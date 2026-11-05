@@ -22,7 +22,8 @@ extension SettingsTab {
     public var keywords: String {
         switch self {
         case .general: "workspaces caffeine display awake battery config notch tiling"
-        case .appearance: "look cpu chart motion animations reduce device icons"
+        case .appearance: "look cpu chart device icons"
+        case .animations: "motion animations reduce banner entry icon first drop notch unroll pop fade speed slow fast"
         case .themes: "theme colors colours"
         case .notifications: "banners levels armageddon sound dnd disturb phone pushover push"
         case .apps: "app rules banner count skip mute"

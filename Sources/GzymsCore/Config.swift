@@ -71,6 +71,17 @@ public struct GzymsConfig: Equatable, Sendable {
     public var meetingPreview = true
     public var animations = true
     public var followReduceMotion = true
+    /// `[appearance] banner_entry`: how a banner arrives on an empty island.
+    public var bannerEntry = BannerEntry.drop  // icon first delays the text by ~1 s, so it is opt-in (Greg)
+    /// `[appearance] animation_speed`: scales every island and icon-flight duration.
+    public var animationSpeed = AnimationSpeed.normal
+    /// Whether anything moves: off with `animations = false`, and under macOS Reduce motion unless told to ignore it.
+    public func animates(reduceMotion: Bool) -> Bool { animations && !(followReduceMotion && reduceMotion) }
+    /// How a banner arrives (Greg's order): nil = at once with animations off, a fade under Reduce motion, else the chosen style.
+    public func entry(reduceMotion: Bool) -> BannerEntry? {
+        guard animations else { return nil }
+        return followReduceMotion && reduceMotion ? .fade : bannerEntry
+    }
     /// `[appearance] favorite_themes`: the themes the user starred in Settings → Themes, first in the list.
     public var favoriteThemes: [String] = []
     /// Device name → the icon its pills show, for hardware that reports an odd transport.
@@ -83,6 +94,26 @@ public struct GzymsConfig: Equatable, Sendable {
 
     public static let defaults = GzymsConfig(workspaces: WorkspaceStyle.gregDefaults, showEmpty: false, smallOnNotch: false,
                                              theme: .mochaNeon, cpuChart: .line, notificationSounds: true)
+}
+
+/// Strongest first, the order Settings lists them in (Greg, after the HTML prototype of 2026-11-05).
+public enum BannerEntry: String, CaseIterable, Sendable {
+    /// icon: the icon drops in, then the text unrolls out of it. drop: slides down from under the edge with a spring.
+    /// notch: grows out of the notch's shape. unroll: unrolls down from the edge. pop: grows from 85 % and fades in.
+    /// fade: fades in where it stands, also what Reduce motion gets.
+    case icon, drop, notch, unroll, pop, fade
+}
+
+public enum AnimationSpeed: String, CaseIterable, Sendable {
+    case slow, normal, fast
+    /// Multiplies the island's base durations. Normal is 1.5: Greg found the old slow the right pace (2026-11-05).
+    public var factor: Double {
+        switch self {
+        case .slow: 2.25
+        case .normal: 1.5
+        case .fast: 0.9
+        }
+    }
 }
 
 public enum MenuBarKey: String, CaseIterable, Sendable {
@@ -316,6 +347,14 @@ public func loadConfig(toml: String?) -> ConfigLoad {
     }
     if let v = raw.appearance?.animations { config.animations = v }
     if let v = raw.appearance?.follow_reduce_motion { config.followReduceMotion = v }
+    if let s = raw.appearance?.banner_entry {
+        if let v = BannerEntry(rawValue: s) { config.bannerEntry = v }
+        else { problems.append("appearance.banner_entry: \"\(s)\" must be icon, drop, notch, unroll, pop or fade, kept drop") }
+    }
+    if let s = raw.appearance?.animation_speed {
+        if let v = AnimationSpeed(rawValue: s) { config.animationSpeed = v }
+        else { problems.append("appearance.animation_speed: \"\(s)\" must be slow, normal or fast, kept normal") }
+    }
     if let v = raw.appearance?.favorite_themes {
         // A favourite that is not a theme any more (renamed, dropped for contrast) just leaves the list.
         config.favoriteThemes = v.filter { Theme.named($0) != nil }
@@ -592,15 +631,18 @@ private struct RawLetters: Decodable {
 }
 
 private struct RawAppearance: Decodable {
-    var animations: Bool?, follow_reduce_motion: Bool?, favorite_themes: [String]?
+    var animations: Bool?, follow_reduce_motion: Bool?, banner_entry: String?, animation_speed: String?, favorite_themes: [String]?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case animations, follow_reduce_motion, favorite_themes }
+    enum CodingKeys: String, CodingKey { case animations, follow_reduce_motion, banner_entry, animation_speed, favorite_themes }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         animations = lenient(c, .animations, "appearance.animations", &unknown)
         follow_reduce_motion = lenient(c, .follow_reduce_motion, "appearance.follow_reduce_motion", &unknown)
+        banner_entry = lenient(c, .banner_entry, "appearance.banner_entry", &unknown)
+        animation_speed = lenient(c, .animation_speed, "appearance.animation_speed", &unknown)
         favorite_themes = lenient(c, .favorite_themes, "appearance.favorite_themes", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["animations", "follow_reduce_motion", "favorite_themes"], prefix: "appearance.")
+        unknown += try unknownKeys(in: decoder, known: ["animations", "follow_reduce_motion", "banner_entry", "animation_speed", "favorite_themes"],
+                                   prefix: "appearance.")
     }
 }
 

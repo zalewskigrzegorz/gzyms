@@ -3,7 +3,7 @@ import GzymsCore
 import SwiftUI
 
 public enum SettingsTab: String, CaseIterable, Sendable {
-    case general, appearance, themes, notifications, apps, modules, plugins, calendar, agents, sounds, shortcuts, permissions, hacks, debug, about
+    case general, appearance, animations, themes, notifications, apps, modules, plugins, calendar, agents, sounds, shortcuts, permissions, hacks, debug, about
     public var title: String { self == .modules ? "Order" : rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 }
 
@@ -157,6 +157,7 @@ public struct SettingsView: View {
             ViewThatFits(in: .horizontal) {
                 tabs(size: 13, pad: 8)
                 tabs(size: 12, pad: 5)
+                tabs(size: 11, pad: 3)
             }
             .frame(maxWidth: .infinity)
             .overlay(alignment: .trailing) {
@@ -189,6 +190,7 @@ public struct SettingsView: View {
         switch tab {
         case .general: GeneralTab(config: config, names: workspaceNames, write: actions.write, reveal: actions.revealConfig)
         case .appearance: AppearanceTab(config: config, devices: devices, write: actions.write, openThemes: { tab = .themes })
+        case .animations: AnimationsTab(config: config, write: actions.write)
         case .themes: ThemesTab(config: config, write: actions.write)
         case .notifications: NotificationsTab(config: config, actions: actions)
         case .apps: AppsTab(config: config, apps: apps, plugins: plugins, actions: actions, live: live, selected: openApp)
@@ -381,14 +383,6 @@ private struct AppearanceTab: View {
                 menu(config.cpuChart.rawValue, [("line", "Line"), ("bars", "Bars")]) { write("chart", .string($0), .table(["cpu"])) }
             }
         }
-        Section(title: "Motion") {
-            Row(title: "Animations", note: "banner unroll, icon flight, count bump") {
-                Switch(on: config.animations) { write("animations", .bool($0), .table(["appearance"])) }
-            }
-            Row(title: "Follow macOS Reduce motion") {
-                Switch(on: config.followReduceMotion) { write("follow_reduce_motion", .bool($0), .table(["appearance"])) }
-            }
-        }
         // Banned lives in `[audio] banned`, not in the icons: the bar popups and M and S leave it out.
         Section(title: "Device icons") {
             let banned = config.bannedDevices
@@ -402,6 +396,50 @@ private struct AppearanceTab: View {
                         if next != banned { write("banned", next.isEmpty ? nil : .strings(next.sorted()), .table(["audio"])) }
                         write(d, k == "auto" || k == "banned" ? nil : .string(k), .table(["audio", "icons"]))
                     }
+                }
+            }
+        }
+        }
+    }
+}
+
+// MARK: - Animations
+
+private struct AnimationsTab: View {
+    let config: GzymsConfig
+    let write: (String, TOMLValue?, ConfigTable) -> Void
+
+    private var entryNote: String {
+        switch config.bannerEntry {
+        case .icon: "The icon drops in, then the text unrolls out of it."
+        case .drop: "Slides down from under the edge with a spring."
+        case .notch: "Grows out of the notch."
+        case .unroll: "Unrolls down from the top edge."
+        case .pop: "Grows a little and fades in."
+        case .fade: "Fades in where it stands."
+        }
+    }
+
+    var body: some View {
+        let table = ConfigTable.table(["appearance"])
+        Columns {
+        Section(title: "Motion") {
+            Row(title: "Animations", note: "banner unroll, icon flight, count bump") {
+                Switch(on: config.animations) { write("animations", .bool($0), table) }
+            }
+            Row(title: "Follow macOS Reduce motion", note: "with Reduce motion on, banners only fade") {
+                Switch(on: config.followReduceMotion) { write("follow_reduce_motion", .bool($0), table) }
+            }
+        }
+        Section(title: "Banner") {
+            Row(title: "Entry", note: entryNote) {
+                menu(config.bannerEntry, BannerEntry.allCases.map { ($0, $0 == .icon ? "Icon first" : $0.rawValue.capitalized) }, width: 110) {
+                    write("banner_entry", $0 == .drop ? nil : .string($0.rawValue), table)
+                }
+            }
+            Row(title: "Speed") {
+                menu(config.animationSpeed, AnimationSpeed.allCases.map { ($0, $0.rawValue.capitalized) }, width: 110) {
+                    write("animation_speed", $0 == .normal ? nil : .string($0.rawValue), table)
                 }
             }
         }

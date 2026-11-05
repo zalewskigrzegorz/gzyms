@@ -1,5 +1,5 @@
 {
-  "count": 82,
+  "count": 83,
   "updated": "2026-11-05",
   "features": [
     "gzyms notify command",
@@ -47,6 +47,7 @@
     "Banner hints on hover, clickable",
     "Named second action on a banner",
     "Sound when a banner is dismissed",
+    "Banner entry styles (icon first, drop, notch, unroll, pop, fade) and animation speed",
     "Popup navigation with j k h l",
     "dd clears a notification list",
     "Remappable key letters",

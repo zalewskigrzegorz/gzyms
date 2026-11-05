@@ -170,6 +170,27 @@ import Testing
     #expect(load.problems.count == 1)
 }
 
+@Test func bannerEntryAndSpeed() {
+    #expect(GzymsConfig.defaults.bannerEntry == .drop && GzymsConfig.defaults.animationSpeed == .normal)
+    let load = loadConfig(toml: "[appearance]\nbanner_entry = \"notch\"\nanimation_speed = \"fast\"\n")
+    #expect(load.config.bannerEntry == .notch && load.config.animationSpeed == .fast && load.problems.isEmpty)
+    let bad = loadConfig(toml: "[appearance]\nbanner_entry = \"spin\"\nanimation_speed = \"warp\"\n")
+    #expect(bad.config.bannerEntry == .drop && bad.config.animationSpeed == .normal && bad.problems.count == 2)
+    #expect(AnimationSpeed.slow.factor > 1 && AnimationSpeed.fast.factor < 1)
+}
+
+/// Greg's order: animations off beats Reduce motion (a fade), which beats the chosen style.
+@Test func bannerEntryUnderReduceMotionAndOff() {
+    var c = GzymsConfig.defaults
+    c.bannerEntry = .pop
+    #expect(c.entry(reduceMotion: false) == .pop && c.animates(reduceMotion: false))
+    #expect(c.entry(reduceMotion: true) == .fade && !c.animates(reduceMotion: true))
+    c.followReduceMotion = false
+    #expect(c.entry(reduceMotion: true) == .pop && c.animates(reduceMotion: true))
+    c.animations = false
+    #expect(c.entry(reduceMotion: false) == nil && c.entry(reduceMotion: true) == nil && !c.animates(reduceMotion: false))
+}
+
 @Test func bannedAudioDevicesByName() {
     #expect(GzymsConfig.defaults.bannedDevices.isEmpty)
     let load = loadConfig(toml: "[audio]\nbanned = [\"Alex iPhone  Microphone\"]\n\n[audio.icons]\n\"Desk\" = \"mic\"\n")

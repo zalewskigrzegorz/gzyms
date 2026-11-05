@@ -32,8 +32,15 @@ final class IslandPanel: NSPanel {
     private var top: CGFloat = 0
     /// Set when the icon flies to the bar: the island then fades where it is, so the eye follows one movement.
     var fadeNextHide = false
-    /// `[appearance] animations` / Reduce motion: off = the island appears and goes without unrolling.
-    var animate = true
+    /// `GzymsConfig.entry`: how a banner arrives on an empty island; nil = it appears and goes at once.
+    var entry: BannerEntry? = .drop
+    /// `[appearance] animation_speed`: every duration here is multiplied by it.
+    var pace = 1.0
+    /// Icon first: the banner still showing only its icon (text hidden), and the call that opens it with the newest state.
+    private var pillFor: String?
+    private var open: () -> Void = {}
+    /// Icon first keeps the banner at the window's left edge, so the icon travels left as the window widens.
+    private var lead = false
     /// Where the app icon sits on screen, so it can fly from there to the bar.
     var avatarRect: NSRect { NSRect(x: frame.minX + 14, y: frame.midY + edges / 2 - (inset - 2) / 2 - 18, width: 36, height: 36) }
     private let host = NSHostingView(rootView: AnyView(EmptyView()))
@@ -46,7 +53,15 @@ final class IslandPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         isReleasedWhenClosed = false
-        contentView = host
+        // The banner sits in a box, so the drop can slide it inside the window: nothing shows above the edge.
+        let box = NSView()
+        box.wantsLayer = true
+        // Bottom corners rounded like the banner's (a plain view is not flipped: min Y is the bottom), for icon first's narrow pill.
+        box.layer?.cornerRadius = BannerView.radius
+        box.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        contentView = box
+        host.autoresizingMask = [.width, .height]
+        box.addSubview(host)
         // The window's size is ours alone: SwiftUI pushing its own while the frame animates made the small
         // and the full island flicker over each other (Greg, 2026-10-31).
         host.sizingOptions = []
@@ -56,7 +71,17 @@ final class IslandPanel: NSPanel {
     /// A new notification while one is up swaps the content in place; only an empty island slides.
     /// Called again on hover, so the countdown restarts from the store's `remaining` or stands still.
     func show(_ n: GzymsNotification, icon: NSImage?, theme: Theme, on screen: NSScreen, total: Double?, remaining: Double?, running: Bool, hints: ChordHints?, queue: [GzymsNotification] = []) {
+        open = { [weak self] in
+            self?.show(n, icon: icon, theme: theme, on: screen, total: total, remaining: remaining, running: running, hints: hints, queue: queue)
+        }
         let wasShown = shown != nil
+        if pillFor != n.id { pillFor = nil }  // another banner took the place: it shows whole
+        // Whatever sent it (AX, the NC database, gzyms notify, a plugin), icon first starts as the icon alone.
+        let pill = pillFor == n.id || (entry == .icon && !wasShown && !n.compact)
+        if !wasShown {
+            lead = entry == .icon
+            contentView?.layer?.masksToBounds = lead  // only there: it would nick the corners of the stack's edges
+        }
         if shown?.id != n.id { log("island: show \(n.id)") }
         alphaValue = 1
         fadeNextHide = false  // a new banner took the place: nothing hides
@@ -67,6 +92,7 @@ final class IslandPanel: NSPanel {
         let total = n.reminder ? nil : total
         edges = n.compact ? 0 : CGFloat(BannerView.edges(queue.count)) * (BannerView.edgeHeight + BannerView.edgeGap)
         let banner = BannerView(n: n, icon: icon, remaining: remaining, total: total, running: running, hints: hints, topInset: inset, queue: queue,
+                                textHidden: pill, outline: lead ? .window : .own,
                                 onHintHover: { [weak self] a, on in
                                     guard let self else { return }
                                     if on { litHint = a } else if litHint == a { litHint = nil }  // the next one may come first
@@ -74,25 +100,112 @@ final class IslandPanel: NSPanel {
             .themed(theme)
         let size = NSHostingView(rootView: banner).fittingSize
         // Centred at the top: while the window grows from the small island, it uncovers the full one from the middle.
-        host.rootView = AnyView(banner.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
+        // min 0: the frame takes the window's width even when the banner is wider, so the alignment holds in the narrow pill.
+        let framed = banner.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: lead ? .topLeading : .top)
+        // Icon first: the outline hugs the window, so it wraps the pill and grows with it (Greg), above the stack's edges.
+        host.rootView = lead ? AnyView(framed.overlay {
+            BannerView(n: n, icon: nil, remaining: nil, total: nil, outline: .only).themed(theme).padding(.bottom, pill ? 0 : edges)  // the pill is cut above the edges already
+        }) : AnyView(framed)
         let f = screen.frame
         top = notch ? f.maxY : f.maxY - BarPanel.height
         let rest = NSRect(x: f.midX - size.width / 2, y: top - size.height, width: size.width, height: size.height)
-        // A pending icon growing into the full banner (or any swap) animates like the prototype.
-        guard animate else { setFrame(rest, display: true); orderFrontRegardless(); return }
-        if wasShown { slide(to: rest, duration: 0.45, timing: CAMediaTimingFunction(controlPoints: 0.3, 0.9, 0.3, 1.1)); return }
-        setFrame(folded(rest), display: false)
+        if pillFor == n.id { return }  // hover or a tick while it is still an icon: the content is fresh, the timing stays
+        guard let entry else { setFrame(rest, display: true); orderFrontRegardless(); return }
+        if wasShown {
+            // A pending icon growing into the full banner (or any swap) animates like the prototype. Fade and pop stay still.
+            if entry == .fade || entry == .pop { setFrame(rest, display: true) }
+            else { slide(to: rest, duration: 0.45 * pace, timing: Self.morph) }
+            return
+        }
+        switch entry {
+        case .icon where pill:
+            // The compact island's width, the banner's height: the icon sits centred as in the open banner, then opens.
+            let h = size.height - edges, w = BannerView.compactWidth
+            pillFor = n.id
+            drop(into: NSRect(x: f.midX - w / 2, y: top - h, width: w, height: h)) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 * (self?.pace ?? 1)) { [weak self] in
+                    MainActor.assumeIsolated {
+                        guard let self, self.pillFor == n.id else { return }
+                        self.pillFor = nil
+                        self.open()  // shown again with the text: the swap path widens the window, the text fades in
+                    }
+                }
+            }
+        case .drop, .icon:
+            drop(into: rest)
+        case .notch:
+            // From the notch's own shape (the gap between the two menu bar areas), or a thin line without one.
+            let w = notch ? f.width - (screen.auxiliaryTopLeftArea?.width ?? 0) - (screen.auxiliaryTopRightArea?.width ?? 0) : 120
+            let h = max(inset, 1)
+            setFrame(NSRect(x: f.midX - w / 2, y: top - h, width: w, height: h), display: false)
+            orderFrontRegardless()
+            slide(to: rest, duration: 0.45 * pace, timing: Self.morph)
+        case .pop:
+            alphaValue = 0
+            setFrame(rest, display: true)
+            orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { c in
+                c.duration = 0.3 * pace
+                animator().alphaValue = 1
+            }
+            pop()
+        case .fade:
+            alphaValue = 0
+            setFrame(rest, display: true)
+            orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { c in
+                c.duration = 0.25 * pace
+                animator().alphaValue = 1
+            }
+        case .unroll:
+            setFrame(folded(rest), display: false)
+            orderFrontRegardless()
+            // The prototype's entry: 0.35 s with a little overshoot, unrolling down from the edge.
+            slide(to: rest, duration: 0.35 * pace, timing: CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.2))
+        }
+    }
+
+    private static let morph = CAMediaTimingFunction(controlPoints: 0.3, 0.9, 0.3, 1.1)
+
+    /// The window stands at `rect`; the banner slides down inside it from above its top, so nothing shows above the edge.
+    private func drop(into rect: NSRect, done: (@MainActor () -> Void)? = nil) {
+        setFrame(rect, display: true)
         orderFrontRegardless()
-        // The prototype's entry: 0.35 s with a little overshoot, unrolling down from the edge.
-        slide(to: rest, duration: 0.35, timing: CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.2))
+        // On the layer: animating the hosting view's frame origin did nothing on screen (recorded at 20 fps, 2026-11-05).
+        guard let layer = host.layer else { done?(); return }
+        let a = CABasicAnimation(keyPath: "transform")
+        a.fromValue = CATransform3DMakeTranslation(0, rect.height, 0)  // up, out of the window (the box is not flipped)
+        a.toValue = CATransform3DIdentity
+        a.duration = 0.5 * pace
+        a.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.5, 0.5, 1)  // the spring: past the rest and back
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { MainActor.assumeIsolated { done?() } }
+        layer.add(a, forKey: "drop")
+        CATransaction.commit()
+    }
+
+    /// Grows from 85 % to full size around the top middle, with a little overshoot.
+    private func pop() {
+        guard let layer = host.layer else { return }
+        let s: CGFloat = 0.85, b = layer.bounds
+        // The point that stays put, measured from the layer's anchor (AppKit puts it at the corner, but read it).
+        let fixed = CGPoint(x: b.width / 2 - layer.anchorPoint.x * b.width,
+                            y: (host.isFlipped ? 0 : b.height) - layer.anchorPoint.y * b.height)
+        let a = CABasicAnimation(keyPath: "transform")
+        a.fromValue = CATransform3DConcat(CATransform3DMakeScale(s, s, 1), CATransform3DMakeTranslation((1 - s) * fixed.x, (1 - s) * fixed.y, 0))
+        a.toValue = CATransform3DIdentity
+        a.duration = 0.3 * pace
+        a.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.4, 0.5, 1)
+        layer.add(a, forKey: "pop")
     }
 
     func hide() {
+        pillFor = nil
         guard let gone = shown else { return }
-        log("island: hide \(gone.id) (animate \(animate), fade \(fadeNextHide))")
+        log("island: hide \(gone.id) (entry \(entry?.rawValue ?? "none"), fade \(fadeNextHide))")
         shown = nil
         hovered = false; litHint = nil  // gone from under the pointer: no exit event may come
-        guard animate else {
+        guard let entry else {
             fadeNextHide = false
             // Out of the click's own event, like the animated path: an orderOut inside it can leave the window on screen.
             DispatchQueue.main.async { [weak self] in
@@ -101,10 +214,10 @@ final class IslandPanel: NSPanel {
             }
             return
         }
-        if fadeNextHide {
+        if fadeNextHide || entry == .fade || entry == .pop {
             fadeNextHide = false
             NSAnimationContext.runAnimationGroup { c in
-                c.duration = 0.2
+                c.duration = 0.2 * pace
                 animator().alphaValue = 0
             } completionHandler: {
                 MainActor.assumeIsolated {
@@ -115,7 +228,7 @@ final class IslandPanel: NSPanel {
             }
             return
         }
-        slide(to: folded(frame)) { [weak self] in
+        slide(to: folded(frame), duration: 0.18 * pace) { [weak self] in
             guard let self, shown == nil else { return }
             orderOut(nil)
         }
@@ -198,7 +311,7 @@ final class IslandPanel: NSPanel {
 /// The app icon flying from a hiding banner into its place on the bar (the prototype's "lot do ikony").
 @MainActor
 enum FlyToIcon {
-    static func run(image: NSImage, from: NSRect, to target: NSRect, done: @escaping @MainActor () -> Void) {
+    static func run(image: NSImage, from: NSRect, to target: NSRect, pace: Double, done: @escaping @MainActor () -> Void) {
         let p = NSPanel(contentRect: from, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
@@ -214,7 +327,7 @@ enum FlyToIcon {
         let side = from.width * 0.3
         let end = NSRect(x: target.midX - side / 2, y: target.midY - side / 2, width: side, height: side)
         NSAnimationContext.runAnimationGroup { c in
-            c.duration = 0.52
+            c.duration = 0.52 * pace
             c.timingFunction = CAMediaTimingFunction(controlPoints: 0.5, 0, 0.3, 1)
             p.animator().setFrame(end, display: true)
             p.animator().alphaValue = 0.6

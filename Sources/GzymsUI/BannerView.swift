@@ -19,16 +19,23 @@ public struct BannerView: View {
     var waiting: Int { queue.count }
     /// The pointer went onto (true) or off (false) a hint with this action.
     var onHintHover: (ChordAction?, Bool) -> Void = { _, _ in }
+    /// Icon first, while only the icon shows: the text waits, then fades in as the island opens.
+    let textHidden: Bool
+    /// own: the banner draws its level outline. window: the island draws it around the whole window (icon first, so it
+    /// wraps the narrow pill and grows with it), and this view leaves it out. only: just that outline, for the island.
+    public enum Outline: Sendable { case own, window, only }
+    let outline: Outline
     @Environment(\.theme) private var theme
 
     public static let width: CGFloat = 340
-    static let barWidth: CGFloat = width
-    static let radius: CGFloat = 20
+    /// The text column: the banner less its side padding (2 × 14), the avatar (36) and the gap after it (10).
+    static let barWidth: CGFloat = width - 74
+    public static let radius: CGFloat = 20
 
     public init(n: GzymsNotification, icon: NSImage?, remaining: Double?, total: Double?, running: Bool = false, hints: ChordHints? = nil, topInset: CGFloat = 0, queue: [GzymsNotification] = [],
-                onHintHover: @escaping (ChordAction?, Bool) -> Void = { _, _ in }) {
+                textHidden: Bool = false, outline: Outline = .own, onHintHover: @escaping (ChordAction?, Bool) -> Void = { _, _ in }) {
         self.n = n; self.icon = icon; self.remaining = remaining; self.total = total; self.running = running; self.hints = hints; self.topInset = topInset
-        self.queue = queue; self.onHintHover = onHintHover
+        self.queue = queue; self.textHidden = textHidden; self.outline = outline; self.onHintHover = onHintHover
     }
 
     public static let edgeHeight: CGFloat = 5, edgeGap: CGFloat = 2
@@ -37,7 +44,9 @@ public struct BannerView: View {
     public static let compactWidth: CGFloat = 64
 
     public var body: some View {
-        if n.compact { compactBody } else {
+        if outline == .only {
+            if outlined { OpenTopOutline(radius: Self.radius).stroke(accent, lineWidth: 2) }
+        } else if n.compact { compactBody } else {
             VStack(spacing: Self.edgeGap) {
                 fullBody
                 // A stack seen from the front: each card behind a little narrower, a gap between them so each one counts.
@@ -85,9 +94,13 @@ public struct BannerView: View {
                 }
                 if let b = n.body { Text(b).font(.system(size: 12)).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
                 if let hints { hintRows(hints) }
+                // An underline of the text, not the island's bottom edge: it reads better (Greg, 2026-11-05).
+                countdown.clipShape(Capsule()).padding(.top, 6)
             }
             // The island under a notch is black in every theme: a light theme's dark text would vanish there.
             .foregroundStyle(topInset > 0 && !theme.isDark ? theme[\.base] : theme[\.text])
+            // shortcut: fixed times, not scaled by animation_speed; pass the pace in if Slow or Fast look off.
+            .opacity(textHidden ? 0 : 1).animation(textHidden ? nil : .easeIn(duration: 0.25).delay(0.2), value: textHidden)  // hides at once, shows slowly
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
@@ -96,11 +109,9 @@ public struct BannerView: View {
         .frame(width: Self.width, alignment: .leading)
         // Black only where it grows out of the black notch; elsewhere it is part of the bar (Greg).
         .background(topInset > 0 ? theme[\.island] : theme[\.base])
-        // As in the prototype: the countdown runs along the bottom, inside the outline.
-        .overlay(alignment: .bottom) { countdown.padding(.bottom, outlined ? 2 : 0) }
         .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: Self.radius, bottomTrailingRadius: Self.radius))
         // Anything above info, and reminders, get a U of their colour: sides and bottom, the top hides under the bar or notch.
-        .overlay { if outlined { OpenTopOutline(radius: Self.radius).stroke(accent, lineWidth: 2) } }
+        .overlay { if outlined, outline == .own { OpenTopOutline(radius: Self.radius).stroke(accent, lineWidth: 2) } }
         .pointerStyle(.link)
     }
 
