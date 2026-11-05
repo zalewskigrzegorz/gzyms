@@ -4,7 +4,8 @@ import GzymsCore
 let gzymsVersion = "0.0.1"
 
 /// `gzyms report` and Debug → Report a problem…: one zip on the Desktop with what an agent or Greg needs to look
-/// into a problem. The log never holds notification titles or bodies, so nothing in it needs scrubbing.
+/// into a problem. The log never holds notification titles or bodies. The config loses its secrets and personal names,
+/// every file loses the home path (`ReportScrub`).
 @MainActor
 enum Report {
     /// The zip's path, or nil (logged) when it could not be made.
@@ -19,14 +20,16 @@ enum Report {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             defer { try? fm.removeItem(at: dir) }
             if let log = try? String(contentsOf: logs.appendingPathComponent("gzyms.log"), encoding: .utf8) {
-                try log.split(separator: "\n", omittingEmptySubsequences: false).suffix(2000).joined(separator: "\n")
+                try ReportScrub.text(log.split(separator: "\n", omittingEmptySubsequences: false).suffix(2000).joined(separator: "\n"), home: home.path)
                     .write(to: dir.appendingPathComponent("gzyms.log"), atomically: true, encoding: .utf8)
             }
-            for name in ["anomalies.jsonl"] where fm.fileExists(atPath: logs.appendingPathComponent(name).path) {
-                try fm.copyItem(at: logs.appendingPathComponent(name), to: dir.appendingPathComponent(name))
+            if let anomalies = try? String(contentsOf: logs.appendingPathComponent("anomalies.jsonl"), encoding: .utf8) {
+                try ReportScrub.text(anomalies, home: home.path).write(to: dir.appendingPathComponent("anomalies.jsonl"), atomically: true, encoding: .utf8)
             }
-            let config = ThemeCommand.configFile.resolvingSymlinksInPath()
-            if fm.fileExists(atPath: config.path) { try fm.copyItem(at: config, to: dir.appendingPathComponent("config.toml")) }
+            if let config = try? String(contentsOf: ThemeCommand.configFile.resolvingSymlinksInPath(), encoding: .utf8) {
+                try ReportScrub.text(ReportScrub.config(config), home: home.path)
+                    .write(to: dir.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+            }
             try about(grants: grants).write(to: dir.appendingPathComponent("about.txt"), atomically: true, encoding: .utf8)
             let ditto = Process()
             ditto.executableURL = URL(filePath: "/usr/bin/ditto")

@@ -1117,7 +1117,7 @@ private struct AboutTab: View {
                 }
             }
             Section(title: "License") {
-                Row(title: "Gzyms", note: "Open source. The license is picked before the first release.") { EmptyView() }
+                Row(title: "Gzyms", note: "Grzegorz Zalewski, MIT") { Button("License") { open("https://github.com/zalewskigrzegorz/gzyms/blob/main/LICENSE") } }
                 // Listed by hand: NotificationNanny is adapted code, not a package in Package.resolved.
                 Row(title: "TOMLDecoder", note: "Daniel Duan, MIT") { Button("Source") { open("https://github.com/dduan/TOMLDecoder") } }
                 Row(title: "Sparkle", note: "Sparkle Project, MIT") { Button("Source") { open("https://github.com/sparkle-project/Sparkle") } }
@@ -1146,7 +1146,7 @@ private struct DebugTab: View {
                 Row(title: "Event log") { Button("Open log", action: actions.openLog) }
             }
             Section(title: "Something wrong?") {
-                Row(title: "Report a problem", note: reported ?? "One zip on the Desktop: log, anomalies, config and versions. No notification text.") {
+                Row(title: "Report a problem", note: reported ?? "One zip on the Desktop: log, anomalies, config and versions. No notification text, tokens or personal names.") {
                     Button("Make report…") {
                         reported = actions.report().map { "Saved as \($0.lastPathComponent) on the Desktop. Attach it to the GitHub discussion that opens." }
                             ?? "Could not make the report. The log says why."
