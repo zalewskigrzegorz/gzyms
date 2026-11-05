@@ -177,6 +177,8 @@ public struct GzymsNotification: Codable, Equatable, Identifiable, Sendable {
     public var meetingStart: Double?
     /// When it ends: after the start the bottom line fills red with how much of it has gone by.
     public var meetingEnd: Double?
+    /// A plugin's: the id of the menu row it is about. It leaves the lists once no pill of that plugin has that row.
+    public var row: String?
 
     public init(id: String, app: String?, level: NotifyLevel, title: String, subtitle: String?, body: String?,
                 link: String?, altLink: String?, sound: String?, at: Date, reminder: Bool = false, screen: String? = nil) {
@@ -570,6 +572,16 @@ public func bellInbox(_ inboxes: [String?: [GzymsNotification]], onBar: Set<Stri
 /// One plugin's notifications, newest first: the list on its pill.
 public func pluginInbox(_ inboxes: [String?: [GzymsNotification]], plugin: String) -> [GzymsNotification] {
     (inboxes[nil] ?? []).filter { notePlugin($0) == plugin }
+}
+
+/// A plugin's notifications whose `row` is gone from all of that plugin's menus (an agent whose pane closed).
+/// A plugin with no menu at all says nothing about its rows, so its notifications stay.
+public func goneRowNotes(_ inboxes: [String?: [GzymsNotification]], pills: [PluginPill]) -> [String] {
+    (inboxes[nil] ?? []).filter { n in
+        guard let row = n.row, let plugin = notePlugin(n) else { return false }
+        let menus = pills.filter { $0.plugin == plugin }.compactMap(\.item.menu)
+        return !menus.isEmpty && !menus.joined().contains { $0.id == row }
+    }.map(\.id)
 }
 
 public func badgeText(_ count: Int) -> String { count > 9 ? "9+" : "\(count)" }

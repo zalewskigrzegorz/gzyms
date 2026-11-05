@@ -179,6 +179,8 @@ public enum PluginMessage: Equatable, Sendable {
     case item(PluginItem)
     case removeItem(String)
     case notify(GzymsNotification)
+    /// A line for Gzyms's log, e.g. what a click did.
+    case log(String)
 }
 
 /// nil = not a message (a half line, garbage, a field missing); the host logs it.
@@ -189,9 +191,9 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
     }
     struct Notify: Decodable {
         var id: String?, title: String?, subtitle: String?, body: String?, level: String?, sound: String?, link: String?
-        var alt_link: String?, alt_label: String?
+        var alt_link: String?, alt_label: String?, row: String?
     }
-    struct Raw: Decodable { var item: Item?; var notify: Notify? }
+    struct Raw: Decodable { var item: Item?; var notify: Notify?; var log: String? }
     guard let raw = try? JSONDecoder().decode(Raw.self, from: Data(line.utf8)) else { return nil }
     if let i = raw.item, let id = i.id, !id.isEmpty {
         if i.remove == true { return .removeItem(id) }
@@ -209,8 +211,10 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
         var note = GzymsNotification(id: id, app: nil, level: level, title: title, subtitle: n.subtitle, body: n.body,
                                      link: n.link, altLink: n.alt_link, sound: n.sound, at: now)
         note.altLabel = n.alt_label
+        note.row = n.row
         return .notify(note)
     }
+    if let l = raw.log, !l.isEmpty { return .log(l) }
     return nil
 }
 

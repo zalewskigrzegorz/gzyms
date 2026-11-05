@@ -204,10 +204,22 @@ A notification, with the same fields as `gzyms notify`. Its `"level"` is one of 
 {"notify":{"id":"deploy","title":"Deploy done","subtitle":"api","body":"1.4.2 is live","level":"info","sound":"success","link":"https://example.com"}}
 ```
 
+`"row"` ties a notification to a menu row of the plugin's: once no pill of the plugin has a row with that id, the notification leaves the list. The agents plugin uses it, so an agent's notification goes when its pane closes.
+
+```json
+{"notify":{"id":"agent-3","title":"Agent waits","row":"3"}}
+```
+
 A second action: `"alt_label"` names it on the banner's hints, `"alt_link"` is the URL it opens. With `"alt_label"` and no `"alt_link"`, the second action sends `notify_alt` back to the plugin, so the plugin does the work itself.
 
 ```json
 {"notify":{"id":"agent-3","title":"Agent waits","alt_label":"Open in agent"}}
+```
+
+A line for `~/Library/Logs/Gzyms/gzyms.log`, written as `plugin <name>: …`. Use it to say what a click did.
+
+```json
+{"log":"agents click: 1a2b3c4d focused"}
 ```
 
 ## Gzyms to plugin: stdin, one JSON object per line

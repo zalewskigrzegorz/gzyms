@@ -1650,7 +1650,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startPlugins(disabled: Set<String>, options: [String: [String: TOMLValue]]) {
         pluginsStarted = true
-        pluginHost.onItems = { [weak self] pills in if self?.model.pluginPills != pills { self?.model.pluginPills = pills } }
+        pluginHost.onItems = { [weak self] pills in
+            guard let self, model.pluginPills != pills else { return }
+            model.pluginPills = pills
+            let gone = goneRowNotes(notes.inboxes, pills: pills)
+            guard !gone.isEmpty else { return }
+            for id in gone { notes.remove(id, now: ProcessInfo.processInfo.systemUptime) }
+            log("plugins: \(gone.count) notifications left with their rows")
+            notesChanged()
+        }
         pluginHost.onStatus = { [weak self] s in if self?.model.plugins != s { self?.model.plugins = s } }
         pluginHost.onNotify = { [weak self] n in self?.post(n) }
         model.onPluginEvent = { [weak self] plugin, e, id in self?.pluginHost.send(plugin: plugin, e, id: id) }

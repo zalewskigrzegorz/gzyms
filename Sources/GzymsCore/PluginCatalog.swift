@@ -311,7 +311,7 @@ private let agents = CatalogPlugin(
       # A fresh id each time: the same id again would only update the old note in the bell, without a banner.
       n=$((n + 1))
       local sound=success; [ "$1" = warning ] && sound=waiting  # waits for you, or done
-      echo "{\"notify\":{\"id\":\"agent-$2-$n\",\"level\":\"$1\",\"sound\":\"$sound\",\"title\":\"$(j "$4")\",\"subtitle\":\"$(j "$3") · click to go there\",\"body\":\"$(j "$5")\"}}"
+      echo "{\"notify\":{\"id\":\"agent-$2-$n\",\"level\":\"$1\",\"sound\":\"$sound\",\"title\":\"$(j "$4")\",\"subtitle\":\"$(j "$3") · click to go there\",\"body\":\"$(j "$5")\",\"row\":\"$2\"}}"
     }
 
     poll() {
@@ -343,16 +343,24 @@ private let agents = CatalogPlugin(
       [ "$pill" != "$last" ] && echo "$pill" && last="$pill"
     }
 
+    log() { echo "{\"log\":\"agents click: $(j "$1")\"}"; }
+
     on_event() {  # a row or a notification click: that agent's session and pane, in front
-      local id="${1#*\"id\":\"}" session
+      local id="${1#*\"id\":\"}" session client why
       id="${id%%\"*}"
       case "$1" in *'"notify_open"'*) id="${id#agent-}"; id="${id%-*}";; esac  # agent-<pane>-<n>
-      # The pane may have closed since the notification: then a click does nothing.
+      # The pane may have closed since the notification. Its notification leaves the list with its row, an older one may not.
       session=$(printf '%s\n' "$rows" | awk -F'\t' -v id="$id" '$1 == id { print $2 }')
-      [ -n "$session" ] || return
-      "$TUIOS" switch-session "$session" >/dev/null 2>&1
-      "$TUIOS" focus-window -s "$session" "$id" >/dev/null 2>&1
-      open -a "$terminal"
+      [ -n "$session" ] || { log "${id:0:8} gone"; return; }
+      # Gzyms is no pane, so tuios cannot tell which client to move: the one on the agent's session, else any that shows one.
+      client=$("$TUIOS" list-clients --json 2>/dev/null | "$JQ" -r --arg s "$session" \
+        '[.[] | select(.session != "")] | (map(select(.session == $s)) + .)[0].client_id // empty' 2>/dev/null)
+      if [ -z "$client" ]; then why="no tuios client shows a session"
+      elif ! why=$("$TUIOS" switch-session --client "$client" "$session" 2>&1 >/dev/null); then :
+      elif ! why=$("$TUIOS" focus-window -s "$session" "$id" 2>&1 >/dev/null); then :
+      else why=""; fi
+      open -a "$terminal" 2>/dev/null
+      if [ -z "$why" ]; then log "${id:0:8} focused"; else log "${id:0:8} failed: ${why%%$'\n'*}"; fi
     }
 
     # live: every agent-state change tuios pushes means "look again". A tuios restart ends the stream, so it starts again.

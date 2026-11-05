@@ -196,6 +196,26 @@ private func ignoreAll(_ s: inout NotificationStore) {
     #expect(pluginInbox(s.inboxes, plugin: "agent").isEmpty)
 }
 
+/// A click on the note of an agent whose pane had closed did nothing: such a note leaves with its row.
+@Test func aPluginNoteLeavesWhenItsRowIsGone() throws {
+    var s = NotificationStore()
+    let line = #"{"notify":{"id":"agent-a1-7","title":"A waits for you","row":"a1"}}"#
+    guard case .notify(let a)? = pluginMessage(line, plugin: "agents", now: Date(timeIntervalSince1970: 0)) else { throw CancellationError() }
+    #expect(a.row == "a1")
+    var b = note("plugin:agents:agent-b2-8", app: nil); b.row = "b2"
+    var other = note("plugin:gh-prs:pr-1", app: nil); other.row = "gone-too"
+    for n in [a, b, other, note("plugin:agents:old", app: nil)] { s.post(n, now: 0) }
+    ignoreAll(&s)
+    func pill(_ plugin: String, _ rows: [String]?) -> PluginPill {
+        PluginPill(plugin: plugin, item: PluginItem(id: plugin, text: "", menu: rows.map { $0.map { PluginRow(id: $0, text: $0) } }))
+    }
+    // b2 closed: its note goes. No row (an older note) or a plugin with no menu: nothing is known, it stays.
+    #expect(goneRowNotes(s.inboxes, pills: [pill("agents", ["a1"]), pill("gh-prs", nil)]) == ["plugin:agents:agent-b2-8"])
+    #expect(goneRowNotes(s.inboxes, pills: [pill("agents", ["a1", "b2"])]).isEmpty)
+    #expect(Set(goneRowNotes(s.inboxes, pills: [pill("agents", [])])) == ["plugin:agents:agent-a1-7", "plugin:agents:agent-b2-8"])
+    #expect(pluginMessage(#"{"log":"agents click: a1 focused"}"#, plugin: "agents", now: Date()) == .log("agents click: a1 focused"))
+}
+
 @Test func badgeTextCapsAtNinePlus() {
     #expect(badgeText(1) == "1")
     #expect(badgeText(9) == "9")

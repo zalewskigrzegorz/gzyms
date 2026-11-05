@@ -73,11 +73,62 @@ import Testing
     // B already waited at the first look: no ping for it.
     #expect(notes.map(\.title) == ["A waits for you", "C is done"])
     #expect(notes.map(\.level) == [.warning, .info])
+    #expect(notes.map(\.row) == ["A", "C"])  // each leaves the list with its agent
     let pills = lines.compactMap { l -> PluginItem? in
         if case .item(let i)? = pluginMessage(l, plugin: "agents", now: Date()) { return i } else { return nil }
     }
     #expect(pills.map(\.text) == ["1", "2", "2"])
     #expect(pills.last?.menu?.map(\.tag) == ["waits", "waits", "done"])
+}
+
+/// A click moves the client that shows a session (Gzyms is no pane, so tuios cannot pick one) and says in the log
+/// what came of it: focused, failed with tuios's reason, or gone when the pane has closed.
+@Test func agentsClickSaysFocusedFailedOrGone() throws {
+    let ag = try #require(pluginCatalog.first { $0.name == "agents" })
+    let dir = FileManager.default.temporaryDirectory.appending(path: "gzyms-agc-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let script = dir.appending(path: "plugin.sh"), fake = dir.appending(path: "tuios"), calls = dir.appending(path: "calls")
+    try ag.script.write(to: script, atomically: true, encoding: .utf8)
+    let agents = #"{"agents":[{"window_id":"aaaaaaaa-1","session":"s1","state":"done","needs_you":false,"name":"A","message":""},"#
+        + #"{"window_id":"bbbbbbbb-2","session":"bad","state":"done","needs_you":false,"name":"B","message":""}]}"#
+    try """
+    #!/bin/bash
+    case "$1" in
+      list-agents) echo '\(agents)';;
+      list-clients) echo '[{"client_id":"cli","session":""},{"client_id":"c-other","session":"other"},{"client_id":"c-s1","session":"s1"}]';;
+      switch-session) echo "$*" >> '\(calls.path)'; [ "$4" = bad ] && { echo "switch-session failed: no such session" >&2; exit 1; }; exit 0;;
+      focus-window) echo "$*" >> '\(calls.path)';;
+    esac
+    """.write(to: fake, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+    let m = try pluginManifest(toml: ag.manifest, folder: "agents").get()
+    let p = Process()
+    p.executableURL = URL(filePath: "/bin/bash")
+    p.arguments = [script.path]
+    p.environment = pluginEnvironment(m, values: ["source": .string("poll"), "every": .int(30), "terminal": .string("gzyms-test-no-such-app")])
+        .merging(["TUIOS_BIN": fake.path]) { $1 }
+    let out = Pipe(), inp = Pipe()
+    p.standardOutput = out
+    p.standardInput = inp
+    try p.run()
+    Thread.sleep(forTimeInterval: 1)  // the first look, so the plugin knows the agents
+    for e in [#"{"event":"notify_open","id":"agent-aaaaaaaa-1-17"}"#, #"{"event":"click","id":"bbbbbbbb-2"}"#,
+              #"{"event":"notify_open","id":"agent-cccccccc-3-4"}"#] {
+        inp.fileHandleForWriting.write(Data((e + "\n").utf8))
+    }
+    try inp.fileHandleForWriting.close()
+    let deadline = Date().addingTimeInterval(10)
+    while p.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+    if p.isRunning { p.terminate() }
+    let logs = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").compactMap { l -> String? in
+        if case .log(let s)? = pluginMessage(String(l), plugin: "agents", now: Date()) { return s } else { return nil }
+    }
+    #expect(logs == ["agents click: aaaaaaaa focused", "agents click: bbbbbbbb failed: switch-session failed: no such session",
+                     "agents click: cccccccc gone"])
+    // The client on the agent's own session moves. For another session, the first one that shows any.
+    let made = try String(contentsOf: calls, encoding: .utf8).split(separator: "\n")
+    #expect(made == ["switch-session --client c-s1 s1", "focus-window -s s1 aaaaaaaa-1", "switch-session --client c-other bad"])
 }
 
 /// Runs the real script: a matching line becomes a notification of its level, the pill counts, EOF ends it all.

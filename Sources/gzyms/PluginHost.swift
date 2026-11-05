@@ -232,6 +232,7 @@ final class PluginHost {
                 r.items.removeAll { $0.id == id }
                 changed = changed || r.items.count != before
             case .notify(let n)?: onNotify(n)
+            case .log(let l)?: log("plugin \(folder): \(l.prefix(200))")
             case nil: log("plugin \(folder): not a message: \(line.prefix(120))")
             }
             if r.problem != nil { r.problem = nil; r.failures = 0; publish() }  // it talks: it works
