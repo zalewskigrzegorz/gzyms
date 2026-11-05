@@ -377,8 +377,21 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         PluginOption(key: "sound", title: "Sound on events", kind: .toggle, defaultValue: .bool(true)),
         PluginOption(key: "who", title: "Whose PRs", kind: .choice, defaultValue: .string("mine"), choices: ["mine", "team"]),
     ])
+    // The Plugins list: a running one, an edited catalog one, one that fails, one off. Nothing else on it.
+    let changed = PluginStatus(folder: "gh-prs", name: "GitHub PRs", description: "Your pull requests through the gh CLI. One glyph per state with the number of PRs in it.",
+                               enabled: true, running: true, options: [PluginOption(key: "repos", title: "Repos", kind: .list)], catalogNewer: true, icon: "arrow.triangle.branch")
+    let broken = PluginStatus(folder: "log-watcher", name: "Log watcher", description: "Watches log files. A line that matches a rule becomes a notification.",
+                              enabled: true, running: false, problem: "plugin.sh keeps exiting: gh: command not found", icon: "doc.text.magnifyingglass")
+    let off = PluginStatus(folder: "agents", name: "Agents", description: "The coding agents tuios sees.", enabled: false, running: false)
+    let all = [off, changed, broken, pr]
     preview(SettingsView(tab: .constant(.plugins), config: config, problems: [], broken: false, apps: [], devices: [],
-                         plugins: [pr], actions: actions).frame(width: 1400, height: 900), "settings-plugin-options")
+                         plugins: all, actions: actions).frame(width: 1400, height: 500), "settings-plugins-list")
+    preview(SettingsView(tab: .constant(.plugins), config: config, problems: [], broken: false, apps: [], devices: [],
+                         plugins: all, openPlugin: "pr-watch", actions: actions).frame(width: 1400, height: 500), "settings-plugin-options")
+    preview(SettingsView(tab: .constant(.plugins), config: config, problems: [], broken: false, apps: [], devices: [],
+                         plugins: all, openPlugin: "log-watcher", actions: actions).frame(width: 1400, height: 500), "settings-plugins-error")
+    preview(SettingsView(tab: .constant(.plugins), config: config, problems: [], broken: false, apps: [], devices: [],
+                         plugins: all, openPlugin: "gh-prs", actions: actions).frame(width: 1400, height: 500), "settings-plugins-changed")
     preview(SettingsView(tab: .constant(.modules), config: config, problems: [], broken: false, apps: [], devices: [],
                          plugins: [pr], actions: actions).frame(width: 1400, height: 900), "settings-built-in")
     let ag = PluginStatus(folder: "agents", name: "Agents", description: "The coding agents tuios sees", enabled: true, running: true, options: [

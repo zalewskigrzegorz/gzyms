@@ -8,6 +8,8 @@ public final class SettingsNav {
     public var current: UUID?
     /// A letter recorder listens: every key is its.
     @ObservationIgnored public var paused = false
+    /// What Esc does before it closes the panel: a tab with something open sets it (a drawer), nil = close the panel.
+    @ObservationIgnored public var escape: (() -> Void)?
     @ObservationIgnored var frames: [UUID: CGRect] = [:]
     @ObservationIgnored var chooses: [UUID: () -> Void] = [:]
 

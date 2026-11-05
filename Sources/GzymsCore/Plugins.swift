@@ -167,10 +167,12 @@ public struct PluginStatus: Equatable, Sendable {
     public var options: [PluginOption]
     /// The user edited this catalog plugin and the catalog has another version: Settings offers to replace it.
     public var catalogNewer: Bool
+    /// An SF Symbol name from the manifest.
+    public var icon: String?
     public init(folder: String, name: String, description: String, enabled: Bool, running: Bool, problem: String? = nil,
-                options: [PluginOption] = [], catalogNewer: Bool = false) {
+                options: [PluginOption] = [], catalogNewer: Bool = false, icon: String? = nil) {
         self.folder = folder; self.name = name; self.description = description; self.enabled = enabled; self.running = running
-        self.problem = problem; self.options = options; self.catalogNewer = catalogNewer
+        self.problem = problem; self.options = options; self.catalogNewer = catalogNewer; self.icon = icon
     }
 }
 

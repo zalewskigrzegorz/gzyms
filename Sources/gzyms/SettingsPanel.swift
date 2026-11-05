@@ -50,7 +50,7 @@ final class SettingsPanel: NSPanel {
     override func sendEvent(_ event: NSEvent) {
         guard event.type == .keyDown else { super.sendEvent(event); return }
         let key = NavKey(keyCode: Int64(event.keyCode), modified: !event.modifierFlags.intersection([.command, .control, .option]).isEmpty)
-        if key == .esc { hide(); return }
+        if key == .esc { if let back = nav.escape { back() } else { hide() }; return }
         if !recording, !nav.paused, !(firstResponder is NSText) {
             var keys = KeyNav(context: .settings, verbs: model.config.verbs)
             let r = keys.handle(.key(key), now: 0)

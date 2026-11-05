@@ -254,7 +254,7 @@ final class PluginHost {
         var all: [PluginStatus] = runs.values.map { r in
             PluginStatus(folder: r.manifest.folder, name: r.manifest.name, description: r.manifest.description, enabled: true,
                          running: r.process != nil, problem: r.problem, options: r.manifest.options,
-                         catalogNewer: catalogNewer.contains(r.manifest.folder))
+                         catalogNewer: catalogNewer.contains(r.manifest.folder), icon: r.manifest.icon)
         }
         all += broken.map { PluginStatus(folder: $0.key, name: $0.value.name, description: "", enabled: !disabled.contains($0.key),
                                          running: false, problem: $0.value.problem) }
@@ -263,7 +263,7 @@ final class PluginHost {
         for folder in disabled where !listed.contains(folder) {
             guard let toml = try? String(contentsOf: dir.appendingPathComponent(folder).appendingPathComponent("plugin.toml"), encoding: .utf8),
                   case .success(let m) = pluginManifest(toml: toml, folder: folder) else { continue }
-            all.append(PluginStatus(folder: folder, name: m.name, description: m.description, enabled: false, running: false, options: m.options))
+            all.append(PluginStatus(folder: folder, name: m.name, description: m.description, enabled: false, running: false, options: m.options, icon: m.icon))
         }
         onStatus(all.sorted { $0.folder < $1.folder })
     }

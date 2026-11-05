@@ -110,6 +110,8 @@ public struct SettingsView: View {
     let actions: SettingsActions
     /// The app open on the side of Apps when the panel first draws (snapshots).
     let openApp: String?
+    /// The plugin open on the side of Plugins when the panel first draws (snapshots).
+    let openPlugin: String?
     @State private var headerHeight: CGFloat = 0
     @State private var contentHeight: CGFloat = 0
     @State private var width: CGFloat = 900
@@ -118,8 +120,8 @@ public struct SettingsView: View {
 
     public init(tab: Binding<SettingsTab>, config: GzymsConfig, problems: [String], broken: Bool, apps: [SeenApp],
                 devices: [String], workspaceNames: [Int: String] = [:], grants: [GrantState] = [], calendars: [CalendarInfo] = [],
-                logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], openApp: String? = nil, actions: SettingsActions) {
-        self.logo = logo; self.live = live; self.plugins = plugins; self.openApp = openApp
+                logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], openApp: String? = nil, openPlugin: String? = nil, actions: SettingsActions) {
+        self.logo = logo; self.live = live; self.plugins = plugins; self.openApp = openApp; self.openPlugin = openPlugin
         _tab = tab; self.config = config; self.problems = problems; self.broken = broken
         self.apps = apps; self.devices = devices; self.workspaceNames = workspaceNames; self.grants = grants
         self.calendars = calendars; self.actions = actions
@@ -216,7 +218,7 @@ public struct SettingsView: View {
         case .notifications: NotificationsTab(config: config, actions: actions)
         case .apps: AppsTab(config: config, apps: apps, plugins: plugins, actions: actions, live: live, selected: openApp)
         case .modules: ModulesTab(config: config, write: actions.write, plugins: plugins)
-        case .plugins: PluginsTab(config: config, write: actions.write, plugins: plugins, actions: actions)
+        case .plugins: PluginsTab(config: config, write: actions.write, plugins: plugins, actions: actions, selected: openPlugin)
         case .calendar: CalendarTab(config: config, calendars: calendars, write: actions.write)
         case .agents: AgentsTab(config: config, write: actions.write, plugins: plugins, actions: actions)
         case .sounds: SoundsTab(config: config, write: actions.write, actions: actions)
@@ -648,50 +650,149 @@ private struct ModulesTab: View {
     }
 }
 
-/// Plugins from the plugins folder, one section each with its own form, and the ready ones from the catalog.
+/// Plugins as a list, one line each: icon, name, what it does, how it is, a switch. A click opens one on the side
+/// with its options, as in Apps (Greg, 2026-11-05: the form per plugin was too much at once).
 private struct PluginsTab: View {
     let config: GzymsConfig
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let plugins: [PluginStatus]
     let actions: SettingsActions
+    @State var selected: String?
+    @State private var adding = false
     @State private var dropping = false
     @State private var dropProblem: String?
     @Environment(\.theme) private var theme
+    @Environment(\.settingsNav) private var nav
 
     private var addable: [CatalogPlugin] { pluginCatalog.filter { c in !plugins.contains { $0.folder == c.name } } }
 
     var body: some View {
         Columns {
-            ForEach(plugins, id: \.folder) { p in PluginSection(p: p, config: config, write: write, actions: actions) }
-            Section(title: "Add a plugin") {
-                ForEach(addable, id: \.name) { c in
-                    Row(title: c.name, note: c.summary) { Button("Add") { actions.addPlugin(c.name) } }
+            Section(title: "Plugins") {
+                ForEach(plugins, id: \.folder, content: row)
+                Button { adding.toggle() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: adding ? "chevron.down" : "chevron.right").font(.system(size: 9)).frame(width: 12)
+                        Text("Add a plugin")
+                    }
                 }
-                HStack {
-                    Text(dropProblem ?? "Drop a plugin folder here (with its plugin.toml)")
-                        .foregroundStyle(dropProblem == nil ? theme[\.overlay] : theme[\.red])
-                    Text("or")
-                    Button("Choose folder…", action: actions.choosePlugin)
+                .buttonStyle(.borderless).foregroundStyle(theme[\.overlay])
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 6)
+                if adding { add }
+            }
+            if let p = plugins.first(where: { $0.folder == selected }) {
+                Section(title: p.name) {
+                    PluginDrawer(p: p, config: config, write: write, actions: actions, close: { selected = nil })
                 }
-                .frame(maxWidth: .infinity).padding(14)
-                .background(RoundedRectangle(cornerRadius: 8).strokeBorder(dropping ? theme[\.mauve] : theme[\.overlay].opacity(0.5),
-                                                                           style: StrokeStyle(lineWidth: 1, dash: [4])))
-                .padding(10)
-                .dropDestination(for: URL.self) { urls, _ in
-                    dropProblem = urls.compactMap(actions.installPlugin).first
-                    return true
-                } isTargeted: { dropping = $0 }
-                Row(title: "Make your own", note: "gzyms plugin new <name> makes a working one. Edited a plugin? Turn it off and on. Teach your coding agent: gzyms skill install") { EmptyView() }
-                // Plugins are child processes of Gzyms, so macOS lets them do what Gzyms may (spec: say so where you install).
-                Text("Plugins run with Gzyms' permissions: Full Disk Access, Accessibility, camera and microphone if granted. Install only what you trust.")
-                    .font(.system(size: 11)).foregroundStyle(theme[\.peach])
-                    .padding(.horizontal, 12).padding(.vertical, 7)
             }
         }
+        // Esc closes the drawer first, the panel on the next press.
+        .onChange(of: selected) { _, s in nav?.escape = s == nil ? nil : { selected = nil } }
+        .onDisappear { nav?.escape = nil }
+    }
+
+    private func row(_ p: PluginStatus) -> some View {
+        let pick = { selected = selected == p.folder ? nil : p.folder }
+        let (state, color) = state(p)
+        let symbol = p.icon.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil ? nil : $0 } ?? "puzzlepiece.extension"
+        return HStack(spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(theme[\.overlay]).frame(width: 18, height: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(p.name).lineLimit(1)
+                if let line = p.description.components(separatedBy: ". ").first, !line.isEmpty {
+                    Text(line).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 5) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text(state)
+            }
+            .font(.system(size: 12)).foregroundStyle(color == theme[\.green] ? theme[\.overlay] : color)
+            .frame(width: 104, alignment: .leading)
+            Switch(on: p.enabled) { write("enabled", $0 ? nil : .bool(false), .table(["plugins", p.folder])) }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(selected == p.folder ? theme[\.surface] : .clear).padding(.horizontal, 4))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: pick)
+        .settingsSlot(choose: pick)
+        .help(p.problem ?? "")
+    }
+
+    private func state(_ p: PluginStatus) -> (String, Color) {
+        if p.problem != nil { return ("Error", theme[\.red]) }
+        if p.catalogNewer { return ("You changed it", theme[\.peach]) }
+        if !p.enabled { return ("Off", theme[\.overlay]) }
+        return p.running ? ("Running", theme[\.green]) : ("Starting", theme[\.overlay])
+    }
+
+    /// The catalog's ready plugins, a folder to drop, and the warning that goes with installing one.
+    @ViewBuilder private var add: some View {
+        ForEach(addable, id: \.name) { c in
+            Row(title: c.name, note: c.summary) { Button("Add") { actions.addPlugin(c.name) } }
+        }
+        HStack {
+            Text(dropProblem ?? "Drop a plugin folder here (with its plugin.toml)")
+                .foregroundStyle(dropProblem == nil ? theme[\.overlay] : theme[\.red])
+            Text("or")
+            Button("Choose folder…", action: actions.choosePlugin)
+        }
+        .frame(maxWidth: .infinity).padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).strokeBorder(dropping ? theme[\.mauve] : theme[\.overlay].opacity(0.5),
+                                                                   style: StrokeStyle(lineWidth: 1, dash: [4])))
+        .padding(10)
+        .dropDestination(for: URL.self) { urls, _ in
+            dropProblem = urls.compactMap(actions.installPlugin).first
+            return true
+        } isTargeted: { dropping = $0 }
+        Row(title: "Make your own", note: "gzyms plugin new <name> makes a working one. Edited a plugin? Turn it off and on. Teach your coding agent: gzyms skill install") { EmptyView() }
+        // Plugins are child processes of Gzyms, so macOS lets them do what Gzyms may (spec: say so where you install).
+        Text("Plugins run with Gzyms' permissions: Full Disk Access, Accessibility, camera and microphone if granted. Install only what you trust.")
+            .font(.system(size: 11)).foregroundStyle(theme[\.peach])
+            .padding(.horizontal, 12).padding(.vertical, 7)
     }
 }
 
-/// One installed plugin: on or off, show, remove, and its own form drawn from the [[option]]s in its plugin.toml.
+/// One plugin on the side of Settings → Plugins: what it does, what is wrong, its update, its options, remove.
+private struct PluginDrawer: View {
+    let p: PluginStatus
+    let config: GzymsConfig
+    let write: (String, TOMLValue?, ConfigTable) -> Void
+    let actions: SettingsActions
+    let close: () -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        if let problem = p.problem {
+            Text(problem).font(.system(size: 12)).foregroundStyle(theme[\.red]).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 7)
+        }
+        if !p.description.isEmpty {
+            Text(p.description).font(.system(size: 12)).foregroundStyle(theme[\.overlay]).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 7)
+        }
+        if p.catalogNewer {
+            Row(title: "You changed \(p.folder)", note: "Gzyms has a newer version. Update it from the catalog? Your copy is kept as \(p.folder).bak-<date>.") {
+                Button("Update") { actions.updatePlugin(p.folder) }
+            }
+        }
+        ForEach(p.options, id: \.key) { o in
+            PluginOptionRow(option: o, value: config.pluginOptions[p.folder]?[o.key] ?? o.defaultValue) { v in
+                write(o.key, v == o.defaultValue ? nil : v, .table(["plugins", p.folder]))
+            }
+        }
+        HStack {
+            Button("Remove") { close(); actions.removePlugin(p.folder) }
+            Spacer()
+            Button("Show in Finder") { actions.revealPlugin(p.folder) }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+}
+
+/// One installed plugin as a section: on or off, show, remove, and its own form drawn from the [[option]]s in its plugin.toml.
+/// The Agents tab uses it; Plugins has the list and the drawer.
 private struct PluginSection: View {
     let p: PluginStatus
     let config: GzymsConfig
