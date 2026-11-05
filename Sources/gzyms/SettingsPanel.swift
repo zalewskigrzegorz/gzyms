@@ -34,6 +34,14 @@ final class SettingsPanel: NSPanel {
         contentView = NSHostingView(rootView: SettingsRoot(model: model, actions: actions).environment(\.settingsNav, nav))
         // HyprMac tiles and frames every standard window; a floating one it leaves alone.
         setAccessibilitySubrole(.floatingWindow)
+        // Stepped back behind another window it is still ordered in: About's cat and the Apps pulse ran on unseen.
+        NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: self, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isVisible else { return }
+                let seen = self.occlusionState.contains(.visible)
+                if self.model.settingsVisible != seen { self.model.settingsVisible = seen }
+            }
+        }
     }
 
     // Esc closes it, whatever inside has the focus (SwiftUI does not always pass it on as cancelOperation).

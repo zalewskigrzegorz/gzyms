@@ -53,11 +53,14 @@ Each row has `id`, `source` (an app's bundle id, `plugin:<folder>`, `meeting`, o
 Run `gzyms debug` when something does not show or a key does nothing, before you guess. The running bar holds Full Disk Access and Accessibility, so it answers for you: one fact per line, never the text of a notification. It needs the bar running.
 
 ```
-gzyms debug                  # everything below
+gzyms debug                  # notifications and keys
 gzyms debug notifications    # how Gzyms reads macOS banners
 gzyms debug keys             # the key tap and the keyboard mode
+gzyms debug cpu              # what the bar costs right now (measures for 3 s)
 gzyms debug --json           # one flat object, every value a string
 ```
+
+- `cpu`: run it when Gzyms uses CPU while nothing moves on screen, before you restart it (a restart hides the cause). `cpu.percent` is the process over 3 s. `cpu.main_wakeups_per_s` is how often the main thread woke: a few per second is idle, 60 or more means an animation or a timeline runs every frame, and `cpu.hint` then says so. `cpu.panel_rebuilds` counts bar panels built again. `cpu.busy` lists the animations, timelines and timers running now (`settings: about cat, 30 fps`, `mic meter`, `system settings watch, every 1 s`). One `window.<kind>` line per kind of window says whether each is `on screen`, `covered` or `hidden`. A `cpu.busy` entry that belongs to a hidden window is the usual leak: SwiftUI keeps animating in a window that was only put away.
 
 - `notifications`: the switches that matter (`config.banner_ax`, `config.open_original`, `config.signal`, `config.nc_auto_restart`), the Accessibility and Full Disk Access grants, whether the observer is attached to Notification Center (and its pid), whether the panel is open, whether the host window is parked off screen and by Gzyms, the last banner (app, how long ago, `via ax` or `via database`), the banner guard (deliveries counted with no banner after them, `guard.warns`), Notification Center restarts by Gzyms (`nc_restart.count`, `nc_restart.last`, `nc_restart.awaiting_banner`, `nc_restart.gave_up`), Do Not Disturb, and one `app.<bundle id>` line per app with what macOS says: `allow`, `banners` (temporary, persistent, off), `center`, `sound`, `previews`, and `problems:` when something there keeps Gzyms from reading its banner.
 - `keys`: whether the tap exists and is enabled, how often macOS switched it off (`tap.disabled_by_macos`, with the reason, then Gzyms switches it on again), Secure Keyboard Entry (`secure_input`, and while it is held `secure_input.owner`, the process holding it, and how long), the leader, whether the mode is on, a popup open, a banner up, the frontmost app, and whether a Gzyms window is the key window.

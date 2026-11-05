@@ -1047,6 +1047,7 @@ public struct MusicDetailsView: View {
                             .font(.system(size: 10).monospacedDigit()).foregroundStyle(theme[\.overlay])
                     }
                 }
+                .busy("music popup progress, every 1 s")
             }
             if it.steerable {
                 HStack(spacing: 18) {

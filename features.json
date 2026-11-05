@@ -1,5 +1,5 @@
 {
-  "count": 86,
+  "count": 87,
   "updated": "2026-11-05",
   "features": [
     "gzyms notify command",
@@ -12,6 +12,7 @@
     "gzyms hud command",
     "gzyms report command",
     "gzyms debug command (notification setup, keys, Secure Input owner)",
+    "gzyms debug cpu: what the bar spends right now and what keeps running",
     "gzyms help and shell tab completions",
     "gzyms skill guide for coding agents",
     "gzyms plugin command (new, add, list, remove)",

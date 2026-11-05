@@ -3,18 +3,44 @@ import Testing
 @testable import GzymsCore
 
 @Test func debugArgumentsTakeTopicsAndJson() {
-    #expect(debugArguments([])?.topics == debugTopics)
+    #expect(debugArguments([])?.topics == ["notifications", "keys"])  // cpu takes 3 s: only when asked
     #expect(debugArguments(["keys"])?.topics == ["keys"])
+    #expect(debugArguments(["cpu", "--json"])?.topics == ["cpu"])
     #expect(debugArguments(["--json", "notifications"])?.json == true)
     #expect(debugArguments(["keys", "nope"]) == nil)
 }
 
 @Test func debugRequestSurvivesTheWire() {
-    let msg = debugRequest(id: "ab12-cd", topics: ["keys"])
+    let msg = debugRequest(id: "ab12-cd", topics: ["keys", "cpu"])
     #expect(debugRequestParts(msg)?.id == "ab12-cd")
-    #expect(debugRequestParts(msg)?.topics == ["keys"])
-    #expect(debugRequestParts("ab12")?.topics == debugTopics)
+    #expect(debugRequestParts(msg)?.topics == ["keys", "cpu"])
+    #expect(debugRequestParts("ab12")?.topics == debugDefaultTopics)
     #expect(debugRequestParts("../x keys") == nil)  // the id names a file
+}
+
+@Test func busyRegistryCountsAndNeverGoesNegative() {
+    var b = BusyRegistry()
+    b.start("pulse"); b.start("pulse"); b.start("cat")
+    #expect(b.names == ["cat", "pulse ×2"])
+    b.stop("pulse"); b.stop("cat"); b.stop("cat")
+    #expect(b.names == ["pulse"])
+    b.stop("pulse")
+    #expect(b.counts.isEmpty)
+}
+
+@Test func cpuReportGroupsWindowsAndHintsAtAFrameClock() {
+    let idle = debugCPUReport(cpuSeconds: 0.03, wall: 3, wakeups: 12, rebuilds: 0, rebuildsTotal: 2, busy: [],
+                              windows: [("BarPanel", "on screen"), ("BarPanel", "on screen"), ("SettingsPanel", "hidden"), ("BarPanel", "covered")])
+    let v = Dictionary(idle.lines.map { ($0.key, $0.value) }) { a, _ in a }
+    #expect(v["cpu.percent"] == "1.0")
+    #expect(v["cpu.main_wakeups_per_s"] == "4")
+    #expect(v["cpu.busy"] == "nothing")
+    #expect(v["window.BarPanel"] == "on screen ×2, covered")
+    #expect(v["window.SettingsPanel"] == "hidden")
+    #expect(v["cpu.hint"] == nil)
+    let leak = debugCPUReport(cpuSeconds: 0.15, wall: 3, wakeups: 180, rebuilds: 0, rebuildsTotal: 0, busy: ["settings: apps mirror pulse ×3"], windows: [])
+    #expect(leak.lines.contains { $0.key == "cpu.hint" })
+    #expect(leak.lines.contains { $0.value == "settings: apps mirror pulse ×3" })
 }
 
 @Test func debugReportKeepsOrderThroughTheWireAndPrintsOneFactPerLine() throws {

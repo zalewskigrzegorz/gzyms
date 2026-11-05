@@ -1090,6 +1090,7 @@ private struct AboutTab: View {
             }
             .offset(y: landed ? 0 : -60)
             .opacity(landed ? 1 : 0)
+            .busy("settings: about cat, 30 fps", while: live)
             Text("gzyms").font(.system(size: 30, weight: .bold, design: .monospaced))
             Text("The cornice of your screen: workspaces, notifications and meetings, up where your eyes already are.")
                 .font(.system(size: 13)).foregroundStyle(theme[\.overlay]).multilineTextAlignment(.center)
@@ -1345,6 +1346,7 @@ private struct HacksTab: View {
                 }
             }
         }
+        .busy("settings: hacks, every 2 s", while: live)
     }
 
     /// The hang guard counts deliveries without a banner: it needs both (`AppDelegate.countSignal`).
@@ -1714,7 +1716,6 @@ private struct AppDrawer: View {
 struct MacMirror: View {
     let settings: NCAppSettings?
     var animate = true
-    @State private var dim = false
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var still
 
@@ -1766,7 +1767,6 @@ struct MacMirror: View {
                     .font(.system(size: 11)).foregroundStyle(theme[\.peach])
             }
         }
-        .onAppear { if animate, !still { dim = true } }
     }
 
     private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {
@@ -1775,11 +1775,10 @@ struct MacMirror: View {
             .background(RoundedRectangle(cornerRadius: 8).fill(theme[\.surface].opacity(0.7)))
     }
 
-    /// The pulsing ring around what to change. Only its opacity animates, so a ring never lingers on a switch set right.
-    private func ring(_ on: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 6).strokeBorder(on ? theme[\.peach] : .clear, lineWidth: 2.5)
-            .opacity(dim ? 0.4 : 1)
-            .animation(dim ? .easeInOut(duration: 0.7).repeatForever() : nil, value: dim)
+    /// The ring around what to change; it pulses only while `animate` (Settings on screen).
+    @ViewBuilder private func ring(_ on: Bool) -> some View {
+        if on, animate, !still { PulsingRing(color: theme[\.peach]) }
+        else if on { RoundedRectangle(cornerRadius: 6).strokeBorder(theme[\.peach], lineWidth: 2.5) }
     }
 
     /// nil = either way.
@@ -1823,6 +1822,21 @@ struct MacMirror: View {
             Text(title).foregroundStyle(theme[\.overlay])
         }
         .font(.system(size: 11))
+    }
+}
+
+/// A repeatForever cannot be stopped by changing its value back, and keeps ticking in an ordered-out window
+/// (~5% CPU after Settings closed, 2026-11-05). Taking this view out of the tree is what stops it.
+private struct PulsingRing: View {
+    let color: Color
+    @State private var dim = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 6).strokeBorder(color, lineWidth: 2.5)
+            .opacity(dim ? 0.4 : 1)
+            .animation(.easeInOut(duration: 0.7).repeatForever(), value: dim)
+            .onAppear { dim = true }
+            .busy("settings: apps mirror pulse")
     }
 }
 

@@ -1319,10 +1319,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         systemSettingsWatch = (timer, observer)
+        busy.start("system settings watch, every 1 s")
     }
 
     private func stopWatchingSystemSettings() {
         guard let w = systemSettingsWatch else { return }
+        busy.stop("system settings watch, every 1 s")
         w.timer.invalidate()
         NSWorkspace.shared.notificationCenter.removeObserver(w.observer)
         systemSettingsWatch = nil
@@ -1668,9 +1670,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let m = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date, Date().timeIntervalSince(m) > 60 { try? fm.removeItem(at: url) }
         }
         let file = DebugCommand.replyFile(id)
+        guard topics.contains("cpu") else { answerDebug(topics, into: file); return }
+        cpuDebug { [weak self] cpu in
+            let rest = topics.filter { $0 != "cpu" }
+            if rest.isEmpty { try? cpu.wire().write(to: file, options: .atomic) } else { self?.answerDebug(rest, into: file, after: cpu) }
+        }
+    }
+
+    /// `gzyms debug cpu`: the process's CPU, main run loop wakeups and panel rebuilds over `debugCPUWindow`, then
+    /// who is signed into `busy` and which windows are hidden, covered or on screen.
+    private func cpuDebug(done: @escaping @MainActor (DebugReport) -> Void) {
+        func cpuSeconds() -> Double {
+            var u = rusage()
+            getrusage(RUSAGE_SELF, &u)
+            return Double(u.ru_utime.tv_sec + u.ru_stime.tv_sec) + Double(u.ru_utime.tv_usec + u.ru_stime.tv_usec) / 1e6
+        }
+        final class Count: @unchecked Sendable { var n = 0 }  // touched on main only
+        let wakeups = Count()
+        let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue, true, 0) { _, _ in wakeups.n += 1 }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        let cpu0 = cpuSeconds(), t0 = ProcessInfo.processInfo.systemUptime, rebuilds0 = rebuilds
+        DispatchQueue.main.asyncAfter(deadline: .now() + debugCPUWindow) {
+            MainActor.assumeIsolated { [weak self] in
+                CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+                guard let self else { return }
+                let windows = NSApp.windows.compactMap { w -> (name: String, state: String)? in
+                    let name = String(describing: type(of: w))
+                    guard !name.hasPrefix("NS"), !name.hasPrefix("_") else { return nil }  // AppKit's own: menus, status items
+                    return (name, !w.isVisible ? "hidden" : w.occlusionState.contains(.visible) ? "on screen" : "covered")
+                }
+                done(debugCPUReport(cpuSeconds: cpuSeconds() - cpu0, wall: ProcessInfo.processInfo.systemUptime - t0, wakeups: wakeups.n,
+                                    rebuilds: rebuilds - rebuilds0, rebuildsTotal: rebuilds, busy: busy.names, windows: windows))
+            }
+        }
+    }
+
+    private func answerDebug(_ topics: [String], into file: URL, after first: DebugReport = DebugReport()) {
         let wantKeys = topics.contains("keys")
         guard topics.contains("notifications") else {
-            try? keysDebug().wire().write(to: file, options: .atomic)
+            var r = first
+            r.add(keysDebug())
+            try? r.wire().write(to: file, options: .atomic)
             return
         }
         let ids = model.seenApps.map(\.id)
@@ -1683,7 +1723,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let macOS = prefs.flatMap { ncAppSettings(prefs: $0, apps: ids, hotkeys: hotkeys) }
                 DispatchQueue.main.async { MainActor.assumeIsolated {
                     guard let self else { return }
-                    var r = self.notificationsDebug(b, macOS: macOS)
+                    var r = first
+                    r.add(self.notificationsDebug(b, macOS: macOS))
                     if wantKeys { r.add(self.keysDebug()) }
                     try? r.wire().write(to: file, options: .atomic)
                 } }

@@ -48,7 +48,10 @@ final class MicMeter {
     private var generation = 0
     var onLevel: (Double) -> Void = { _ in }
 
-    func start() { wanted = true; generation += 1; run(generation) }
+    func start() {
+        if !wanted { busy.start("mic meter") }
+        wanted = true; generation += 1; run(generation)
+    }
 
     private func run(_ gen: Int) {
         guard wanted, gen == generation else { return }
@@ -86,7 +89,10 @@ final class MicMeter {
         }
     }
 
-    func stop() { wanted = false; halt() }
+    func stop() {
+        if wanted { busy.stop("mic meter") }
+        wanted = false; halt()
+    }
 
     /// Serial queue: a start still queued or running finishes first, then this stops it.
     private func halt() {

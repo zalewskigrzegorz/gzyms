@@ -34,14 +34,17 @@ public struct DebugReport: Equatable, Sendable {
     }
 }
 
-public let debugTopics = ["notifications", "keys"]
+public let debugTopics = ["notifications", "keys", "cpu"]
+/// No topic given: these. cpu measures for `debugCPUWindow` seconds, so it comes only when asked for.
+public let debugDefaultTopics = ["notifications", "keys"]
+public let debugCPUWindow = 3.0
 
-/// `gzyms debug [notifications|keys] [--json]`: no topic = all of them. nil = not a valid call.
+/// `gzyms debug [notifications|keys|cpu] [--json]`. nil = not a valid call.
 public func debugArguments(_ args: [String]) -> (topics: [String], json: Bool)? {
     let json = args.contains("--json")
     let words = args.filter { $0 != "--json" }
     guard words.allSatisfy(debugTopics.contains) else { return nil }
-    return (words.isEmpty ? debugTopics : words, json)
+    return (words.isEmpty ? debugDefaultTopics : words, json)
 }
 
 /// The request the CLI posts: an id that names the reply file, then the topics.
@@ -51,7 +54,33 @@ public func debugRequestParts(_ message: String) -> (id: String, topics: [String
     let parts = message.split(separator: " ").map(String.init)
     guard let id = parts.first, !id.isEmpty, id.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return nil }
     let topics = parts.dropFirst().filter(debugTopics.contains)
-    return (id, topics.isEmpty ? debugTopics : Array(topics))
+    return (id, topics.isEmpty ? debugDefaultTopics : Array(topics))
+}
+
+/// `gzyms debug cpu`: what the bar spent over the window, and what keeps running. A window is "hidden" (ordered out),
+/// "covered" (ordered in, nothing of it seen) or "on screen". A busy name next to a hidden window is the usual leak.
+public func debugCPUReport(cpuSeconds: Double, wall: Double, wakeups: Int, rebuilds: Int, rebuildsTotal: Int,
+                           busy: [String], windows: [(name: String, state: String)]) -> DebugReport {
+    var r = DebugReport()
+    let perSec = wall > 0 ? Double(wakeups) / wall : 0
+    r.add("cpu.percent", String(format: "%.1f", wall > 0 ? cpuSeconds / wall * 100 : 0))
+    r.add("cpu.window_s", String(format: "%.1f", wall))
+    r.add("cpu.main_wakeups_per_s", String(Int(perSec.rounded())))
+    r.add("cpu.panel_rebuilds", "\(rebuilds) in the window, \(rebuildsTotal) since start")
+    r.add("cpu.busy", busy.isEmpty ? "nothing" : busy.joined(separator: ", "))
+    // One line per kind of window, so --json keeps every one: "on screen ×3, hidden".
+    var kinds: [(name: String, states: [(state: String, n: Int)])] = []
+    for w in windows {
+        let k = kinds.firstIndex { $0.name == w.name } ?? { kinds.append((w.name, [])); return kinds.count - 1 }()
+        if let s = kinds[k].states.firstIndex(where: { $0.state == w.state }) { kinds[k].states[s].n += 1 } else { kinds[k].states.append((w.state, 1)) }
+    }
+    for k in kinds { r.add("window.\(k.name)", k.states.map { $0.n > 1 ? "\($0.state) ×\($0.n)" : $0.state }.joined(separator: ", ")) }
+    // shortcut: 30/s is a guess between idle (a few timers) and a 60–120 Hz frame clock; tune once real numbers come in.
+    if perSec >= 30 {
+        r.add("cpu.hint", "main wakes every frame: an animation or a timeline runs. Look for a cpu.busy entry next to a hidden window, "
+            + "or sample the pid and look under NSHostingView.layout")
+    }
+    return r
 }
 
 extension NCAppSettings {

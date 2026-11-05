@@ -25,6 +25,7 @@ public struct ArmageddonView: View {
     public var body: some View {
         if let at { frame(at) } else {
             TimelineView(.periodic(from: .now, by: calm ? 0.1 : 0.25)) { ctx in frame(ctx.date) }
+                .busy("armageddon flash")
         }
     }
 

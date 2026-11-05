@@ -3,7 +3,7 @@ import GzymsCore
 
 let debugName = Notification.Name("dev.gzyms.debug")
 
-/// `gzyms debug [notifications|keys] [--json]`: the running bar tells what it sees. It holds Full Disk Access and
+/// `gzyms debug [notifications|keys|cpu] [--json]`: the running bar tells what it sees. It holds Full Disk Access and
 /// Accessibility, this process may not, so the bar answers into a file and this reads it. No text of any notification.
 @MainActor
 enum DebugCommand {
@@ -11,14 +11,14 @@ enum DebugCommand {
     static func replyFile(_ id: String) -> URL { dir.appendingPathComponent("debug-\(id).json") }
 
     static func run(_ args: [String]) -> Never {
-        guard let (topics, json) = debugArguments(args) else { fail("usage: gzyms debug [notifications|keys] [--json]") }
+        guard let (topics, json) = debugArguments(args) else { fail("usage: gzyms debug [notifications|keys|cpu] [--json]") }
         guard DNDCommand.barRunning() else { fail("gzyms debug: Gzyms is not running") }
         let id = String(UUID().uuidString.prefix(8)).lowercased()
         let file = replyFile(id)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         DistributedNotificationCenter.default().postNotificationName(debugName, object: debugRequest(id: id, topics: topics), userInfo: nil, deliverImmediately: true)
         // Notification Center can stall the observer's reads for seconds after a wake: 1 s per Accessibility call.
-        let deadline = Date().addingTimeInterval(6)
+        let deadline = Date().addingTimeInterval(6 + (topics.contains("cpu") ? debugCPUWindow : 0))
         while Date() < deadline {
             if let data = try? Data(contentsOf: file), let report = DebugReport(wire: data) {
                 try? FileManager.default.removeItem(at: file)
