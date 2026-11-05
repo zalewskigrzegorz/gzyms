@@ -47,10 +47,12 @@ struct SettingsSlot: ViewModifier {
     @State private var me = UUID()
     @Environment(\.settingsNav) private var nav
     @Environment(\.theme) private var theme
+    @Environment(\.isEnabled) private var enabled
 
     func body(content: Content) -> some View {
         // Kept fresh on every draw: a switch's choose flips the value it has now, not the one it first drew with.
-        let _ = nav?.chooses[me] = choose
+        // A disabled control ignores Enter too.
+        let _ = nav?.chooses[me] = enabled ? choose : {}
         content
             // Drawn around the control, not padded into it: the rows keep their layout.
             .background { if nav?.current == me { RoundedRectangle(cornerRadius: 6).fill(theme[\.gold].opacity(0.35)).padding(-4) } }

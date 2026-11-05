@@ -1189,7 +1189,7 @@ private struct HacksTab: View {
                         note: state(h.profiles.isEmpty ? "No Firefox-based browser found."
                                     : h.profiles.map { "\($0.browser) \($0.name): \($0.keysOff ? "off" : "on")" }.joined(separator: ". ") + ".",
                                     ok: !h.profiles.isEmpty && h.profiles.allSatisfy(\.keysOff))
-                            + " In about:config set \(Self.pref) to false. The browser leaves Now Playing at once. Chromium: start it with --disable-features=HardwareMediaKeyHandling.") {
+                            + " The browser leaves the media keys to the music player.") {
                         Button("Copy pref") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(Self.pref, forType: .string)
@@ -1198,7 +1198,7 @@ private struct HacksTab: View {
                     Row(title: "Browser tabs in the music pill",
                         note: state(!config.browserMedia ? "Off." : !h.serverListening ? "Port 47100 is busy. Quit Gzyms Probe." : "\(h.tabs) tab(s) report media.",
                                     ok: config.browserMedia && h.serverListening)
-                            + " Install Tampermonkey, then open the script and press Install. Gzyms serves it on 127.0.0.1 only. Tabs then show in the music popup with play, pause, next and Go to.") {
+                            + " Tabs that play show in the music pill. Needs Tampermonkey and the script.") {
                         HStack(spacing: 8) {
                             Button("Open script") { actions.openURL("http://127.0.0.1:47100/gzyms-media.user.js") }.disabled(!h.serverListening)
                             Switch(on: config.browserMedia) { actions.write("browser_media", $0 ? .bool(true) : nil, .table(["hacks"])) }
@@ -1206,49 +1206,54 @@ private struct HacksTab: View {
                     }
                     Row(title: "Music.app off the media keys",
                         note: state(h.musicAppRunning ? "Music.app is running." : "Music.app is not running.", ok: !h.musicAppRunning)
-                            + " A running Music.app takes the media keys when the browser does not, even when it plays nothing. Quit it when you play from Spotify or Spotifast.") {
+                            + " A running Music.app takes the media keys. Quit it when you play from Spotify.") {
                         Button("Quit Music.app") { actions.quitApp("com.apple.Music") }.disabled(!h.musicAppRunning)
                     }
                     Row(title: "What plays",
                         note: state(h.reader == "native" ? "Native reader." : h.reader == "osascript" ? "Fallback reader. Now Playing only." : "Off. The music pill is hidden.",
                                     ok: h.reader == "native")
-                            + " Gzyms reads macOS's private MediaRemote from inside /usr/bin/perl, because only Apple-signed programs may. The fallback is osascript. A macOS update can close both. Then the pill goes away.") {
+                            + " Reads what plays from macOS for the music pill.") {
                         docsButton
                     }
                 }
                 Section(title: "Notifications") {
                     Row(title: "Instant banners",
                         note: state(bannersState(h), ok: config.bannerAX && h.bannerAXOn && !h.nannyRunning && !h.noBanners)
-                            + " Gzyms reads the macOS banner through Accessibility the moment it shows, and hides it. A macOS update can break it. Then the text comes from the database a few seconds later. In a macOS Focus (Sleep, Work) banners are held back, so they are not instant either: they come from the database like normal ones.") {
+                            + " The banner text shows at once, not a few seconds later.") {
                         Switch(on: config.bannerAX) { actions.write("banner_ax", $0 ? nil : .bool(false), .table(["notifications"])) }
                     }
                     Row(title: "Restart a hung Notification Center",
                         note: state(restartState(h), ok: !h.ncStillHung)
-                            + " When apps send notifications and Notification Center shows none, Gzyms can run killall NotificationCenter. macOS starts it again, nothing is lost, and the screen flickers for a second. The switch does it by itself, at most once in 10 minutes. The button works either way.") {
+                            + (canDetectHang ? " Restarts it when it shows no banners. Nothing is lost." : " The switch needs Instant banners and Instant app icons.")) {
                         HStack(spacing: 8) {
                             Button("Restart") { actions.restartNotificationCenter() }
                             Switch(on: config.ncAutoRestart) { actions.write("nc_auto_restart", $0 ? .bool(true) : nil, .table(["notifications"])) }
+                                .disabled(!canDetectHang)
                         }
                     }
                     Row(title: "Open the exact chat",
-                        note: "Opening a notification in Gzyms presses its macOS banner through Accessibility. Once the banner is gone, it presses its row in Notification Center, hidden off screen. The app then opens the right chat or thread. A macOS update can break it. Then Gzyms opens just the app. Set each app in Apps.") {
+                        note: "A click opens the right chat or thread, not just the app. Set each app in Apps.") {
                         Switch(on: config.openOriginal) { actions.write("open_original", $0 ? nil : .bool(false), .table(["notifications"])) }
                     }
                     Row(title: "Instant app icons",
                         note: state(!config.signal ? "Off." : h.lastSignal.map { "Last signal at \($0.formatted(date: .omitted, time: .shortened))." } ?? "No signal since Gzyms started.",
                                     ok: config.signal && h.lastSignal != nil)
-                            + " Gzyms follows macOS's notification log, so an app's icon shows at once and the text follows. A macOS update can change the log. Off: the banner waits for its text.") {
+                            + " The app's icon shows at once, the text follows.") {
                         Switch(on: config.signal) { actions.write("signal", $0 ? nil : .bool(false), .table(["notifications"])) }
                     }
                     Row(title: "Notifications from other apps",
                         note: state(fullDisk ? "Full Disk Access is on." : "Full Disk Access is off.", ok: fullDisk)
-                            + " Gzyms reads macOS's private notification database. It needs Full Disk Access. A macOS update can move the database.") {
+                            + " Needs Full Disk Access.") {
                         Button("Permissions") { actions.openGrant(.fullDiskAccess) }
                     }
+                    Row(title: "How these work", note: "What each hack rests on and what a macOS update can break.") { docsButton }
                 }
             }
         }
     }
+
+    /// The hang guard counts deliveries without a banner: it needs both (`AppDelegate.countSignal`).
+    private var canDetectHang: Bool { config.bannerAX && config.signal }
 
     private var fullDisk: Bool { grants.first { $0.grant == .fullDiskAccess }?.granted == true }
 
