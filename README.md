@@ -12,9 +12,12 @@ Glance, decide, move on.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Homebrew tap](https://img.shields.io/badge/brew-zalewskigrzegorz%2Ftap-fbb040)](https://github.com/zalewskigrzegorz/homebrew-tap)
 
-[gzyms.dev](https://gzyms.dev)
+### [🌐 gzyms.dev](https://gzyms.dev)
 
-<img src="assets/readme/bar.png" alt="The gzyms bar: app counts, GitHub pull requests and builds, CPU, memory, network, battery and the clock" width="900">
+<img src="assets/readme/bar-left.png" alt="The left side of the bar: workspaces with their apps, agents, GitHub builds and pull requests" width="760"><br>
+<img src="assets/readme/bar-right.png" alt="The right side of the bar: CPU, memory, network, screen, Do Not Disturb, caffeine, battery and the clock" width="760">
+
+Works with [HyprMac](https://hyprmac.app): your workspaces and their apps live on the bar. [More tiling managers](https://gzyms.dev/docs/#tiling) are on the way.
 
 </div>
 
