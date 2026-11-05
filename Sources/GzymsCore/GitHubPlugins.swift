@@ -100,10 +100,10 @@ fi
 
 let ghPRs = CatalogPlugin(
     name: "gh-prs",
-    summary: "Your pull requests through the gh CLI: what to fix, what to merge, comments waiting for you.",
+    summary: "Your pull requests through the gh CLI: a glyph per state (fix, merge, comments, draft) with the number of PRs in it.",
     manifest: """
     name = "GitHub PRs"
-    description = "Your pull requests through the gh CLI: what to fix, what to merge, comments waiting. A notification on a new approval or comment."
+    description = "Your pull requests through the gh CLI. One glyph per state with the number of PRs in it: fix, merge, comments, draft. A PR counts in every state it is in, a draft only as a draft. A notification on a new approval or comment."
     command = "./plugin.sh"
     icon = "arrow.triangle.pull"
 
@@ -126,7 +126,7 @@ let ghPRs = CatalogPlugin(
     title = "Hide when idle"
     type = "toggle"
     default = false
-    note = "on = no pill while nothing waits for you. Off = an empty pill with the list."
+    note = "on = no pill while none of your pull requests is in a state the pill shows. Off = an empty pill with the list."
 
     [[option]]
     key = "row_command"
@@ -188,21 +188,30 @@ let ghPRs = CatalogPlugin(
       | (.comments.nodes // []) as $conv
       | ([$conv[] | select(.author.login == $me) | .createdAt] | max // "") as $mine
       | ([$conv[] | select(foreign($me)) | .createdAt] | max // "") as $theirs
-      | (if .isDraft and $failed > 0 then "draft+CI" elif .isDraft then "draft" elif $failed > 0 then "fix CI"
+      | (if $failed > 0 then "fix CI"
          elif .mergeable == "CONFLICTING" then "conflict" elif .reviewDecision == "CHANGES_REQUESTED" then "changes req"
          elif .reviewDecision == "REVIEW_REQUIRED" then "needs review" elif $expected > 0 and $e2e == 0 then "run e2e"
          elif $pending > 0 then "CI…" elif .mergeable == "MERGEABLE" then "MERGE" else "blocked" end) as $a
       # GitHub blocks a merge on any open conversation, and on a repo where you cannot write
       | (if $a == "MERGE" and $unresolved > 0 then "resolve"
          elif $a == "MERGE" and (.repository.viewerPermission // "" | IN("ADMIN", "MAINTAIN", "WRITE") | not) then "blocked"
-         else $a end) as $action
+         else $a end) as $base
       | {key: "\(.repository.nameWithOwner)#\(.number)", repo: .repository.nameWithOwner, number, title, url, branch: .headRefName,
-         action: $action, outstanding: ($threads + (if $theirs != "" and $theirs > $mine then 1 else 0 end)),
+         draft: .isDraft, base: $base, action: (if .isDraft then "draft" else $base end),
+         outstanding: ($threads + (if $theirs != "" and $theirs > $mine then 1 else 0 end)),
          approvers: ([.latestReviews.nodes[]? | select(.state == "APPROVED") | .author.login // "?"] | unique)};
-    def fixing: .action | IN("fix CI", "conflict", "changes req", "run e2e");
-    def tag: {"fix CI": ["fix CI", "peach"], "changes req": ["changes!", "peach"], "run e2e": ["run e2e!", "peach"],
-      conflict: ["conflict", "red"], resolve: ["resolve", "sky"], "CI…": ["CI runs…", "gold"], MERGE: ["merge ✓", "green"],
-      "draft+CI": ["draft+CI", "pink"], draft: ["draft", "mauve"], "needs review": ["review?", "lavender"],
+    # The states of a PR, one glyph and one word each, on the pill and in the list. Not exclusive: a PR that needs a fix
+    # can have comments too. A draft is a draft on the pill and nothing else, the list row still shows its other states.
+    def fixing: .base | IN("fix CI", "conflict", "changes req", "run e2e");
+    def states: [if fixing then "fix" else empty end, if .base == "MERGE" and (.draft | not) then "merge" else empty end,
+      if .outstanding > 0 then "comments" else empty end, if .draft then "draft" else empty end];
+    def pillStates: if .draft then ["draft"] else states end;
+    def glyph: {fix: ":xmark.circle:", merge: ":checkmark.circle:", comments: ":bubble.left:", draft: ":square.and.pencil:"}[.];
+    def why: {"fix CI": "CI failed", conflict: "conflict", "changes req": "changes requested", "run e2e": "run e2e"}[.base];
+    def primary: if .draft then "draft" elif fixing then "fix" elif .action == "MERGE" then "merge" else "" end;
+    def tag: {"fix CI": [":xmark.circle: fix", "peach"], "changes req": [":xmark.circle: fix", "peach"], "run e2e": [":xmark.circle: fix", "peach"],
+      conflict: [":xmark.circle: fix", "red"], resolve: ["resolve", "sky"], "CI…": ["CI runs…", "gold"], MERGE: [":checkmark.circle: merge", "green"],
+      draft: [":square.and.pencil: draft", "mauve"], "needs review": ["review?", "lavender"],
       blocked: ["blocked", "lavender"]}[.action] // [.action, "overlay"];
     def kind: {approval: [":hand.thumbsup: review", "green", "success"], comment: [":bubble.left: new", "sky", "message"]}[.kind];
     def what: if .kind == "approval" then "approved by \(.text)" else "new comment" end;
@@ -220,24 +229,23 @@ let ghPRs = CatalogPlugin(
           tooltip: ($st.err // "Asking GitHub…"), menu: [{text: ($st.err // "Asking GitHub…")}]}}
         else
           ([$prs[].repo] | unique | length > 1) as $multi
-          | ([$prs[] | select(fixing)] | length) as $fix
-          | ([$prs[] | select(.action == "MERGE")] | length) as $merge
-          | ([$prs[].outstanding] | add // 0) as $com
-          | [if $fix > 0 then ":xmark.circle: \($fix)" else empty end, if $merge > 0 then ":checkmark.circle: \($merge)" else empty end,
-             if $com > 0 then ":bubble.left: \($com)" else empty end] as $parts
+          | [$prs[] | pillStates[]] as $all
+          | [("fix", "merge", "comments", "draft") as $s | {s: $s, n: ([$all[] | select(. == $s)] | length)} | select(.n > 0)] as $cnt
+          | ($cnt | map({(.s): .n}) | add // {}) as $n
+          | [$cnt[] | "\(.s | glyph) \(.n)"] as $parts
           | (if $parts == [] and $u != [] then [":bell:"] else $parts end) as $parts
           | if $parts == [] and $ENV.GZYMS_OPT_HIDE_IDLE == "true" then {item: {id: "prs", remove: true}}
             else {item: {id: "prs", text: ($parts | join(" ")), icon: "arrow.triangle.pull",
-              color: (if $fix > 0 then "peach" elif $com > 0 or $u != [] then "sky" elif $merge > 0 then "green" else "overlay" end),
-              tooltip: ($st.err // "\($prs | length) open pull requests"),
+              color: (if $n.fix then "peach" elif $n.comments or $u != [] then "sky" elif $n.merge then "green" else "overlay" end),
+              tooltip: ($st.err // (if $cnt == [] then "\($prs | length) open pull requests" else ($cnt | map("\(.s) \(.n)") | join(", ")) end)),
               menu: ([if $st.err then {text: $st.err} else empty end]
                 + [$ev | to_entries[] | .key as $i | .value
                    | {id: "ev\($i)", tag: kind[0], color: kind[1], text: "\(short($multi)) \(what)  \(.title)", detail: .at}]
                 + (if $ev != [] then [{separator: true}] else [] end)
                 + (if $prs == [] then [{text: "No open pull requests."}] else
-                   [$prs | sort_by([(if fixing or (.action | IN("MERGE", "resolve")) then 0 else 1 end), -.number])[]
-                    | tag as $t | {id: "pr:\(.key)", tag: $t[0], color: $t[1], text: "\(short($multi))  \(.title)",
-                      detail: (if .outstanding > 0 then ":bubble.left: \(.outstanding)" else "" end)}] end))}}
+                   [$prs | sort_by([(if (.draft | not) and (fixing or (.action | IN("MERGE", "resolve"))) then 0 else 1 end), -.number])[]
+                    | tag as $t | primary as $p | {id: "pr:\(.key)", tag: $t[0], color: $t[1], text: "\(short($multi))  \(.title)",
+                      detail: ([if $p == "fix" then why else empty end] + [states[] | select(. != $p) | "\(glyph) \(.)"] | join("  "))}] end))}}
             end
         end;
     if $mode == "poll" then
@@ -279,10 +287,10 @@ let ghPRs = CatalogPlugin(
 
 let ghBuilds = CatalogPlugin(
     name: "gh-builds",
-    summary: "CI of your pull requests and of chosen branches through the gh CLI: what runs, what failed, a note when it ends.",
+    summary: "CI of your pull requests and of chosen branches through the gh CLI: how many failed and how many run, a note when it ends.",
     manifest: """
     name = "GitHub builds"
-    description = "CI through the gh CLI: the checks of your pull requests and of chosen branches. A notification when a run fails or ends green."
+    description = "CI through the gh CLI: the checks of your pull requests and of chosen branches. A glyph for failed and one for running, each with the number of PRs or branches in that state, counted once by the worst one. A notification when a run fails or ends green."
     command = "./plugin.sh"
     icon = "hammer"
 
@@ -375,10 +383,10 @@ let ghBuilds = CatalogPlugin(
          # every check ended clean; none at all is not green
          green: ($c != [] and ($c | all((.conclusion // "" | IN("SUCCESS", "NEUTRAL", "SKIPPED")) or .state == "SUCCESS"))),
          checks: ($c | length)};
-    def status: if .failed != [] then ["failed", "red", 0] elif .pending then ["running", "gold", 1]
+    def status: if .failed != [] then [":xmark.circle: failed", "red", 0] elif .pending then [":arrow.triangle.2.circlepath: running", "gold", 1]
       elif .green then ["green", "green", 2] elif .checks == 0 then ["no CI", "overlay", 4] else ["done", "overlay", 3] end;
     def kind: {ci_fail: [":xmark.circle: CI", "red", "fail", "warning"], ci_success: [":checkmark.circle: CI", "green", "success", "info"],
-      ci_start: [":play.circle: CI", "gold", "message", "info"]}[.kind];
+      ci_start: [":arrow.triangle.2.circlepath: CI", "gold", "message", "info"]}[.kind];
     def what: if .kind == "ci_fail" then "CI failed: \(.text)" elif .kind == "ci_success" then "CI green" else "CI started" end;
     def wanted: ($ENV.GZYMS_OPT_NOTIFY // "finished") as $n
       | $n == "all" or .kind == "ci_fail" or ($n != "failed" and .kind == "ci_success");
@@ -397,13 +405,14 @@ let ghBuilds = CatalogPlugin(
           tooltip: ($st.err // "Asking GitHub…"), menu: [{text: ($st.err // "Asking GitHub…")}]}}
         else
           ([$ts[] | select(.failed != [])] | length) as $fail
-          | ([$ts[] | select(.pending)] | length) as $run
-          | [if $fail > 0 then ":xmark.circle: \($fail)" else empty end, if $run > 0 then ":clock: \($run)" else empty end] as $parts
+          # a target counts once, by its worst state: failing while a check still runs is failing
+          | ([$ts[] | select(.failed == [] and .pending)] | length) as $run
+          | [if $fail > 0 then ":xmark.circle: \($fail)" else empty end, if $run > 0 then ":arrow.triangle.2.circlepath: \($run)" else empty end] as $parts
           | (if $parts == [] and $u != [] then [":bell:"] else $parts end) as $parts
           | if $parts == [] and $ENV.GZYMS_OPT_HIDE_IDLE == "true" then {item: {id: "builds", remove: true}}
             else {item: {id: "builds", text: ($parts | join(" ")), icon: "hammer",
               color: (if $fail > 0 then "red" elif $run > 0 then "gold" elif $u != [] then "sky" else "overlay" end),
-              tooltip: ($st.err // "\($run) running, \($fail) failing"),
+              tooltip: ($st.err // "\($fail) failed, \($run) running"),
               menu: ([if $st.err then {text: $st.err} else empty end]
                 + [$bad[] | {text: "Skipped, not owner/repo@branch: \(.)"}]
                 + [$ev | to_entries[] | .key as $i | .value

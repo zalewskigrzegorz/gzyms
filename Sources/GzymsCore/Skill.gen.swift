@@ -136,7 +136,7 @@ A plugin is a folder with a `plugin.toml` and a program in any language. Gzyms s
 
 - `gzyms plugin new <name>` makes `~/.config/gzyms/plugins/<name>/` with a working click counter in bash. Start from it. The name is lowercase letters, digits, `-` and `_`.
 - `gzyms plugin list` lists the plugins with `on`, `off` or `broken` and why.
-- `gzyms plugin add <name>` installs a ready plugin from the built-in catalog. Without a name it lists them: `log-watcher` (log lines to notifications), `agents` (coding agents from tuios), `gh-prs` (your pull requests through the gh CLI) and `gh-builds` (CI of your pull requests and chosen branches). Each is a plain script you can read and change after `add`.
+- `gzyms plugin add <name>` installs a ready plugin from the built-in catalog. Without a name it lists them: `log-watcher` (log lines to notifications), `agents` (coding agents from tuios), `gh-prs` (your pull requests through the gh CLI: a glyph per state, fix, merge, comments and draft, with the number of PRs in it) and `gh-builds` (CI of your pull requests and chosen branches: a glyph for failed and one for running, with the number of PRs or branches). Each is a plain script you can read and change after `add`.
 - `gzyms plugin remove <name>` moves the folder to the Trash.
 
 Gzyms watches the plugins folder, so a new or removed folder needs no restart. Gzyms keeps running the program it started: after editing it, turn the plugin off and on with `gzyms set plugins.<name>.enabled false` and then `gzyms set plugins.<name>.enabled true` (or in Settings → Plugins).

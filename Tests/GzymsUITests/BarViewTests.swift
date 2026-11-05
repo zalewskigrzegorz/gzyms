@@ -192,11 +192,34 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     preview(HStack { ShelfDropZoneView(topInset: 32) { _ in }.frame(width: 340, height: 128)
         ShelfDropZoneView(topInset: 0, over: true) { _ in }.frame(width: 340, height: 96) }, "shelf-drop-zone")
     preview(PluginMenuView(rows: [
-        PluginRow(id: "ev:1", text: "#1204  CI failed: e2e  fix(cart): keep the coupon when the basket is split in two", tag: "✗ CI", color: "red", detail: "19:02"),
+        PluginRow(id: "ev:1", text: "#1204  CI failed: e2e  fix(cart): keep the coupon when the basket is split in two", tag: ":xmark.circle: CI", color: "red", detail: "19:02"),
         PluginRow(separator: true),
-        PluginRow(id: "pr:1", text: "#1187  fix(login): show a clear error when the sign-in service is down", tag: "resolve", color: "sky", detail: "💬 1"),
+        PluginRow(id: "pr:1", text: "#1187  fix(login): show a clear error when the sign-in service is down", tag: "resolve", color: "sky", detail: ":bubble.left: comments"),
         PluginRow(id: "pr:2", text: "dotfiles#42  Move the shell prompt to a theme of its own", tag: "blocked", color: "lavender"),
     ]) { _, _ in }, "plugin-menu")
+    // The GitHub pills as the plugins print them: one glyph per state with the number of PRs (runs) in it, the same glyph and word in the list.
+    func pill(_ plugin: String, _ text: String, _ icon: String, _ color: String) -> some View {
+        let item = PluginItem(id: plugin, text: text, icon: icon, color: color)
+        return VStack(alignment: .leading, spacing: 8) {
+            PluginPillView(pill: PluginPill(plugin: plugin, item: item), small: true) { _, _ in }
+            PluginPillView(pill: PluginPill(plugin: plugin, item: item), small: false) { _, _ in }
+        }.padding(8)
+    }
+    preview(pill("gh-prs", ":xmark.circle: 2 :checkmark.circle: 1 :bubble.left: 3 :square.and.pencil: 1", "arrow.triangle.pull", "peach"), "gh-prs-pill")
+    preview(PluginMenuView(rows: [
+        PluginRow(id: "pr:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: fix", color: "peach", detail: "CI failed  :bubble.left: comments"),
+        PluginRow(id: "pr:o/r#30", text: "r#30  fix(login): show a clear error when sign-in is down", tag: ":xmark.circle: fix", color: "red", detail: "conflict"),
+        PluginRow(id: "pr:o/r#28", text: "r#28  chore(deps): bump the router", tag: ":checkmark.circle: merge", color: "green", detail: ":bubble.left: comments"),
+        PluginRow(id: "pr:o/r#27", text: "r#27  feat(search): rank by recency", tag: "review?", color: "lavender"),
+        PluginRow(id: "pr:o/r#25", text: "r#25  wip: move the prompt to a theme", tag: ":square.and.pencil: draft", color: "mauve", detail: ":xmark.circle: fix  :bubble.left: comments"),
+    ]) { _, _ in }, "gh-prs-popup")
+    preview(pill("gh-builds", ":xmark.circle: 1 :arrow.triangle.2.circlepath: 2", "hammer", "red"), "gh-builds-pill")
+    preview(PluginMenuView(rows: [
+        PluginRow(id: "t:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: failed", color: "red", detail: "unit, lint"),
+        PluginRow(id: "t:o/r#28", text: "r#28  chore(deps): bump the router", tag: ":arrow.triangle.2.circlepath: running", color: "gold"),
+        PluginRow(id: "t:o/r@main", text: "r@main", tag: ":arrow.triangle.2.circlepath: running", color: "gold"),
+        PluginRow(id: "t:o/r#27", text: "r#27  feat(search): rank by recency", tag: "green", color: "green"),
+    ]) { _, _ in }, "gh-builds-popup")
 }
 
 @MainActor @Test func bellWidthIsFixedForOneAndNineteen() {

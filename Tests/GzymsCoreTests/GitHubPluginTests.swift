@@ -97,11 +97,52 @@ private func search(_ prs: [String], extra: String = "") -> String {
     #expect(r.notes.map(\.title) == ["r#3 approved by bob"])
     #expect(r.notes.first?.link == "https://github.com/o/r/pull/3")
     #expect(r.pills.first?.text == "…")
-    #expect(r.pills.contains { $0.text == ":xmark.circle: 1 :checkmark.circle: 1" })
+    #expect(r.pills.contains { $0.text == ":xmark.circle: 1 :checkmark.circle: 1 :square.and.pencil: 1" })
     let last = try #require(r.pills.last)
-    #expect(last.text == ":xmark.circle: 1 :checkmark.circle: 1 :bubble.left: 1")
+    #expect(last.text == ":xmark.circle: 1 :checkmark.circle: 1 :bubble.left: 1 :square.and.pencil: 1")
+    #expect(last.tooltip == "fix 1, merge 1, comments 1, draft 1")
     // Events, then what needs you (newest first), then the rest. PR 7's open bot thread still blocks the merge.
-    #expect((last.menu ?? []).compactMap(\.tag) == [":hand.thumbsup: review", "resolve", "resolve", "merge ✓", "fix CI", "draft", "blocked", "review?"])
+    #expect((last.menu ?? []).compactMap(\.tag) == [":hand.thumbsup: review", "resolve", "resolve", ":checkmark.circle: merge", ":xmark.circle: fix", ":square.and.pencil: draft", "blocked", "review?"])
+}
+
+/// The one pill and list a single answer ends in.
+private func last(_ name: String, _ answer: String, values: [String: TOMLValue] = [:]) throws -> PluginItem {
+    try #require(try runGH(name, values: values, answers: [answer]).pills.last)
+}
+
+@Test func ghPRsCountsAPRInEveryStateItIsIn() throws {
+    // Three open threads from others are one PR with comments. It fails too, so it is counted in both.
+    let both = pr(1, threads: [(false, "bob", false), (false, "bob", false), (false, "alice", false)], checks: [check("build", "FAILURE")])
+    let it = try last("gh-prs", search([both, pr(2, review: "APPROVED", conv: [("2026-11-01T10:00:00Z", "bob")])]))
+    #expect(it.text == ":xmark.circle: 1 :checkmark.circle: 1 :bubble.left: 2")
+    let rows = try #require(it.menu).filter { $0.id != nil }
+    #expect(rows.map(\.tag) == [":checkmark.circle: merge", ":xmark.circle: fix"])
+    #expect(rows.map(\.detail) == [":bubble.left: comments", "CI failed  :bubble.left: comments"])
+}
+
+@Test func ghPRsCountsADraftOnlyAsADraft() throws {
+    // A failing draft with comments raises neither the fix nor the comments glyph, but its row still says so.
+    let draft = pr(1, draft: true, threads: [(false, "bob", false)], checks: [check("build", "FAILURE")])
+    let it = try last("gh-prs", search([draft, pr(2, review: "REVIEW_REQUIRED")]))
+    #expect(it.text == ":square.and.pencil: 1")
+    #expect(it.tooltip == "draft 1")
+    let row = try #require(it.menu?.first { $0.id == "pr:o/r#1" })
+    #expect(row.tag == ":square.and.pencil: draft" && row.detail == ":xmark.circle: fix  :bubble.left: comments")
+    #expect(try #require(it.menu?.first { $0.id == "pr:o/r#2" }).tag == "review?")
+}
+
+@Test func ghBuildsCountsARunOnceByItsState() throws {
+    func target(_ n: Int, _ checks: [String]) -> String {
+        "{\"number\":\(n),\"title\":\"PR \(n)\",\"url\":\"https://github.com/o/r/pull/\(n)\",\"repository\":{\"nameWithOwner\":\"o/r\"},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{\"contexts\":{\"nodes\":[\(checks.joined(separator: ","))]}}}}]}}"
+    }
+    let run = check("e2e", nil, status: "IN_PROGRESS"), fail = check("unit", "FAILURE")
+    // PR 1 fails and still runs another check: it is failed, once. PR 2 only runs.
+    let answer = "{\"data\":{\"search\":{\"nodes\":[\(target(1, [fail, run])),\(target(2, [run])),\(target(3, [check("unit", "SUCCESS")]))]}}}"
+    let it = try last("gh-builds", answer)
+    #expect(it.text == ":xmark.circle: 1 :arrow.triangle.2.circlepath: 1")
+    #expect(it.tooltip == "1 failed, 1 running")
+    let tags = (it.menu ?? []).compactMap(\.tag)
+    #expect(tags == [":xmark.circle: failed", ":arrow.triangle.2.circlepath: running", "green"])
 }
 
 @Test func ghPRsSaysWhatIsMissing() throws {
@@ -126,7 +167,7 @@ private func search(_ prs: [String], extra: String = "") -> String {
     #expect(r.notes.map(\.title).sorted() == ["r#9 CI failed: test", "r@main CI green"])
     let fail = try #require(r.notes.first { $0.title.hasPrefix("r#9") })
     #expect(fail.level == .warning && fail.link == "https://github.com/o/r/actions/runs/1/job/2")
-    #expect(r.pills.contains { $0.text == ":clock: 2" })
+    #expect(r.pills.contains { $0.text == ":arrow.triangle.2.circlepath: 2" })
     let last = try #require(r.pills.last)
     #expect(last.text == ":xmark.circle: 1" && last.color == "red")
     #expect(last.menu?.first?.text == "Skipped, not owner/repo@branch: not a branch")
