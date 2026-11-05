@@ -152,10 +152,14 @@ struct PanelRoot: View {
     }
 
     private func switchWorkspace(_ n: Int) {
-        guard let url = URL(string: "hyprmac://workspace?n=\(n)") else { return }
+        // Release and Debug both claim hyprmac://; a bare open launched the idle Debug next to the running release.
+        let ids: Set<String> = ["com.zachgray.HyprMac", "com.zachgray.HyprMac.debug"]
+        guard let url = URL(string: "hyprmac://workspace?n=\(n)"),
+              let app = NSWorkspace.shared.runningApplications.first(where: { ids.contains($0.bundleIdentifier ?? "") })?.bundleURL
+        else { return }
         let config = NSWorkspace.OpenConfiguration()
         config.activates = false
-        NSWorkspace.shared.open(url, configuration: config)
+        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: config)
     }
 }
 
