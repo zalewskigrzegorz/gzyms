@@ -205,7 +205,7 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
             PluginPillView(pill: PluginPill(plugin: plugin, item: item), small: false) { _, _ in }
         }.padding(8)
     }
-    preview(pill("gh-prs", ":xmark.circle: 2 :checkmark.circle: 1 :bubble.left: 3 :square.and.pencil: 1", "arrow.triangle.pull", "peach"), "gh-prs-pill")
+    preview(pill("gh-prs", ":xmark.circle: 2 :checkmark.circle: 1 :bubble.left: 3 :square.and.pencil: 1", "arrow.triangle.branch", "peach"), "gh-prs-pill")
     preview(PluginMenuView(rows: [
         PluginRow(id: "pr:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: fix", color: "peach", detail: "CI failed  :bubble.left: comments"),
         PluginRow(id: "pr:o/r#30", text: "r#30  fix(login): show a clear error when sign-in is down", tag: ":xmark.circle: fix", color: "red", detail: "conflict"),

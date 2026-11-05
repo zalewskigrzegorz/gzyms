@@ -105,7 +105,7 @@ let ghPRs = CatalogPlugin(
     name = "GitHub PRs"
     description = "Your pull requests through the gh CLI. One glyph per state with the number of PRs in it: fix, merge, comments, draft. A PR counts in every state it is in, a draft only as a draft. A notification on a new approval or comment."
     command = "./plugin.sh"
-    icon = "arrow.triangle.pull"
+    icon = "arrow.triangle.branch"
 
     [[option]]
     key = "query"
@@ -154,12 +154,12 @@ let ghPRs = CatalogPlugin(
     #!/bin/bash
     # Gzyms GitHub PRs. Options arrive as GZYMS_OPT_<KEY>; see plugin.toml. Bash 3.2 (macOS), gh and /usr/bin/jq.
     # Lines go to Gzyms as JSON on stdout; clicks come back on stdin.
-    PILL=prs ICON=arrow.triangle.pull KINDS="approval comment"
+    PILL=prs ICON=arrow.triangle.branch KINDS="approval comment"
     JQ="$(command -v jq || echo /usr/bin/jq)"
     query="${GZYMS_OPT_QUERY:-}"
     : "${GZYMS_OPT_EVERY:=120}"
     if [ -z "$query" ]; then
-      echo '{"item":{"id":"prs","text":"set a search","icon":"arrow.triangle.pull","color":"overlay","tooltip":"Settings → Plugins → GitHub PRs → Search"}}'
+      echo '{"item":{"id":"prs","text":"set a search","icon":"arrow.triangle.branch","color":"overlay","tooltip":"Settings → Plugins → GitHub PRs → Search"}}'
       exec cat >/dev/null
     fi
     ARGS=(-f "q=$query" -f 'query=query($q:String!){viewer{login} search(query:$q,type:ISSUE,first:25){nodes{... on PullRequest{
@@ -224,8 +224,8 @@ let ghPRs = CatalogPlugin(
       level: "info", sound: ($snd[.kind] // kind[2])}};
     def render($st):
       ($st.prs // null) as $prs | ($st.unseen // []) as $u | ($u + ($st.shown // [])) as $ev
-      | if $st.errpill then {item: {id: "prs", text: $st.errpill, icon: "arrow.triangle.pull", color: "peach", tooltip: $st.err, menu: [{text: $st.err}]}}
-        elif $prs == null then {item: {id: "prs", text: "…", icon: "arrow.triangle.pull", color: "overlay",
+      | if $st.errpill then {item: {id: "prs", text: $st.errpill, icon: "arrow.triangle.branch", color: "peach", tooltip: $st.err, menu: [{text: $st.err}]}}
+        elif $prs == null then {item: {id: "prs", text: "…", icon: "arrow.triangle.branch", color: "overlay",
           tooltip: ($st.err // "Asking GitHub…"), menu: [{text: ($st.err // "Asking GitHub…")}]}}
         else
           ([$prs[].repo] | unique | length > 1) as $multi
@@ -235,7 +235,7 @@ let ghPRs = CatalogPlugin(
           | [$cnt[] | "\(.s | glyph) \(.n)"] as $parts
           | (if $parts == [] and $u != [] then [":bell:"] else $parts end) as $parts
           | if $parts == [] and $ENV.GZYMS_OPT_HIDE_IDLE == "true" then {item: {id: "prs", remove: true}}
-            else {item: {id: "prs", text: ($parts | join(" ")), icon: "arrow.triangle.pull",
+            else {item: {id: "prs", text: ($parts | join(" ")), icon: "arrow.triangle.branch",
               color: (if $n.fix then "peach" elif $n.comments or $u != [] then "sky" elif $n.merge then "green" else "overlay" end),
               tooltip: ($st.err // (if $cnt == [] then "\($prs | length) open pull requests" else ($cnt | map("\(.s) \(.n)") | join(", ")) end)),
               menu: ([if $st.err then {text: $st.err} else empty end]

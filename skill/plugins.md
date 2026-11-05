@@ -17,7 +17,7 @@ Gzyms watches the plugins folder, so a new or removed folder needs no restart. G
 name = "PR watch"
 description = "Open pull requests on one pill."
 command = "./plugin.sh"
-icon = "arrow.triangle.pull"
+icon = "arrow.triangle.branch"
 
 [[option]]
 key = "repos"
@@ -50,7 +50,7 @@ default = "short"
 A pill on the bar. A line with the same `"id"` updates it.
 
 ```json
-{"item":{"id":"prs","text":"3 open","icon":"arrow.triangle.pull","color":"green","tooltip":"3 pull requests wait for review"}}
+{"item":{"id":"prs","text":"3 open","icon":"arrow.triangle.branch","color":"green","tooltip":"3 pull requests wait for review"}}
 ```
 
 `"color"` is a theme colour name (`green`, `peach`, `red`, `gold`, `sky`, `mauve`) or a hex. In `"text"`, and in a menu row's `"tag"`, `"text"` and `"detail"`, `:name:` with an SF Symbol name inside draws that symbol in the text's colour: `":xmark.circle: 2 :clock: 1"`. Use it instead of emoji, so the pill looks like the rest of the bar. Remove a pill:
