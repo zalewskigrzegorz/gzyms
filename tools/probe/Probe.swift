@@ -135,7 +135,13 @@ struct GalleryTab: View {
         ("small on notch", ["set", "workspaces.small_on_notch", "true"]), ("full size", ["set", "workspaces.small_on_notch", "false"]),
         ("CPU bars", ["set", "cpu.chart", "bars"]), ("CPU line", ["set", "cpu.chart", "line"]),
     ]
-    private let tabs = ["general", "appearance", "themes", "notifications", "modules", "plugins", "calendar", "agents",
+    /// The banner's entry and pace: pick one, then a banner above. Drop and normal are the defaults, so they unset.
+    private let motion: [Item] = ["icon", "drop", "notch", "unroll", "pop", "fade"].map { e in
+        (e == "drop" ? "drop (default)" : e, e == "drop" ? ["unset", "appearance.banner_entry"] : ["set", "appearance.banner_entry", e])
+    } + ["slow", "normal", "fast"].map { s in
+        ("speed \(s)", s == "normal" ? ["unset", "appearance.animation_speed"] : ["set", "appearance.animation_speed", s])
+    }
+    private let tabs = ["general", "appearance", "animations", "themes", "notifications", "modules", "plugins", "calendar", "agents",
                         "sounds", "shortcuts", "permissions", "debug", "about"]
 
     var body: some View {
@@ -145,6 +151,7 @@ struct GalleryTab: View {
             group("Banners", banners)
             group("Meetings", meetings)
             group("Look (writes config.toml, set it back with the pair)", looks)
+            group("Banner entry and speed (writes config.toml)", motion)
             group("Settings tabs", tabs.map { ($0, ["settings", $0]) })
             group("HUD", [("open or close", ["hud"])])
             Text("Themes: the Themes tab. File shelf: drag a file anywhere. Agents and log watcher: the Plugins tab.")

@@ -10,6 +10,7 @@ enum SetCommand {
             fail(verb, """
             usage: gzyms set <key> <value> · gzyms unset <key> (back to the default)
               gzyms set appearance.animations false
+              gzyms set appearance.banner_entry pop    (icon, drop, notch, unroll, pop, fade)
               gzyms set widgets.cpu false
               gzyms set plugins.agents.done_after 0
               gzyms set notifications.apps."com.mitchellh.ghostty".banner false

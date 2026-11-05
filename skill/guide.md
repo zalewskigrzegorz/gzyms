@@ -67,6 +67,7 @@ gzyms debug --json           # one flat object, every value a string
 
 ```sh
 gzyms set appearance.animations false
+gzyms set appearance.banner_entry pop
 gzyms set widgets.cpu false
 gzyms set notifications.apps."com.mitchellh.ghostty".banner false
 gzyms set calendar.points [5, 0]
@@ -74,6 +75,8 @@ gzyms unset widgets.cpu
 ```
 
 The key is the dotted name as in `~/.config/gzyms/config.toml` (or `$XDG_CONFIG_HOME/gzyms/config.toml`). A value is `true`/`false`, a number, `[a, b]` or text. A wrong key or value writes nothing and exits 1 with the problem. `gzyms unset <key>` puts the default back. The running bar applies a change at once. Run `gzyms set` alone for its usage.
+
+How a banner arrives: `appearance.banner_entry` is `icon`, `drop` (the default), `notch`, `unroll`, `pop` or `fade`. `appearance.animation_speed` is `slow`, `normal` (the default) or `fast`. With `appearance.animations false` nothing moves. Under macOS Reduce motion every entry is a fade, unless `appearance.follow_reduce_motion` is false.
 
 ## Themes: gzyms theme
 
