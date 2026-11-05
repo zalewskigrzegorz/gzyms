@@ -192,25 +192,18 @@ extension GzymsNotification {
         return n
     }
 
-    /// Order in the stack: a meeting or a reminder never expires, so it ranks with critical.
-    var rank: Int {
-        switch level {
-        case .armageddon: 4
-        case _ where level == .critical || reminder || meetingStart != nil: 3
-        case .error: 2
-        case .warning: 1
-        default: 0
-        }
-    }
+    /// 1 for the only level that goes in at once, so it sorts first in the stack; everything else keeps arrival order.
+    var lead: Int { level == .armageddon ? 1 : 0 }
 }
 
 /// One island with a stack (M3c): the banner on screen and up to three waiting under it, snoozed ones waiting to
-/// come back, and an inbox per app (newest first). A higher level jumps in at once, the rest waits its turn.
+/// come back, and an inbox per app (newest first). Only an armageddon jumps in at once; the rest waits its turn in
+/// the order it arrived, whatever its level, and a banner on screen always runs its time out (Greg).
 public struct NotificationStore: Sendable {
     /// Waiting ones keep `left` (nil = the full time of their level), so only the banner on screen runs out.
     /// `heard`: its sound played already, so coming back into the stack stays quiet.
     private struct Entry: Sendable { var n: GzymsNotification; var seq: Int; var left: Double?; var heard = true }
-    /// By rank, then arrival. Entries never move: next and previous move the cursor, so each keeps its place.
+    /// An armageddon first, then by arrival. Entries never move: next and previous move the cursor, so each keeps its place.
     private var stack: [Entry] = []
     /// No room in the stack: they wait in their list (so the count is right at once) and come up in order when room frees.
     /// Opened or cleared from the list meanwhile, they never come up.
@@ -441,14 +434,14 @@ public struct NotificationStore: Sendable {
         if banner?.compact == true { stack = []; clearClock() }
         arm(n, now: now)
         let shown = banner
-        let jumps = shown.map { n.rank > $0.rank } ?? true
+        let jumps = shown.map { n.level == .armageddon && $0.level != .armageddon } ?? true
         if jumps, shown != nil { stack[cursor].left = remaining(now: now) }
         seq += 1
         stack.append(Entry(n: n, seq: seq, left: nil))
         stack.sort(by: Self.order)
         let on = jumps ? n.id : shown!.id
-        // Over the limit: the lowest level, the newest of them, waits in its list. Never the one on screen.
-        while waiting > Self.maxWaiting, var out = stack.filter({ $0.n.id != on }).min(by: { ($0.n.rank, -$0.seq) < ($1.n.rank, -$1.seq) }) {
+        // Over the limit: the newest waits in its list, an armageddon last of all. Never the one on screen.
+        while waiting > Self.maxWaiting, var out = stack.filter({ $0.n.id != on }).max(by: { (-$0.n.lead, $0.seq) < (-$1.n.lead, $1.seq) }) {
             stack.removeAll { $0.seq == out.seq }
             if out.seq == seq { out.heard = priority.covers(n) }
             file(out.n)
@@ -460,7 +453,7 @@ public struct NotificationStore: Sendable {
         if jumps { start(now: now) }
     }
 
-    private static func order(_ a: Entry, _ b: Entry) -> Bool { (a.n.rank, -a.seq) > (b.n.rank, -b.seq) }
+    private static func order(_ a: Entry, _ b: Entry) -> Bool { (a.n.lead, -a.seq) > (b.n.lead, -b.seq) }
 
     /// Room in the stack: the waiting ones come up in order, each with the newest version of its row.
     /// Keeps `keep` on screen when it is still in the stack, else the top one starts its clock.

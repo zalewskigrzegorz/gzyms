@@ -51,14 +51,14 @@ import Testing
     #expect(s.takeSounds().map(\.id) == ["c0", "c1", "c2", "c3"])
 }
 
-@Test func onePushedBackByAHigherOneDoesNotSoundTwice() {
+@Test func onePushedBackByAnArmageddonDoesNotSoundTwice() {
     var s = NotificationStore()
     for i in 0..<4 { s.post(note("n\(i)"), now: Double(i) / 10) }
     _ = s.takeSounds()
-    s.post(note("err", level: .error), now: 1)
-    #expect(s.takeSounds().map(\.id) == ["err"])
+    s.post(note("boom", level: .armageddon), now: 1)
+    #expect(s.takeSounds().map(\.id) == ["boom"])
     #expect(s.inbox("com.app").map(\.id) == ["n3"])
-    s.dismiss(now: 2)  // err leaves, n3 comes back
+    s.dismiss(now: 2)  // boom leaves, n3 comes back
     #expect(s.contains("n3"))
     #expect(s.takeSounds().isEmpty)
 }

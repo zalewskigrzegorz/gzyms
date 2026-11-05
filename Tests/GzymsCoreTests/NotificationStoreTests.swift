@@ -329,24 +329,81 @@ private func meeting(_ id: String) -> GzymsNotification {
     return n
 }
 
-@Test func higherLevelPreempts() {
+@Test(arguments: [NotifyLevel.warning, .error, .critical])
+func aHigherLevelWaitsForTheBannerOnScreen(level: NotifyLevel) {
     var s = NotificationStore()
     s.post(note("a"), now: 0)
-    s.post(note("b", level: .error), now: 1)
+    s.post(note("b", level: level), now: 1)
+    #expect(s.banner?.id == "a")
+    #expect(s.remaining(now: 1) == 5)  // its countdown was not touched
+    #expect(s.waiting == 1)
+    #expect(s.count("com.app") == 0)
+    s.tick(now: 6)
     #expect(s.banner?.id == "b")
+}
+
+@Test func armageddonPreempts() {
+    var s = NotificationStore()
+    s.post(note("a"), now: 0)
+    s.post(note("boom", level: .armageddon), now: 1)
+    #expect(s.banner?.id == "boom")
     #expect(s.waiting == 1)
     #expect(s.count("com.app") == 0)
 }
 
 @Test func preemptedComesBackWithItsTimeLeft() {
     var s = NotificationStore()
-    s.post(note("a"), now: 0)                  // info, 6 s
-    s.post(note("b", level: .error), now: 2)   // a frozen with 4 s left
-    s.tick(now: 14)                            // b expires after 12 s, a comes up
+    s.post(note("a"), now: 0)                                // info, 6 s
+    s.post(note("boom", level: .armageddon), now: 2)         // a frozen with 4 s left
+    s.tick(now: 14)                                          // armageddon waits for its click
+    #expect(s.banner?.id == "boom")
+    _ = s.open("boom", now: 14)
     #expect(s.banner?.id == "a")
     #expect(s.remaining(now: 14) == 4)
     s.tick(now: 18)
     #expect(s.banner == nil)
+}
+
+@Test func theQueueIsFirstComeFirstServedWhateverTheLevel() {
+    var s = NotificationStore()
+    s.post(note("i1"), now: 0)
+    s.post(note("c", level: .critical), now: 1)
+    s.post(note("w", level: .warning), now: 2)
+    s.post(note("e", level: .error), now: 3)
+    s.post(note("i2"), now: 4)  // fifth: the newest waits in its list
+    #expect(s.stacked.map(\.id) == ["i1", "c", "w", "e"])
+    #expect(s.inbox("com.app").map(\.id) == ["i2"])
+    s.dismiss(now: 5)
+    #expect(s.stacked.map(\.id) == ["c", "w", "e", "i2"])
+}
+
+@Test func criticalWaitsItsTurnAndThenStaysUntilActedOn() {
+    var s = NotificationStore()
+    s.post(note("i"), now: 0)
+    s.post(note("c", level: .critical), now: 1)
+    s.tick(now: 6)
+    #expect(s.banner?.id == "c")
+    s.tick(now: 600)
+    #expect(s.banner?.id == "c")
+    #expect(s.remaining(now: 600) == nil)
+}
+
+@Test func aSecondArmageddonWaitsForTheFirst() {
+    var s = NotificationStore()
+    s.post(note("boom1", level: .armageddon), now: 0)
+    s.post(note("boom2", level: .armageddon), now: 1)
+    #expect(s.banner?.id == "boom1")
+    s.dismiss(now: 2)
+    #expect(s.banner?.id == "boom2")
+}
+
+@Test func armageddonIntoAFullStackPushesOutTheNewestOfTheRest() {
+    var s = NotificationStore()
+    for i in 0..<4 { s.post(note("n\(i)"), now: Double(i)) }
+    s.post(note("boom", level: .armageddon), now: 5)
+    #expect(s.banner?.id == "boom")
+    #expect(s.stacked.map(\.id) == ["boom", "n0", "n1", "n2"])
+    #expect(s.inbox("com.app").map(\.id) == ["n3"])
 }
 
 @Test func waitingHasNoClockUntilShown() {
@@ -359,21 +416,21 @@ private func meeting(_ id: String) -> GzymsNotification {
     #expect(s.nextDeadline == 18)
 }
 
-@Test func limitThreeLetsTheLowestNewestWait() {
+@Test func limitThreeLetsTheNewestWait() {
     var s = NotificationStore()
     s.post(note("top", level: .critical), now: 0)
     s.post(note("w1", level: .warning), now: 1)
     s.post(note("i1"), now: 2)
     s.post(note("i2"), now: 3)
-    s.post(note("w2", level: .warning), now: 4)  // fourth waiting: the newest info waits in the list
+    s.post(note("w2", level: .warning), now: 4)  // fourth waiting: the newest waits in the list
     #expect(s.waiting == 3)
-    #expect(s.inbox("com.app").map(\.id) == ["i2"])
+    #expect(s.inbox("com.app").map(\.id) == ["w2"])
     #expect(s.banner?.id == "top")
     s.dismiss(now: 5)
-    #expect(s.stacked.map(\.id) == ["w1", "w2", "i1", "i2"])
+    #expect(s.stacked.map(\.id) == ["w1", "i1", "i2", "w2"])
 }
 
-@Test func meetingIsNotPushedOutByLower() {
+@Test func meetingKeepsItsPlaceInTheLine() {
     var s = NotificationStore()
     s.post(note("c", level: .critical), now: 0)
     s.post(meeting("meeting-m"), now: 1)
@@ -384,8 +441,8 @@ private func meeting(_ id: String) -> GzymsNotification {
 
 @Test func sameIdUpdatesWaiting() {
     var s = NotificationStore()
-    s.post(note("a"), now: 0)
-    s.post(meeting("meeting-m"), now: 1)  // preempts a
+    s.post(meeting("meeting-m"), now: 0)
+    s.post(note("a"), now: 1)  // waits
     s.post(note("a", "updated"), now: 2)
     #expect(s.banner?.id == "meeting-m")
     #expect(s.waiting == 1)
@@ -448,13 +505,13 @@ private func meeting(_ id: String) -> GzymsNotification {
     #expect(s.remaining(now: 101) == 5)  // a kept the 5 s it had under the pointer
 }
 
-@Test func afterActionTheHighestComesUp() {
+@Test func afterActionTheOldestComesUp() {
     var s = NotificationStore()
     s.post(note("e", level: .error), now: 0)
     s.post(note("i"), now: 0)
     s.post(note("w", level: .warning), now: 0)
-    s.next(now: 1)  // w is next by rank
-    #expect(s.banner?.id == "w")
+    s.next(now: 1)  // i is next in line
+    #expect(s.banner?.id == "i")
     s.dismiss(now: 2)
     #expect(s.banner?.id == "e")
 }
@@ -492,16 +549,18 @@ private func meeting(_ id: String) -> GzymsNotification {
     #expect(s.tick(now: 61).map(\.id) == ["c1", "c2"])
 }
 
-@Test func higherLevelJumpsInEvenAfterScrolling() {
+@Test func armageddonJumpsInEvenAfterScrolling() {
     var s = NotificationStore()
     s.post(note("c", level: .critical), now: 0)
     s.post(note("i"), now: 0)
     s.next(now: 1)  // the user looks at the info one
     s.post(note("w", level: .warning), now: 2)
-    #expect(s.banner?.id == "w")
+    #expect(s.banner?.id == "i")  // a warning does not take the screen
+    s.post(note("boom", level: .armageddon), now: 3)
+    #expect(s.banner?.id == "boom")
 }
 
-@Test func expiryAfterScrollingBringsUpTheHighest() {
+@Test func expiryAfterScrollingBringsUpTheOldest() {
     var s = NotificationStore()
     s.post(note("e", level: .error), now: 0)
     s.post(note("w", level: .warning), now: 0)
