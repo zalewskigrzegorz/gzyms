@@ -100,6 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var messages = GzymsMessagePanel(model: model)
     private lazy var palette = PalettePanel(model: model)
     private var messageObserver: NSObjectProtocol?
+    private var dupes = DuplicateDetector()
+    private var dupeApps: Set<String> = []
+    private var dupeFlush: DispatchWorkItem?
     private let messagesFile = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Gzyms/messages.json")
 
@@ -540,6 +543,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let app = n.app, !n.compact { remember(app) }
         // Off in Settings → Apps: no armageddon sound either (the store drops it too).
         guard !notes.appRules.rule(for: n).skip else { return }
+        noteDuplicates(n)
         notes.post(n, now: ProcessInfo.processInfo.systemUptime)
         logNote(n, "posted")
         var loud = n
@@ -549,6 +553,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             armageddon.show(loud, theme: model.config.theme, calm: !model.animate)
         }
         notesChanged()
+    }
+
+    /// Other apps' notifications only (not plugins, the instant icon or a snooze coming back). The anomaly log gets the bundle
+    /// ids and a count, never the text. The message waits 3 s, so four calendars make one message, not three.
+    private func noteDuplicates(_ n: GzymsNotification) {
+        guard let app = n.app, !n.compact, !n.reminder, !app.hasPrefix("plugin:"), !n.id.hasPrefix("plugin:"),
+              let hit = dupes.record(app: app, title: n.title, body: n.body, at: ProcessInfo.processInfo.systemUptime) else { return }
+        anomalies.write(kind: "duplicate_apps", detail: ["apps": hit.apps.joined(separator: ","), "count": String(hit.count)])
+        log("dupes: \(hit.apps.joined(separator: ",")) x\(hit.count)")
+        dupeApps.formUnion(hit.apps)
+        guard dupeFlush == nil else { return }
+        let w = DispatchWorkItem { [weak self] in self?.flushDuplicates() }
+        dupeFlush = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: w)
+    }
+
+    private func flushDuplicates() {
+        let apps = dupeApps.sorted()
+        dupeApps = []
+        dupeFlush = nil
+        let seen = (try? JSONDecoder().decode(MessagesSeen.self, from: Data(contentsOf: messagesFile))) ?? MessagesSeen()
+        guard let r = duplicateMessage(apps: apps, seen: seen) else { return }
+        saveMessagesSeen(r.seen)
+        showMessage(r.show)
+    }
+
+    private func saveMessagesSeen(_ seen: MessagesSeen) {
+        do {
+            try FileManager.default.createDirectory(at: messagesFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(seen).write(to: messagesFile, options: .atomic)
+        } catch { log("messages: could not save: \(error.localizedDescription)") }
+    }
+
+    private func stopDuplicateWarnings() {
+        messages.next()
+        var seen = (try? JSONDecoder().decode(MessagesSeen.self, from: Data(contentsOf: messagesFile))) ?? MessagesSeen()
+        seen.duplicatesOff = true
+        saveMessagesSeen(seen)
     }
 
     // MARK: - Keyboard mode (leader, hints, popups by keys)
@@ -1144,12 +1186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startMessages() {
         let seen = try? JSONDecoder().decode(MessagesSeen.self, from: Data(contentsOf: messagesFile))
         let r = launchMessages(seen: seen, version: gzymsVersion, macOS: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
-        if r.seen != seen {
-            do {
-                try FileManager.default.createDirectory(at: messagesFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try JSONEncoder().encode(r.seen).write(to: messagesFile, options: .atomic)
-            } catch { log("messages: could not save: \(error.localizedDescription)") }
-        }
+        if r.seen != seen { saveMessagesSeen(r.seen) }
         r.show.forEach(showMessage)
         messageObserver = DistributedNotificationCenter.default().addObserver(forName: messageName, object: nil, queue: .main) { note in
             let kind = note.object as? String
@@ -1172,9 +1209,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                              actions: [.init("Turn on debug mode") { [weak self] in self?.debugModeOn() },
                                        .init("Report a problem") { [weak self] in self?.reportIssue() }],
                              close: close)
+        case let .duplicateApps(apps):
+            duplicateView(apps, close: close)
         }
         log("messages: showing \(m)")
         messages.show(view, on: focusedScreen())
+    }
+
+    private func duplicateView(_ apps: [String], close: @escaping () -> Void) -> GzymsMessageView {
+        let names = apps.map { id in model.seenApps.first { $0.id == id }?.name ?? id }
+        return GzymsMessageView(title: "\(apps.count) apps sent the same notification",
+                                lines: ["\(joinNames(names)) sent the same text at the same moment.", "Turn one off in Apps, or uninstall it."],
+                                actions: [.init("Open Apps") { [weak self] in
+                                              self?.messages.next()
+                                              self?.model.appsFocus = apps.first
+                                              self?.toggleSettings(.apps)
+                                          },
+                                          .init("Stop these warnings") { [weak self] in self?.stopDuplicateWarnings() }],
+                                close: close)
     }
 
     /// Debug mode: the anomaly detector logs stalls and stale data, the usage HUD shows Gzyms' own CPU and lag.

@@ -1,5 +1,5 @@
 {
-  "count": 84,
+  "count": 85,
   "updated": "2026-11-05",
   "features": [
     "gzyms notify command",
@@ -85,6 +85,7 @@
     "What's new notes after an update",
     "Live-reloaded config.toml",
     "Event log and anomaly detector",
-    "Start at login, with a switch in Settings → General"
+    "Start at login, with a switch in Settings → General",
+    "Warning when several apps send the same notification"
   ]
 }

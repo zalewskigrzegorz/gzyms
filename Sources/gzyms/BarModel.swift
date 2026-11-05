@@ -35,7 +35,9 @@ final class BarModel {
     @ObservationIgnored var onAltNote: (String) -> Void = { _ in }
     @ObservationIgnored var onLogo: () -> Void = {}
     // Settings panel
-    var settingsTab = SettingsTab.general { didSet { onSettingsTab() } }
+    var settingsTab = SettingsTab.general { didSet { onSettingsTab(); if settingsTab != .apps { appsFocus = nil } } }
+    /// The app Settings → Apps opens on, set by the duplicate-notification message.
+    var appsFocus: String?
     @ObservationIgnored var onSettingsTab: () -> Void = {}
     var configProblems: [String] = []
     var configBroken = false

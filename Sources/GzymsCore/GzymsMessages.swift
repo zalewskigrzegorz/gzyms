@@ -15,6 +15,8 @@ public let testedMacOSMajor = 27
 public enum GzymsMessage: Equatable, Sendable {
     case whatsNew(version: String, lines: [String])
     case untestedMacOS(major: Int)
+    /// Bundle ids of apps that sent the same notification at once.
+    case duplicateApps(apps: [String])
 }
 
 /// What was already shown, kept in ~/Library/Application Support/Gzyms/messages.json.
@@ -22,7 +24,37 @@ public struct MessagesSeen: Codable, Equatable, Sendable {
     public var version: String?
     /// The untested macOS major already warned about.
     public var macOS: Int?
-    public init(version: String? = nil, macOS: Int? = nil) { self.version = version; self.macOS = macOS }
+    /// App pairs ("a|b", bundle ids sorted) already told about for sending the same notification.
+    public var duplicatePairs: [String]?
+    /// "Stop these warnings": no more duplicate messages.
+    public var duplicatesOff: Bool?
+    public init(version: String? = nil, macOS: Int? = nil, duplicatePairs: [String]? = nil, duplicatesOff: Bool? = nil) {
+        self.version = version; self.macOS = macOS; self.duplicatePairs = duplicatePairs; self.duplicatesOff = duplicatesOff
+    }
+}
+
+/// Every pair of apps in the group, as "a|b" with the ids sorted.
+public func appPairs(_ apps: [String]) -> [String] {
+    let s = Array(Set(apps)).sorted()
+    return s.indices.flatMap { i in s[(i + 1)...].map { "\(s[i])|\($0)" } }
+}
+
+/// The message for a group of apps that sent the same notification, once per pair: nil when the user stopped them
+/// or every pair was told already. The apps listed are those in a pair not told yet; all the group's pairs are remembered.
+public func duplicateMessage(apps: [String], seen: MessagesSeen) -> (show: GzymsMessage, seen: MessagesSeen)? {
+    guard seen.duplicatesOff != true else { return nil }
+    let told = Set(seen.duplicatePairs ?? [])
+    let fresh = appPairs(apps).filter { !told.contains($0) }
+    guard !fresh.isEmpty else { return nil }
+    var next = seen
+    next.duplicatePairs = Array(told.union(appPairs(apps))).sorted()
+    return (.duplicateApps(apps: Array(Set(fresh.flatMap { $0.split(separator: "|").map(String.init) })).sorted()), next)
+}
+
+/// "A", "A and B", "A, B and C".
+public func joinNames(_ names: [String]) -> String {
+    guard let last = names.last, names.count > 1 else { return names.first ?? "" }
+    return names.dropLast().joined(separator: ", ") + " and " + last
 }
 
 /// `a` is a later version than `b`, compared number by number; a missing part counts as 0.

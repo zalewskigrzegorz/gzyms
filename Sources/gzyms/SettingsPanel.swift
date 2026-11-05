@@ -146,6 +146,7 @@ private struct SettingsRoot: View {
                      logo: model.customLogo,
                      live: model.settingsVisible,
                      plugins: model.plugins,
+                     openApp: model.appsFocus,
                      actions: actions)
             .themed(model.config.theme)
             // Gzyms is never the active app, so AppKit would draw every switch greyed out as "inactive".
