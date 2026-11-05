@@ -897,6 +897,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func loadConfig() {
         let load = GzymsCore.loadConfig(toml: try? String(contentsOf: ThemeCommand.configFile, encoding: .utf8))
+        if !load.broken { LoginItem.sync(wanted: load.config.startAtLogin) }  // before the config lands, so General draws the new state
         model.config = load.config
         chords.micShortcut = load.config.micShortcut
         chords.configureNav(leader: load.config.leader, idleTimeout: load.config.idleTimeout, hintChars: load.config.hintChars,
@@ -1445,8 +1446,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         a.openLog = { NSWorkspace.shared.activateFileViewerSelecting([Paths.logsDir(home: FileManager.default.homeDirectoryForCurrentUser).appendingPathComponent("gzyms.log")]) }
         a.report = { [weak self] in
             let zip = Report.make(grants: self?.model.grants)
-            if let zip { NSWorkspace.shared.activateFileViewerSelecting([zip]) }
+            if let zip {
+                self?.settings.hide()  // Finder and the page are what you look at now
+                NSWorkspace.shared.activateFileViewerSelecting([zip])
+                // 404 until Discussions are on in the repo.
+                if let url = URL(string: "https://github.com/zalewskigrzegorz/gzyms/discussions/new?category=problems") { NSWorkspace.shared.open(url) }
+            }
             return zip
+        }
+        a.loginItem = { LoginItem.dev ? nil : LoginItem.status }
+        a.openLoginItems = { [weak self] in
+            self?.settings.stepBack()
+            LoginItem.openSettings()
         }
         a.version = gzymsVersion
         a.canCheckForUpdates = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil

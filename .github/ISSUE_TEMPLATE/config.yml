@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Something is wrong
+    url: https://github.com/zalewskigrzegorz/gzyms/discussions/new?category=problems
+    about: Describe it and attach the zip from Settings → Debug → Make report.
+  - name: Missing something
+    url: https://github.com/zalewskigrzegorz/gzyms/discussions/new?category=ideas
+    about: Ideas and feature requests.

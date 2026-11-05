@@ -293,6 +293,14 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
                              devices: ["MacBook Pro Speakers", "Shure MV7"], workspaceNames: [1: "chat", 2: "term"], actions: actions).frame(width: 1000, height: 900),
                 "settings-\(tab.rawValue)")
     }
+    var dev = actions
+    dev.loginItem = { nil }
+    preview(SettingsView(tab: .constant(.general), config: config, problems: [], broken: false, apps: [], devices: [],
+                         actions: dev).frame(width: 1000, height: 300), "settings-general-dev")
+    var denied = actions
+    denied.loginItem = { .requiresApproval }
+    preview(SettingsView(tab: .constant(.general), config: config, problems: [], broken: false, apps: [], devices: [],
+                         actions: denied).frame(width: 1000, height: 300), "settings-general-denied")
     var updating = actions
     updating.canCheckForUpdates = true
     preview(SettingsView(tab: .constant(.about), config: config, problems: [], broken: false, apps: apps,

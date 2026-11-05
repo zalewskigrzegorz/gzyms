@@ -54,6 +54,9 @@ public struct SettingsActions {
     /// Makes the report; returns where it went (nil = failed, see the log).
     public var report: () -> URL? = { nil }
     public var requestFeature: () -> Void = {}
+    /// The login item as macOS sees it. nil: the dev install, which launchd starts (install-dev.sh).
+    public var loginItem: () -> LoginItemStatus? = { .enabled }
+    public var openLoginItems: () -> Void = {}
     public var version = "dev"
     /// Sparkle has a feed to ask; without it the button stays out.
     public var canCheckForUpdates = false
@@ -188,7 +191,8 @@ public struct SettingsView: View {
 
     @ViewBuilder private var content: some View {
         switch tab {
-        case .general: GeneralTab(config: config, names: workspaceNames, write: actions.write, reveal: actions.revealConfig)
+        case .general: GeneralTab(config: config, names: workspaceNames, login: actions.loginItem(), write: actions.write,
+                                  reveal: actions.revealConfig, openLoginItems: actions.openLoginItems)
         case .appearance: AppearanceTab(config: config, devices: devices, write: actions.write, openThemes: { tab = .themes })
         case .animations: AnimationsTab(config: config, write: actions.write)
         case .themes: ThemesTab(config: config, write: actions.write)
@@ -300,11 +304,26 @@ private struct Switch: View {
 private struct GeneralTab: View {
     let config: GzymsConfig
     let names: [Int: String]
+    let login: LoginItemStatus?
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let reveal: () -> Void
+    let openLoginItems: () -> Void
 
     var body: some View {
         Columns {
+        Section(title: "Login") {
+            if login == nil {
+                Row(title: "Start at login", note: "This dev build starts with launchd (install-dev.sh).") { EmptyView() }
+            } else if login == .requiresApproval && config.startAtLogin {
+                Row(title: "Start at login", note: "Turned off in System Settings. Turn it back on in Login Items.") {
+                    Button("Login Items…", action: openLoginItems)
+                }
+            } else {
+                Row(title: "Start at login", note: login == .notFound ? "macOS cannot find Gzyms. Move it to Applications." : nil) {
+                    Switch(on: config.startAtLogin) { write("start_at_login", $0 ? nil : .bool(false), .table(["bar"])) }
+                }
+            }
+        }
         Section(title: "Workspaces") {
             Row(title: "Show empty workspaces") { Switch(on: config.showEmpty) { write("show_empty", .bool($0), .table(["workspaces"])) } }
             Row(title: "Small bar on the notch screen", note: "when monitors are attached") {
@@ -1099,8 +1118,12 @@ private struct AboutTab: View {
             }
             Section(title: "License") {
                 Row(title: "Gzyms", note: "Open source. The license is picked before the first release.") { EmptyView() }
-                // shortcut: listed by hand, generate from Package.resolved once there is a second dependency.
+                // Listed by hand: NotificationNanny is adapted code, not a package in Package.resolved.
                 Row(title: "TOMLDecoder", note: "Daniel Duan, MIT") { Button("Source") { open("https://github.com/dduan/TOMLDecoder") } }
+                Row(title: "Sparkle", note: "Sparkle Project, MIT") { Button("Source") { open("https://github.com/sparkle-project/Sparkle") } }
+                Row(title: "NotificationNanny", note: "chessper53, MIT. Parts of reading and hiding banners.") {
+                    Button("Source") { open("https://github.com/chessper53/NotificationNanny") }
+                }
             }
         }
     }
@@ -1125,7 +1148,7 @@ private struct DebugTab: View {
             Section(title: "Something wrong?") {
                 Row(title: "Report a problem", note: reported ?? "One zip on the Desktop: log, anomalies, config and versions. No notification text.") {
                     Button("Make report…") {
-                        reported = actions.report().map { "Saved as \($0.lastPathComponent) on the Desktop. Send it to Greg." }
+                        reported = actions.report().map { "Saved as \($0.lastPathComponent) on the Desktop. Attach it to the GitHub discussion that opens." }
                             ?? "Could not make the report. The log says why."
                     }
                 }

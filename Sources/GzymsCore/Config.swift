@@ -21,6 +21,8 @@ public struct GzymsConfig: Equatable, Sendable {
     public var menuBarKey = MenuBarKey.cmd
     /// An image file shown on the bar instead of the cat (`[bar] logo`); nil = the cat.
     public var logo: String?
+    /// `[bar] start_at_login`: a login item for a release build. The dev install has launchd's `dev.gzyms` instead.
+    public var startAtLogin = true
     /// `[caffeine] display`: keep the screen on too, not only the Mac awake.
     public var caffeineDisplay = false
     /// `[caffeine] battery_below`: on battery under this %, let the Mac sleep again (0 = never).
@@ -282,6 +284,7 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         else { problems.append("shortcuts.mic_mute: \"\(m)\" must be like ctrl+alt+m (a letter or digit and ctrl, alt or cmd), or off, kept ctrl+alt+m") }
     }
     if let l = raw.bar?.logo, !l.isEmpty { config.logo = l }
+    if let v = raw.bar?.start_at_login { config.startAtLogin = v }
     if let v = raw.caffeine?.display { config.caffeineDisplay = v }
     if let v = raw.caffeine?.battery_below { config.caffeineBatteryBelow = max(0, min(100, v)) }
     if let names = raw.dnd?.breaks_through {
@@ -739,13 +742,15 @@ private struct RawDND: Decodable {
 private struct RawBar: Decodable {
     var menu_bar_key: String?
     var logo: String?
+    var start_at_login: Bool?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case menu_bar_key, logo }
+    enum CodingKeys: String, CodingKey { case menu_bar_key, logo, start_at_login }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         menu_bar_key = lenient(c, .menu_bar_key, "bar.menu_bar_key", &unknown)
         logo = lenient(c, .logo, "bar.logo", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["menu_bar_key", "logo"], prefix: "bar.")
+        start_at_login = lenient(c, .start_at_login, "bar.start_at_login", &unknown)
+        unknown += try unknownKeys(in: decoder, known: ["menu_bar_key", "logo", "start_at_login"], prefix: "bar.")
     }
 }
 

@@ -1,5 +1,5 @@
 {
-  "count": 83,
+  "count": 84,
   "updated": "2026-11-05",
   "features": [
     "gzyms notify command",
@@ -84,6 +84,7 @@
     "Sparkle updates",
     "What's new notes after an update",
     "Live-reloaded config.toml",
-    "Event log and anomaly detector"
+    "Event log and anomaly detector",
+    "Start at login, with a switch in Settings → General"
   ]
 }

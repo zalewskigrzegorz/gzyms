@@ -33,5 +33,7 @@ ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"  # now with the ticket in
 rm -rf "$app"
 
 [ -f "whatsnew/$version.md" ] && cp "whatsnew/$version.md" "$out/Gzyms-$version.md"  # same name as the zip = its notes
-.build/artifacts/sparkle/Sparkle/bin/generate_appcast --embed-release-notes "$out"
+# The zip goes to GitHub Releases (the Homebrew tap's url too), the appcast to gzyms.dev.
+.build/artifacts/sparkle/Sparkle/bin/generate_appcast --embed-release-notes \
+  --download-url-prefix "https://github.com/zalewskigrzegorz/gzyms/releases/download/v$version/" "$out"
 ls -1 "$out"
