@@ -1,5 +1,5 @@
 {
-  "count": 87,
+  "count": 88,
   "updated": "2026-11-05",
   "features": [
     "gzyms notify command",
@@ -21,6 +21,7 @@
     "GitHub pull requests plugin",
     "GitHub builds plugin",
     "Coding agents plugin (tuios)",
+    "Catalog plugins update themselves unless you edited them",
     "Five notification levels",
     "Banner stack with a waiting queue",
     "Armageddon full-screen alert",

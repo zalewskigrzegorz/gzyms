@@ -22,7 +22,8 @@ enum PluginCommand {
             pluginCatalog.forEach { print("  \($0.name)\t\($0.summary)") }
             exit(name == nil ? 0 : 1)
         }
-        write(folder: name, manifest: c.manifest, script: c.script)
+        do { try installCatalogPlugin(in: dir, c) }
+        catch { fail("gzyms plugin: \((error as? NotifyArgsError)?.message ?? error.localizedDescription)") }
         print("made \(dir.appendingPathComponent(name).path)\nset it up in Settings → Plugins → \(name).")
         exit(0)
     }
@@ -36,7 +37,7 @@ enum PluginCommand {
         let disabled = loadConfig(toml: try? String(contentsOf: ThemeCommand.configFile, encoding: .utf8)).config.disabledPlugins
         let folders = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
         var shown = 0
-        for f in folders {
+        for f in folders where !isPluginBackup(f) {
             guard let toml = try? String(contentsOf: dir.appendingPathComponent(f).appendingPathComponent("plugin.toml"), encoding: .utf8) else { continue }
             shown += 1
             switch pluginManifest(toml: toml, folder: f) {

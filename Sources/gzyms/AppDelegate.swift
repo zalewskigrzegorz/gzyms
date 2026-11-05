@@ -1469,10 +1469,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         a.addPlugin = { [weak self] name in
             guard let self, let c = pluginCatalog.first(where: { $0.name == name }) else { return }
             // The plugins folder is watched: the new one starts and gets its section by itself.
-            do { try installPlugin(in: pluginHost.dir, folder: name, manifest: c.manifest, script: c.script); log("plugin \(name): added") }
+            do { try installCatalogPlugin(in: pluginHost.dir, c); log("plugin \(name): added") }
             catch { log("plugin \(name): could not add: \((error as? NotifyArgsError)?.message ?? error.localizedDescription)") }
         }
         a.installPlugin = { [weak self] url in self?.installPluginFolder(url) }
+        a.updatePlugin = { [weak self] folder in self?.pluginHost.replaceFromCatalog(folder) }
         a.choosePlugin = { [weak self] in
             guard let self else { return }
             settings.stepBack()

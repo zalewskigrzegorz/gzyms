@@ -135,3 +135,70 @@ import Testing
     #expect(textPieces(":xmark.circle@red: 2 :clock@#ff8800: 1 :nope@red:", isSymbol: known)
             == [.symbol("xmark.circle", color: "red"), .text(" 2 "), .symbol("clock", color: "#ff8800"), .text(" 1 :nope@red:")])
 }
+
+// MARK: - Catalog updates
+
+private func catalogDir() throws -> URL {
+    let d = FileManager.default.temporaryDirectory.appending(path: "gzyms-cat-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+    return d
+}
+
+private let v1 = CatalogPlugin(name: "demo", summary: "", manifest: "name = \"Demo\"\ncommand = \"./plugin.sh\"\n", script: "echo v1\n")
+private let v2 = CatalogPlugin(name: "demo", summary: "", manifest: v1.manifest, script: "echo v2\n")
+
+private func script(_ d: URL) -> String { (try? String(contentsOf: d.appending(path: "demo/plugin.sh"), encoding: .utf8)) ?? "" }
+
+@Test func untouchedCatalogCopyIsReplacedByTheNewVersion() throws {
+    let d = try catalogDir(); defer { try? FileManager.default.removeItem(at: d) }
+    try installCatalogPlugin(in: d, v1)
+    #expect(try syncCatalogPlugin(in: d, folder: "demo", catalog: [v1]) == .current)
+    #expect(try syncCatalogPlugin(in: d, folder: "demo", catalog: [v2]) == .updated)
+    #expect(script(d) == v2.script)
+    #expect(try syncCatalogPlugin(in: d, folder: "demo", catalog: [v2]) == .current)
+    #expect(try syncCatalogPlugin(in: d, folder: "other", catalog: [v2]) == .notCatalog)
+}
+
+@Test func editedCatalogCopyIsLeftAloneUntilReplacedByHand() throws {
+    let d = try catalogDir(); defer { try? FileManager.default.removeItem(at: d) }
+    try installCatalogPlugin(in: d, v1)
+    try "echo mine\n".write(to: d.appending(path: "demo/plugin.sh"), atomically: true, encoding: .utf8)
+    #expect(try syncCatalogPlugin(in: d, folder: "demo", catalog: [v1]) == .edited)
+    #expect(try syncCatalogPlugin(in: d, folder: "demo", catalog: [v2]) == .editedCatalogNewer)
+    #expect(script(d) == "echo mine\n")
+
+    let bak = try replaceWithCatalog(in: d, folder: "demo", now: Date(timeIntervalSince1970: 0), catalog: [v2])
+    #expect(isPluginBackup(bak.lastPathComponent))
+    #expect((try? String(contentsOf: bak.appending(path: "plugin.sh"), encoding: .utf8)) == "echo mine\n")
+    #expect(script(d) == v2.script)
+    #expect(try syncCatalogPlugin(in: d, folder: "demo", catalog: [v2]) == .current)
+}
+
+@Test func installWithoutMarkerIsAdoptedWhenSameAndKeptWhenDifferent() throws {
+    let d = try catalogDir(); defer { try? FileManager.default.removeItem(at: d) }
+    try installPlugin(in: d, folder: "demo", manifest: v2.manifest, script: v2.script)
+    #expect(try syncCatalogPlugin(in: d, folder: "demo", catalog: [v2]) == .current)
+    #expect(FileManager.default.fileExists(atPath: d.appending(path: "demo/\(catalogMarker)").path))
+
+    try FileManager.default.removeItem(at: d.appending(path: "demo"))
+    try installPlugin(in: d, folder: "demo", manifest: v1.manifest, script: v1.script)
+    #expect(try syncCatalogPlugin(in: d, folder: "demo", catalog: [v2]) == .editedCatalogNewer)
+    #expect(script(d) == v1.script)
+}
+
+/// What the host starts is read after the swap: running the folder's script right then prints the new version.
+@Test func startReadsTheFolderAfterTheSwap() throws {
+    let d = try catalogDir(); defer { try? FileManager.default.removeItem(at: d) }
+    try installCatalogPlugin(in: d, v1)
+    let r = pluginTomlForStart(in: d, folder: "demo", catalog: [v2])
+    #expect(try r.sync.get() == .updated)
+    let m = try pluginManifest(toml: #require(r.toml), folder: "demo").get()
+    let p = Process(), out = Pipe()
+    p.executableURL = URL(filePath: "/bin/sh")
+    p.arguments = ["-c", m.command]
+    p.currentDirectoryURL = d.appending(path: "demo")
+    p.standardOutput = out
+    try p.run()
+    p.waitUntilExit()
+    #expect(String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) == "v2\n")
+}

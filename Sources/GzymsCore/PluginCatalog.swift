@@ -1,11 +1,86 @@
+import CryptoKit
 import Foundation
 
-/// Ready plugins Gzyms ships: `gzyms plugin add <name>` copies one into the plugins folder, then it is the user's.
+/// Ready plugins Gzyms ships: `gzyms plugin add <name>` copies one into the plugins folder.
+/// Gzyms keeps the copy up to date until the user edits it (`syncCatalogPlugin`).
 public struct CatalogPlugin: Sendable {
     public var name: String, summary: String, manifest: String, script: String
+    public init(name: String, summary: String, manifest: String, script: String) {
+        self.name = name; self.summary = summary; self.manifest = manifest; self.script = script
+    }
 }
 
 public let pluginCatalog: [CatalogPlugin] = [logWatcher, agents, ghPRs, ghBuilds]
+
+/// Holds the hash of the catalog files Gzyms last wrote into the folder: files that differ from it are the user's edit.
+public let catalogMarker = ".gzyms-catalog"
+
+func catalogHash(manifest: String, script: String) -> String {
+    SHA256.hash(data: Data((manifest + "\u{0}" + script).utf8)).map { String(format: "%02x", $0) }.joined()
+}
+
+public enum CatalogSync: Equatable, Sendable {
+    case notCatalog, current, updated
+    /// The user changed the files and the catalog has nothing newer than what was written.
+    case edited
+    /// The user changed the files (or an install from before markers differs) and the catalog has another version.
+    case editedCatalogNewer
+}
+
+/// A copy of `<folder>` kept by "update from the catalog". Never run as a plugin.
+public func isPluginBackup(_ folder: String) -> Bool { folder.contains(".bak-") }
+
+/// Brings a catalog plugin's plugin.toml and plugin.sh up to the catalog, unless the user changed them.
+/// config.toml's options are not in the folder, so they stay.
+public func syncCatalogPlugin(in dir: URL, folder: String, catalog: [CatalogPlugin] = pluginCatalog) throws -> CatalogSync {
+    guard let c = catalog.first(where: { $0.name == folder }) else { return .notCatalog }
+    let f = dir.appendingPathComponent(folder)
+    let read = { (n: String) in (try? String(contentsOf: f.appendingPathComponent(n), encoding: .utf8)) ?? "" }
+    let now = catalogHash(manifest: read("plugin.toml"), script: read("plugin.sh"))
+    let latest = catalogHash(manifest: c.manifest, script: c.script)
+    let written = read(catalogMarker).trimmingCharacters(in: .whitespacesAndNewlines)
+    if now == latest {
+        if written != latest { try latest.write(to: f.appendingPathComponent(catalogMarker), atomically: true, encoding: .utf8) }
+        return .current
+    }
+    guard now == written else { return written == latest ? .edited : .editedCatalogNewer }
+    try writeCatalogFiles(c, to: f)
+    return .updated
+}
+
+/// Puts the catalog version over the user's edit after copying the folder to `<folder>.bak-<date>`. Returns the copy.
+public func replaceWithCatalog(in dir: URL, folder: String, now: Date, catalog: [CatalogPlugin] = pluginCatalog) throws -> URL {
+    guard let c = catalog.first(where: { $0.name == folder }) else { throw NotifyArgsError(message: "\(folder) is not in the catalog") }
+    let fmt = DateFormatter()
+    fmt.locale = Locale(identifier: "en_US_POSIX")
+    fmt.dateFormat = "yyyy-MM-dd-HHmmss"
+    let f = dir.appendingPathComponent(folder), bak = dir.appendingPathComponent("\(folder).bak-\(fmt.string(from: now))")
+    try FileManager.default.copyItem(at: f, to: bak)
+    try writeCatalogFiles(c, to: f)
+    return bak
+}
+
+/// A folder's plugin.toml for its next start. A catalog plugin's files are brought up to date first,
+/// so a start never runs the script the update is about to replace.
+public func pluginTomlForStart(in dir: URL, folder: String, catalog: [CatalogPlugin] = pluginCatalog) -> (toml: String?, sync: Result<CatalogSync, Error>) {
+    let sync = Result { try syncCatalogPlugin(in: dir, folder: folder, catalog: catalog) }
+    return (try? String(contentsOf: dir.appendingPathComponent(folder).appendingPathComponent("plugin.toml"), encoding: .utf8), sync)
+}
+
+/// `installPlugin` plus the marker, so later catalog versions replace it.
+public func installCatalogPlugin(in dir: URL, _ c: CatalogPlugin) throws {
+    try installPlugin(in: dir, folder: c.name, manifest: c.manifest, script: c.script)
+    try catalogHash(manifest: c.manifest, script: c.script)
+        .write(to: dir.appendingPathComponent(c.name).appendingPathComponent(catalogMarker), atomically: true, encoding: .utf8)
+}
+
+private func writeCatalogFiles(_ c: CatalogPlugin, to f: URL) throws {
+    try c.manifest.write(to: f.appendingPathComponent("plugin.toml"), atomically: true, encoding: .utf8)
+    let file = f.appendingPathComponent("plugin.sh")
+    try c.script.write(to: file, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path)
+    try catalogHash(manifest: c.manifest, script: c.script).write(to: f.appendingPathComponent(catalogMarker), atomically: true, encoding: .utf8)
+}
 
 /// Writes a plugin folder: its plugin.toml and an executable plugin.sh. Never over an existing folder.
 public func installPlugin(in dir: URL, folder name: String, manifest: String, script: String) throws {

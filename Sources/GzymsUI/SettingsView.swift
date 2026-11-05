@@ -35,6 +35,8 @@ public struct SettingsActions {
     public var removePlugin: (String) -> Void = { _ in }
     /// A ready plugin from the catalog, by name.
     public var addPlugin: (String) -> Void = { _ in }
+    /// Backs up the user's edited catalog plugin and puts the catalog version in its place.
+    public var updatePlugin: (String) -> Void = { _ in }
     /// A plugin folder from disk, dropped or chosen: copied into the plugins folder. Returns what went wrong, if anything.
     public var installPlugin: (URL) -> String? = { _ in nil }
     public var choosePlugin: () -> Void = {}
@@ -703,6 +705,11 @@ private struct PluginSection: View {
                     Button("Show") { actions.revealPlugin(p.folder) }
                     Button("Remove") { actions.removePlugin(p.folder) }
                     Switch(on: p.enabled) { write("enabled", $0 ? nil : .bool(false), .table(["plugins", p.folder])) }
+                }
+            }
+            if p.catalogNewer {
+                Row(title: "You changed \(p.folder)", note: "Gzyms has a newer version. Update it from the catalog? Your copy is kept as \(p.folder).bak-<date>.") {
+                    Button("Update") { actions.updatePlugin(p.folder) }
                 }
             }
             ForEach(p.options, id: \.key) { o in

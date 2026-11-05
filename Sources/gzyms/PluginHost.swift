@@ -24,6 +24,7 @@ final class PluginHost {
     private var runs: [String: Run] = [:]
     private var broken: [String: (name: String, problem: String)] = [:]  // folders whose manifest does not read
     private var disabled: Set<String> = []
+    private var catalogNewer: Set<String> = []  // catalog plugins the user edited while the catalog moved on
     private var values: [String: [String: TOMLValue]] = [:]  // config.toml's `[plugins.<folder>]` options
     private var watchers: [DispatchSourceFileSystemObject] = []
     private var pending: DispatchWorkItem?
@@ -92,9 +93,17 @@ final class PluginHost {
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
         var found: [String: PluginManifest] = [:]
         broken = [:]
-        for url in folders {
+        for url in folders where !isPluginBackup(url.lastPathComponent) {
             let folder = url.lastPathComponent
-            guard let toml = try? String(contentsOf: url.appendingPathComponent("plugin.toml"), encoding: .utf8) else { continue }
+            let toml: String?
+            if runs[folder] == nil, !disabled.contains(folder) {
+                let r = pluginTomlForStart(in: dir, folder: folder)
+                toml = r.toml
+                synced(folder, r.sync)
+            } else {
+                toml = try? String(contentsOf: url.appendingPathComponent("plugin.toml"), encoding: .utf8)
+            }
+            guard let toml else { continue }
             switch pluginManifest(toml: toml, folder: folder) {
             case .success(let m): found[folder] = m
             case .failure(let e): broken[folder] = (folder, e.message)
@@ -111,6 +120,27 @@ final class PluginHost {
         }
         for (folder, m) in found { runs[folder]?.manifest = m }
         publish()
+    }
+
+    private func synced(_ folder: String, _ s: Result<CatalogSync, Error>) {
+        switch s {
+        case .success(.updated): catalogNewer.remove(folder); log("plugin \(folder): updated from the catalog")
+        case .success(.editedCatalogNewer):
+            if catalogNewer.insert(folder).inserted { log("plugin \(folder): you changed it, kept as it is. The catalog has another version.") }
+        case .success: catalogNewer.remove(folder)
+        case .failure(let e): log("plugin \(folder): could not update from the catalog: \(e.localizedDescription)")
+        }
+    }
+
+    /// Settings' "Update": the old process ends, the user's copy goes to `<folder>.bak-<date>`, the catalog version starts.
+    func replaceFromCatalog(_ folder: String) {
+        stop(folder)
+        do {
+            let bak = try replaceWithCatalog(in: dir, folder: folder, now: Date())
+            catalogNewer.remove(folder)
+            log("plugin \(folder): replaced from the catalog, your copy is \(bak.lastPathComponent)")
+        } catch { log("plugin \(folder): could not replace from the catalog: \(error.localizedDescription)") }
+        rescan()
     }
 
     // MARK: - Processes
@@ -222,7 +252,8 @@ final class PluginHost {
         onItems(runs.keys.sorted().flatMap { f in runs[f]!.items.map { PluginPill(plugin: f, item: $0) } })
         var all: [PluginStatus] = runs.values.map { r in
             PluginStatus(folder: r.manifest.folder, name: r.manifest.name, description: r.manifest.description, enabled: true,
-                         running: r.process != nil, problem: r.problem, options: r.manifest.options)
+                         running: r.process != nil, problem: r.problem, options: r.manifest.options,
+                         catalogNewer: catalogNewer.contains(r.manifest.folder))
         }
         all += broken.map { PluginStatus(folder: $0.key, name: $0.value.name, description: "", enabled: !disabled.contains($0.key),
                                          running: false, problem: $0.value.problem) }
