@@ -70,9 +70,14 @@ public enum AppPreset: String, CaseIterable, Sendable {
 
 /// The key of a notification's rule: its app's bundle id, or `plugin:<folder>` for a plugin's own.
 public func ruleKey(_ n: GzymsNotification) -> String? {
-    if let app = n.app { return app }
+    n.app ?? notePlugin(n).map { "plugin:\($0)" }
+}
+
+/// The plugin folder that posted it; nil = not a plugin's own.
+public func notePlugin(_ n: GzymsNotification) -> String? {
+    guard n.app == nil else { return nil }
     let p = n.id.split(separator: ":", maxSplits: 2)
-    return p.count == 3 && p[0] == "plugin" ? "plugin:\(p[1])" : nil
+    return p.count == 3 && p[0] == "plugin" ? String(p[1]) : nil
 }
 
 extension Dictionary where Key == String, Value == AppRule {
@@ -556,8 +561,15 @@ public func dndUntil(_ message: String, now: Date) -> Date?? {
 }
 
 /// What the 🔔 holds: notifications with no app, and from apps with no icon on the bar (background processes).
-public func bellInbox(_ inboxes: [String?: [GzymsNotification]], onBar: Set<String>) -> [GzymsNotification] {
-    inboxes.filter { app, _ in app.map { !onBar.contains($0) } ?? true }.values.flatMap { $0 }.sorted { $0.at > $1.at }
+/// A plugin with a pill on the bar keeps its own there (`pluginInbox`), so the bell never counts them twice.
+public func bellInbox(_ inboxes: [String?: [GzymsNotification]], onBar: Set<String>, pills: Set<String> = []) -> [GzymsNotification] {
+    inboxes.filter { app, _ in app.map { !onBar.contains($0) } ?? true }.values.flatMap { $0 }
+        .filter { notePlugin($0).map { !pills.contains($0) } ?? true }.sorted { $0.at > $1.at }
+}
+
+/// One plugin's notifications, newest first: the list on its pill.
+public func pluginInbox(_ inboxes: [String?: [GzymsNotification]], plugin: String) -> [GzymsNotification] {
+    (inboxes[nil] ?? []).filter { notePlugin($0) == plugin }
 }
 
 public func badgeText(_ count: Int) -> String { count > 9 ? "9+" : "\(count)" }

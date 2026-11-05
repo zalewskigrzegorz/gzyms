@@ -862,7 +862,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func flyToIcon(_ n: GzymsNotification) {
         guard model.animate, !n.compact, island.shown != nil, let id = island.screen?.displayID, let panel = panels[id] else { return }
         let onBar = Set(model.workspaces.flatMap(\.appBundleIDs))
-        let key = n.app.flatMap { onBar.contains($0) ? $0 : nil } ?? "bell"
+        let pill = notePlugin(n).flatMap { f in model.pluginPills.contains { $0.plugin == f } ? "plugin:\(f)" : nil }
+        let key = n.app.flatMap { onBar.contains($0) ? $0 : nil } ?? pill ?? "bell"
         guard let target = panel.iconRect(key),
               let image = n.app.flatMap(AppIcons.icon(for:)) ?? NSImage(systemSymbolName: "bell.fill", accessibilityDescription: nil)
         else { return }

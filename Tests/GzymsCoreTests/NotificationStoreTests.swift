@@ -186,6 +186,16 @@ private func ignoreAll(_ s: inout NotificationStore) {
     #expect(bell.map(\.id) == ["c", "a"])
 }
 
+/// A plugin with a pill keeps its notifications there; one without a pill still files to the bell (#50).
+@Test func pluginNotesGoToTheirPillNotTheBell() {
+    var s = NotificationStore()
+    for id in ["plain", "plugin:agents:a-1", "plugin:log-watcher:e-1"] { s.post(note(id, app: nil), now: 0) }
+    ignoreAll(&s)
+    #expect(Set(bellInbox(s.inboxes, onBar: [], pills: ["agents"]).map(\.id)) == ["plain", "plugin:log-watcher:e-1"])
+    #expect(pluginInbox(s.inboxes, plugin: "agents").map(\.id) == ["plugin:agents:a-1"])
+    #expect(pluginInbox(s.inboxes, plugin: "agent").isEmpty)
+}
+
 @Test func badgeTextCapsAtNinePlus() {
     #expect(badgeText(1) == "1")
     #expect(badgeText(9) == "9")

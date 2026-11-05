@@ -108,7 +108,7 @@ How a banner arrives: `appearance.banner_entry` is `icon`, `drop` (the default),
 
 - `[keys] leader` turns the keyboard mode on: an F key (`"f19"`, tap it, or hold it and press a letter), a chord (`"ctrl+alt+g"`, the default), a lone modifier (`"ctrl"`, `"alt"`, `"cmd"`: tap it alone; held, it takes only the banner's letters while a banner is up) or `"off"`.
 - With a banner up, the mode's letters act on it: `o` open, `x` dismiss (gone for good; only a banner left to expire waits in its app's list), `a` second action (none: the banner says so, nothing is removed), `z` snooze (`zz` `zzz` `zzzz` for 5, 10, 30 min), `n`/`j` next and `p`/`k` previous waiting banner.
-- In an open notification list (an app's or the 🔔's), `dd` is Clear all. Other popups ignore it.
+- In an open notification list (an app's, the 🔔's, or a plugin pill's), `dd` is Clear all. Other popups ignore it.
 - `[keys.verbs]` changes those letters: `open`, `dismiss`, `snooze`, `alt`, `next`, `prev`, `clear`, one letter each, not `h j k l f`. None of them is ever a hint letter. It replaces `[notifications.letters]`; that one and `[notifications] hold` and `keys` are still read but reported as old.
 - No leader needed: Enter or the `open` letter opens an armageddon (no key dismisses it); in the meeting preview `c` `m` `s` step camera, mic, speakers, `t` plays a test sound, Enter or `o` joins, Esc closes.
 - `[audio] banned` lists audio devices by exact name (`banned = ["Alex iPhone  Microphone"]`, or "Banned" in Settings → Appearance → Device icons). The bar's sound and mic popups and the meeting preview leave them out, `m` and `s` skip them, and a banned iPhone takes its Continuity camera with it. One that macOS picked by itself still shows, dimmed. Meeting apps follow it only when they use the system default device.
@@ -198,7 +198,7 @@ A pill with `"menu"` opens a list on click. A row with an `"id"` can be clicked,
 {"item":{"id":"prs","text":"3 open","menu":[{"id":"pr:12","tag":"review","color":"peach","text":"#12 fix login","detail":"2h"},{"separator":true},{"text":"updated just now"}]}}
 ```
 
-A notification, with the same fields as `gzyms notify`. Its `"level"` is one of `info`, `warning`, `error`, `critical`, `armageddon`. A notification with the same `"id"` replaces the earlier one from this plugin. `"sound"` is an event name (`message`, `success`, `fail`, `waiting`), a macOS sound name, or a path to an audio file (`.mp3`, `.m4a`, `.wav`, `.aiff`).
+A notification, with the same fields as `gzyms notify`. Its `"level"` is one of `info`, `warning`, `error`, `critical`, `armageddon`. A notification with the same `"id"` replaces the earlier one from this plugin. Once its banner is gone it waits on the plugin's first pill: a count in the pill's corner and a list at the top of its popup. Only a plugin with no pill files them under the 🔔. `"sound"` is an event name (`message`, `success`, `fail`, `waiting`), a macOS sound name, or a path to an audio file (`.mp3`, `.m4a`, `.wav`, `.aiff`).
 
 ```json
 {"notify":{"id":"deploy","title":"Deploy done","subtitle":"api","body":"1.4.2 is live","level":"info","sound":"success","link":"https://example.com"}}

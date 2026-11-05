@@ -231,6 +231,15 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         PluginRow(id: "t:o/r#22", text: "r#22  ci: a check waits for an action", tag: ":minus.circle: done", color: "overlay"),
         PluginRow(id: "t:o/r#21", text: "r#21  docs: the new setup", tag: ":circle.dashed: no CI", color: "overlay"),
     ]) { _, _ in }, "gh-builds-popup")
+    // An agent's notification sits on the agents pill and tops its list, not in the bell (#50).
+    var waits = older
+    waits.id = "plugin:agents:agent-1"
+    waits.title = "Orchestrator waits for you"
+    waits.body = "approve AskUserQuestion"
+    let agents = PluginPill(plugin: "agents", item: PluginItem(id: "agents", text: "1", icon: "sparkles", color: "peach"))
+    preview(PluginPillView(pill: agents, small: false, notes: [waits]) { _, _ in }.padding(6), "plugin-pill-count")
+    preview(PluginMenuView(rows: [PluginRow(id: "w1", text: "Orchestrator", tag: "waits", color: "peach", detail: "gzyms")],
+                           notes: [waits]) { _, _ in }, "plugin-menu-notes")
 }
 
 @MainActor @Test func bellWidthIsFixedForOneAndNineteen() {

@@ -1,5 +1,5 @@
 {
-  "count": 88,
+  "count": 89,
   "updated": "2026-11-05",
   "features": [
     "gzyms notify command",
@@ -17,6 +17,7 @@
     "gzyms skill guide for coding agents",
     "gzyms plugin command (new, add, list, remove)",
     "Plugins in any language (pills, menus, notifications)",
+    "A plugin's notifications wait on its pill, not in the bell",
     "Log watcher plugin",
     "GitHub pull requests plugin",
     "GitHub builds plugin",

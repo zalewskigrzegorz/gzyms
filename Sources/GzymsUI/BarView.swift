@@ -154,11 +154,14 @@ public struct BarView: View {
         case .widget(let w): widget(w).hintTarget(w == .clock ? nil : "widget:\(w.rawValue)", popup: true)
         case .plugin(let f):
             let pills = pluginPills.filter { $0.plugin == f }
-            Redraw(pills, small) {
+            let notes = pluginInbox(inboxes, plugin: f)
+            Redraw(pills, notes, small) {
                 HStack(spacing: small ? 4 : 6) {
                     ForEach(pills, id: \.key) { p in
-                        PluginPillView(pill: p, small: small) { e, id in onPluginEvent(p.plugin, e, id) }
-                            .hintTarget("plugin:\(p.plugin):\(p.item.id)", popup: p.item.menu != nil) { onPluginEvent(p.plugin, .click, p.item.id) }
+                        // The plugin's notifications sit on its first pill, not in the bell.
+                        let own = p.key == pills.first?.key ? notes : []
+                        PluginPillView(pill: p, small: small, notes: own, onOpen: onOpenNote, onRemove: onRemoveNote) { e, id in onPluginEvent(p.plugin, e, id) }
+                            .hintTarget("plugin:\(p.plugin):\(p.item.id)", popup: p.item.menu != nil || !own.isEmpty) { onPluginEvent(p.plugin, .click, p.item.id) }
                     }
                 }
             }.equatable()
@@ -226,7 +229,8 @@ public struct BarView: View {
             HStack(spacing: 0) {
                 HStack(spacing: small ? 4 : 6) {
                 // Workspaces, their app icons and the bell change seldom; the 2 s ticks on the right leave them alone.
-                Redraw(logo, workspaces, inboxes, small) {
+                let pillPlugins = Set(pluginPills.map(\.plugin))
+                Redraw(logo, workspaces, inboxes, pillPlugins, small) {
                 HStack(spacing: small ? 4 : 6) {
                     // Gzyms' own menu (Settings, Quit), behind the logo.
                     LogoButton(logo: logo, small: small, onLogo: onLogo).hintTarget("logo", popup: false, action: onLogo)
@@ -235,7 +239,7 @@ public struct BarView: View {
                             .onTapGesture { onSelect(ws.number) }
                             // No hint: switching workspaces is HyprMac's (Greg); hints here open the apps' lists.
                     }
-                    BellView(notes: bellInbox(inboxes, onBar: Set(workspaces.flatMap(\.appBundleIDs))), small: small,
+                    BellView(notes: bellInbox(inboxes, onBar: Set(workspaces.flatMap(\.appBundleIDs)), pills: pillPlugins), small: small,
                              onOpen: onOpenNote, onRemove: onRemoveNote)
                 }
                 }
@@ -508,8 +512,42 @@ public struct InboxList: View {
     let notes: [GzymsNotification]
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
-    @Environment(\.onAltNote) private var onAlt
+    @Environment(\.theme) private var theme
+    public init(notes: [GzymsNotification], onOpen: @escaping (String) -> Void = { _ in }, onRemove: @escaping (String) -> Void = { _ in }) {
+        self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove
+    }
+    public var body: some View {
+        // Outside the scroll: Clear all stays reachable however long the list is.
+        VStack(alignment: .leading, spacing: 2) { InboxRows(notes: notes, onOpen: onOpen, onRemove: onRemove) }
+            .popupStyle(theme, width: 320) { InboxHeader(notes: notes, onRemove: onRemove) }
+    }
+}
+
+/// "3 unread" and Clear all, above a list of notifications.
+struct InboxHeader: View {
+    let notes: [GzymsNotification]
+    let onRemove: (String) -> Void
     @Environment(\.clearVerb) private var clearVerb
+    @Environment(\.theme) private var theme
+    var body: some View {
+        HStack {
+            Text("\(notes.count) unread").foregroundStyle(theme[\.overlay])
+            Spacer()
+            PopupRow(action: { notes.forEach { onRemove($0.id) } }) {
+                Text("Clear all").foregroundStyle(theme[\.red])
+                Text(clearVerb + clearVerb).foregroundStyle(theme[\.overlay])
+            }
+                .fixedSize()
+        }
+    }
+}
+
+/// The rows of a notification list, keyboard places 0 to count - 1.
+struct InboxRows: View {
+    let notes: [GzymsNotification]
+    let onOpen: (String) -> Void
+    let onRemove: (String) -> Void
+    @Environment(\.onAltNote) private var onAlt
     @Environment(\.theme) private var theme
     @Environment(\.fixedNow) private var fixedNow
     private static let ago: RelativeDateTimeFormatter = {
@@ -517,41 +555,24 @@ public struct InboxList: View {
         f.unitsStyle = .abbreviated
         return f
     }()
-    public init(notes: [GzymsNotification], onOpen: @escaping (String) -> Void = { _ in }, onRemove: @escaping (String) -> Void = { _ in }) {
-        self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove
-    }
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(notes.enumerated()), id: \.element.id) { i, n in
-                PopupRow(index: i, remove: { onRemove(n.id) }, alt: n.hasAlt ? { onAlt(n.id) } : nil, action: { onOpen(n.id) }) {
-                    if n.reminder { Image(systemName: "clock.fill").foregroundStyle(theme[\.gold]) }
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(n.title).lineLimit(1)
-                        if let b = n.body { Text(b).lineLimit(1).foregroundStyle(theme[\.overlay]) }
-                    }
-                    Spacer(minLength: 6)
-                    Group {
-                        if let fixedNow { Text(Self.ago.localizedString(for: n.at, relativeTo: fixedNow)) }
-                        else { Text(n.at, format: .relative(presentation: .numeric, unitsStyle: .narrow)) }  // ticks by itself
-                    }
-                    .foregroundStyle(theme[\.overlay])
-                    Image(systemName: "xmark").foregroundStyle(theme[\.overlay])
-                        .contentShape(Rectangle())
-                        .onTapGesture { onRemove(n.id) }
-                        .allowsWindowActivationEvents(true)
+    var body: some View {
+        ForEach(Array(notes.enumerated()), id: \.element.id) { i, n in
+            PopupRow(index: i, remove: { onRemove(n.id) }, alt: n.hasAlt ? { onAlt(n.id) } : nil, action: { onOpen(n.id) }) {
+                if n.reminder { Image(systemName: "clock.fill").foregroundStyle(theme[\.gold]) }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(n.title).lineLimit(1)
+                    if let b = n.body { Text(b).lineLimit(1).foregroundStyle(theme[\.overlay]) }
                 }
-            }
-        }
-        .popupStyle(theme, width: 320) {
-            // Outside the scroll: Clear all stays reachable however long the list is.
-            HStack {
-                Text("\(notes.count) unread").foregroundStyle(theme[\.overlay])
-                Spacer()
-                PopupRow(action: { notes.forEach { onRemove($0.id) } }) {
-                    Text("Clear all").foregroundStyle(theme[\.red])
-                    Text(clearVerb + clearVerb).foregroundStyle(theme[\.overlay])
+                Spacer(minLength: 6)
+                Group {
+                    if let fixedNow { Text(Self.ago.localizedString(for: n.at, relativeTo: fixedNow)) }
+                    else { Text(n.at, format: .relative(presentation: .numeric, unitsStyle: .narrow)) }  // ticks by itself
                 }
-                    .fixedSize()
+                .foregroundStyle(theme[\.overlay])
+                Image(systemName: "xmark").foregroundStyle(theme[\.overlay])
+                    .contentShape(Rectangle())
+                    .onTapGesture { onRemove(n.id) }
+                    .allowsWindowActivationEvents(true)
             }
         }
     }
@@ -800,10 +821,19 @@ public struct DNDPopup: View {
 public struct PluginPillView: View {
     let pill: PluginPill
     let small: Bool
+    /// The plugin's own notifications: counted on the pill, listed at the top of its popup.
+    let notes: [GzymsNotification]
+    let onOpen: (String) -> Void
+    let onRemove: (String) -> Void
     let send: (PluginEvent, String) -> Void
     @Environment(\.popups) private var popups
     @Environment(\.theme) private var theme
-    public init(pill: PluginPill, small: Bool, send: @escaping (PluginEvent, String) -> Void) { self.pill = pill; self.small = small; self.send = send }
+    @Environment(\.reportIconFrame) private var report
+    @Environment(\.hiddenCounts) private var hiddenCounts
+    public init(pill: PluginPill, small: Bool, notes: [GzymsNotification] = [], onOpen: @escaping (String) -> Void = { _ in },
+                onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
+        self.pill = pill; self.small = small; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
+    }
     var popupID: String { "plugin:\(pill.plugin):\(pill.item.id)" }
 
     public var body: some View {
@@ -817,15 +847,30 @@ public struct PluginPillView: View {
         .padding(.horizontal, small ? 6 : 8)
         .padding(.vertical, small ? 2 : 4)
         .background(theme[\.surface], in: RoundedRectangle(cornerRadius: 10))
+        // A banner that runs out flies here, not to the bell.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { report("plugin:\(pill.plugin)", $0) }
+        .overlay(alignment: .topTrailing) {
+            if !notes.isEmpty, !hiddenCounts.contains("plugin:\(pill.plugin)") {
+                CountBadge(text: CountSource.text(app: nil, gzyms: notes.count), fill: CountSource.gzyms.fill).offset(x: 2, y: -2)
+            }
+        }
         .overlay(Clicks(left: {
-            guard i.menu != nil else { send(.click, i.id); return }
+            guard i.menu != nil || !notes.isEmpty else { send(.click, i.id); return }
             popups.binding(popupID).wrappedValue.toggle()
         }, right: { send(.rightClick, i.id) }))
         .help(i.tooltip ?? pill.plugin)
         // Opened by a click or by the keyboard: the plugin hears it either way.
         .onChange(of: popups.open == popupID) { _, on in if on { send(.open, i.id) } }
+        // dd clears its notifications; a popup that was only them closes when they are gone.
+        .onChange(of: notes.map(\.id), initial: true) {
+            popups.clears[popupID] = notes.isEmpty ? nil : { [notes, onRemove] in notes.forEach { onRemove($0.id) } }
+            if notes.isEmpty, i.menu == nil, popups.open == popupID { popups.open = nil }
+        }
+        .onDisappear { popups.clears[popupID] = nil }
         .popover(isPresented: popups.binding(popupID), arrowEdge: .bottom) {
-            PluginMenuView(rows: i.menu ?? []) { e, id in popups.open = nil; send(e, id) }.environment(\.theme, theme).environment(\.popups, popups)
+            PluginMenuView(rows: i.menu ?? [], notes: notes, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove) { e, id in
+                popups.open = nil; send(e, id)
+            }.environment(\.theme, theme).environment(\.popups, popups)
         }
     }
 }
@@ -841,22 +886,34 @@ func pluginText(_ s: String, _ theme: Theme) -> Text {
     }
 }
 
-/// A plugin's list: tag, text, detail per row, the whole row clickable (left and right).
+/// A plugin's list: tag, text, detail per row, the whole row clickable (left and right). The plugin's own
+/// notifications come first, with their count and Clear all on top.
 public struct PluginMenuView: View {
     let rows: [PluginRow]
+    let notes: [GzymsNotification]
+    let onOpen: (String) -> Void
+    let onRemove: (String) -> Void
     let send: (PluginEvent, String) -> Void
     @Environment(\.theme) private var theme
-    public init(rows: [PluginRow], send: @escaping (PluginEvent, String) -> Void) { self.rows = rows; self.send = send }
+    public init(rows: [PluginRow], notes: [GzymsNotification] = [], onOpen: @escaping (String) -> Void = { _ in },
+                onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
+        self.rows = rows; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            // Only rows with an id take the keyboard; they are numbered among themselves.
+            if !notes.isEmpty {
+                InboxRows(notes: notes, onOpen: onOpen, onRemove: onRemove)
+                if !rows.isEmpty { Divider().padding(.vertical, 3) }
+            }
+            // Only rows with an id take the keyboard; they are numbered among themselves, after the notifications.
             let live = rows.indices.filter { rows[$0].id != nil && !rows[$0].separator }
             ForEach(Array(rows.enumerated()), id: \.offset) { n, r in
-                if r.separator { Divider().padding(.vertical, 3) } else { PluginRowView(row: r, index: live.firstIndex(of: n), send: send) }
+                if r.separator { Divider().padding(.vertical, 3) }
+                else { PluginRowView(row: r, index: live.firstIndex(of: n).map { $0 + notes.count }, send: send) }
             }
         }
-        .popupStyle(theme, width: 580)
+        .popupStyle(theme, width: 580) { if !notes.isEmpty { InboxHeader(notes: notes, onRemove: onRemove) } }
     }
 }
 

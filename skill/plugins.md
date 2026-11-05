@@ -65,7 +65,7 @@ A pill with `"menu"` opens a list on click. A row with an `"id"` can be clicked,
 {"item":{"id":"prs","text":"3 open","menu":[{"id":"pr:12","tag":"review","color":"peach","text":"#12 fix login","detail":"2h"},{"separator":true},{"text":"updated just now"}]}}
 ```
 
-A notification, with the same fields as `gzyms notify`. Its `"level"` is one of `info`, `warning`, `error`, `critical`, `armageddon`. A notification with the same `"id"` replaces the earlier one from this plugin. `"sound"` is an event name (`message`, `success`, `fail`, `waiting`), a macOS sound name, or a path to an audio file (`.mp3`, `.m4a`, `.wav`, `.aiff`).
+A notification, with the same fields as `gzyms notify`. Its `"level"` is one of `info`, `warning`, `error`, `critical`, `armageddon`. A notification with the same `"id"` replaces the earlier one from this plugin. Once its banner is gone it waits on the plugin's first pill: a count in the pill's corner and a list at the top of its popup. Only a plugin with no pill files them under the 🔔. `"sound"` is an event name (`message`, `success`, `fail`, `waiting`), a macOS sound name, or a path to an audio file (`.mp3`, `.m4a`, `.wav`, `.aiff`).
 
 ```json
 {"notify":{"id":"deploy","title":"Deploy done","subtitle":"api","body":"1.4.2 is live","level":"info","sound":"success","link":"https://example.com"}}
