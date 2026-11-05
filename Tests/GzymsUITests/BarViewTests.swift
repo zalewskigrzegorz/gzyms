@@ -205,20 +205,31 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
             PluginPillView(pill: PluginPill(plugin: plugin, item: item), small: false) { _, _ in }
         }.padding(8)
     }
-    preview(pill("gh-prs", ":xmark.circle: 2 :checkmark.circle: 1 :bubble.left: 3 :square.and.pencil: 1", "arrow.triangle.branch", "peach"), "gh-prs-pill")
+    preview(pill("gh-prs", ":xmark.circle@red: 2 :checkmark.circle@green: 1 :bubble.left@sky: 3 :square.and.pencil@mauve: 1", "arrow.triangle.branch", "red"), "gh-prs-pill")
+    // Every row says its state and what its CI did, a draft too. Green passed, red failed, gold waiting.
     preview(PluginMenuView(rows: [
-        PluginRow(id: "pr:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: fix", color: "peach", detail: "CI failed  :bubble.left: comments"),
-        PluginRow(id: "pr:o/r#30", text: "r#30  fix(login): show a clear error when sign-in is down", tag: ":xmark.circle: fix", color: "red", detail: "conflict"),
-        PluginRow(id: "pr:o/r#28", text: "r#28  chore(deps): bump the router", tag: ":checkmark.circle: merge", color: "green", detail: ":bubble.left: comments"),
-        PluginRow(id: "pr:o/r#27", text: "r#27  feat(search): rank by recency", tag: "review?", color: "lavender"),
-        PluginRow(id: "pr:o/r#25", text: "r#25  wip: move the prompt to a theme", tag: ":square.and.pencil: draft", color: "mauve", detail: ":xmark.circle: fix  :bubble.left: comments"),
+        PluginRow(id: "pr:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: fix", color: "red",
+                  detail: ":xmark.circle@red: failed  :bubble.left@sky: comments"),
+        PluginRow(id: "pr:o/r#30", text: "r#30  fix(login): show a clear error when sign-in is down", tag: ":xmark.circle: fix", color: "red",
+                  detail: ":checkmark.circle@green: passed  :exclamationmark.triangle@red: conflict"),
+        PluginRow(id: "pr:o/r#29", text: "r#29  feat(api): paginate the list", tag: ":xmark.circle: fix", color: "red",
+                  detail: ":arrow.triangle.2.circlepath@gold: running  :exclamationmark.circle@peach: changes requested"),
+        PluginRow(id: "pr:o/r#28", text: "r#28  chore(deps): bump the router", tag: ":checkmark.circle: merge", color: "green", detail: ":checkmark.circle@green: passed"),
+        PluginRow(id: "pr:o/r#27", text: "r#27  feat(search): rank by recency", tag: ":hourglass: review?", color: "gold", detail: ":checkmark.circle@green: passed"),
+        PluginRow(id: "pr:o/r#26", text: "r#26  perf(db): add an index", tag: ":arrow.triangle.2.circlepath: CI runs", color: "gold", detail: ":arrow.triangle.2.circlepath@gold: running"),
+        PluginRow(id: "pr:o/r#24", text: "r#24  fix(auth): refresh the token", tag: ":checkmark.bubble: resolve", color: "peach", detail: ":checkmark.circle@green: passed"),
+        PluginRow(id: "pr:o/r#23", text: "r#23  docs: the new setup", tag: ":lock.circle: blocked", color: "peach", detail: ":circle.dashed: no CI"),
+        PluginRow(id: "pr:o/r#25", text: "r#25  wip: move the prompt to a theme", tag: ":square.and.pencil: draft", color: "mauve",
+                  detail: ":checkmark.circle@green: passed  :bubble.left@sky: comments"),
     ]) { _, _ in }, "gh-prs-popup")
-    preview(pill("gh-builds", ":xmark.circle: 1 :arrow.triangle.2.circlepath: 2", "hammer", "red"), "gh-builds-pill")
+    preview(pill("gh-builds", ":xmark.circle@red: 1 :arrow.triangle.2.circlepath@gold: 2 :checkmark.circle@green: 5", "hammer", "red"), "gh-builds-pill")
     preview(PluginMenuView(rows: [
         PluginRow(id: "t:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: failed", color: "red", detail: "unit, lint"),
         PluginRow(id: "t:o/r#28", text: "r#28  chore(deps): bump the router", tag: ":arrow.triangle.2.circlepath: running", color: "gold"),
         PluginRow(id: "t:o/r@main", text: "r@main", tag: ":arrow.triangle.2.circlepath: running", color: "gold"),
-        PluginRow(id: "t:o/r#27", text: "r#27  feat(search): rank by recency", tag: "green", color: "green"),
+        PluginRow(id: "t:o/r#27", text: "r#27  feat(search): rank by recency", tag: ":checkmark.circle: passed", color: "green"),
+        PluginRow(id: "t:o/r#22", text: "r#22  ci: cancelled by a newer push", tag: ":minus.circle: done", color: "overlay"),
+        PluginRow(id: "t:o/r#21", text: "r#21  docs: the new setup", tag: ":circle.dashed: no CI", color: "overlay"),
     ]) { _, _ in }, "gh-builds-popup")
 }
 

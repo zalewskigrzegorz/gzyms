@@ -810,7 +810,7 @@ public struct PluginPillView: View {
         let i = pill.item
         HStack(spacing: small ? 4 : 5) {
             if let icon = i.icon { Image(systemName: icon).font(.system(size: small ? 9 : 10)) }
-            pluginText(i.text).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 160)
+            pluginText(i.text, theme).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 160)
         }
         .font(.system(size: small ? 10 : 11))
         .foregroundStyle(theme.tint(i.color))
@@ -830,12 +830,13 @@ public struct PluginPillView: View {
     }
 }
 
-/// A plugin's text with its `:symbol:` pieces drawn as SF Symbols, in the text's font and colour.
-func pluginText(_ s: String) -> Text {
+/// A plugin's text with its `:symbol:` pieces drawn as SF Symbols, in the text's font and colour, or the `@colour` they name.
+func pluginText(_ s: String, _ theme: Theme) -> Text {
     textPieces(s) { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }.reduce(Text(verbatim: "")) { t, p in
         switch p {
         case .text(let x): Text("\(t)\(Text(verbatim: x))")
-        case .symbol(let n): Text("\(t)\(Image(systemName: n))")
+        case .symbol(let n, let c?): Text("\(t)\(Text(Image(systemName: n)).foregroundColor(theme.tint(c)))")
+        case .symbol(let n, nil): Text("\(t)\(Image(systemName: n))")
         }
     }
 }
@@ -869,13 +870,13 @@ private struct PluginRowView: View {
     var body: some View {
         HStack(spacing: 10) {
             if let tag = row.tag {
-                pluginText(tag).font(.system(size: 11, weight: .semibold).monospaced()).foregroundStyle(theme.tint(row.color))
+                pluginText(tag, theme).font(.system(size: 11, weight: .semibold).monospaced()).foregroundStyle(theme.tint(row.color))
                     .frame(width: 82, alignment: .leading)
             }
-            pluginText(row.text).lineLimit(1).truncationMode(.tail)
+            pluginText(row.text, theme).lineLimit(1).truncationMode(.tail)
                 .foregroundStyle(row.id == nil ? theme[\.overlay] : theme[\.text])
             Spacer(minLength: 8)
-            if let d = row.detail { pluginText(d).foregroundStyle(theme[\.overlay]) }
+            if let d = row.detail { pluginText(d, theme).foregroundStyle(theme[\.overlay]).lineLimit(1).layoutPriority(1) }
         }
         .font(.system(size: 12))
         .padding(.horizontal, 6).padding(.vertical, 4)

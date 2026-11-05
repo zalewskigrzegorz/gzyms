@@ -220,8 +220,9 @@ public enum PluginEvent: String, CaseIterable, Sendable {
 }
 
 /// A plugin's text in pieces: `:name:` with an SF Symbol name inside is that symbol, the rest stays text.
+/// `:name@red:` draws it in that colour (a theme colour name or `#rrggbb`), the text's colour otherwise.
 /// A name that is no symbol (`12:30:00`, `:nope:`) stays text as written.
-public enum TextPiece: Equatable, Sendable { case text(String), symbol(String) }
+public enum TextPiece: Equatable, Sendable { case text(String), symbol(String, color: String? = nil) }
 
 public func textPieces(_ s: String, isSymbol: (String) -> Bool) -> [TextPiece] {
     var out: [TextPiece] = [], rest = s[...]
@@ -229,10 +230,10 @@ public func textPieces(_ s: String, isSymbol: (String) -> Bool) -> [TextPiece] {
         guard !t.isEmpty else { return }
         if case .text(let prev)? = out.last { out[out.count - 1] = .text(prev + t) } else { out.append(.text(String(t))) }
     }
-    while let m = rest.firstMatch(of: /:([a-z][a-z0-9]*(?:\.[a-z0-9]+)*):/) {
+    while let m = rest.firstMatch(of: /:([a-z][a-z0-9]*(?:\.[a-z0-9]+)*)(?:@([a-z][a-z0-9_]*|#[0-9a-fA-F]{6}))?:/) {
         if isSymbol(String(m.1)) {
             add(rest[..<m.range.lowerBound])
-            out.append(.symbol(String(m.1)))
+            out.append(.symbol(String(m.1), color: m.2.map(String.init)))
             rest = rest[m.range.upperBound...]
         } else {  // keep this colon as text, look again from the next one
             let next = rest.index(after: m.range.lowerBound)

@@ -132,4 +132,6 @@ import Testing
     #expect(textPieces("at 12:30:00", isSymbol: known) == [.text("at 12:30:00")])
     #expect(textPieces("a :nope: b :clock:", isSymbol: known) == [.text("a :nope: b "), .symbol("clock")])
     #expect(textPieces("", isSymbol: known) == [])
+    #expect(textPieces(":xmark.circle@red: 2 :clock@#ff8800: 1 :nope@red:", isSymbol: known)
+            == [.symbol("xmark.circle", color: "red"), .text(" 2 "), .symbol("clock", color: "#ff8800"), .text(" 1 :nope@red:")])
 }
