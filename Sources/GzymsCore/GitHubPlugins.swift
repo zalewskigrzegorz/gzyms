@@ -199,7 +199,7 @@ let ghPRs = CatalogPlugin(
          else $a end) as $base
       # the CI on its own, shown on every row: the checks of the last commit
       | (if $failed > 0 then "failed" elif $pending > 0 then "running" elif ($c | length) == 0 then "none"
-         elif ($c | all((.conclusion // "" | IN("SUCCESS", "NEUTRAL", "SKIPPED")) or .state == "SUCCESS")) then "passed" else "done" end) as $ci
+         elif ($c | all((.conclusion // "" | IN("SUCCESS", "NEUTRAL", "SKIPPED", "CANCELLED")) or .state == "SUCCESS")) then "passed" else "done" end) as $ci
       | {key: "\(.repository.nameWithOwner)#\(.number)", repo: .repository.nameWithOwner, number, title, url, branch: .headRefName,
          draft: .isDraft, base: $base, action: (if .isDraft then "draft" else $base end),
          ci: $ci, conflict: (.mergeable == "CONFLICTING"), changes: (.reviewDecision == "CHANGES_REQUESTED"),
@@ -394,7 +394,7 @@ let ghBuilds = CatalogPlugin(
       | {failed: ($f | unique_by(.name)),
          pending: ($c | any(((.status // "") != "" and .status != "COMPLETED") or (.state // "" | IN("PENDING", "EXPECTED")))),
          # every check ended clean; none at all is not green
-         green: ($c != [] and ($c | all((.conclusion // "" | IN("SUCCESS", "NEUTRAL", "SKIPPED")) or .state == "SUCCESS"))),
+         green: ($c != [] and ($c | all((.conclusion // "" | IN("SUCCESS", "NEUTRAL", "SKIPPED", "CANCELLED")) or .state == "SUCCESS"))),
          checks: ($c | length)};
     # Tag, colour, order and the state's own name. Green passed, red failed, gold running.
     def status: if .failed != [] then [":xmark.circle: failed", "red", 0, "failed"] elif .pending then [":arrow.triangle.2.circlepath: running", "gold", 1, "running"]

@@ -228,7 +228,7 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         PluginRow(id: "t:o/r#28", text: "r#28  chore(deps): bump the router", tag: ":arrow.triangle.2.circlepath: running", color: "gold"),
         PluginRow(id: "t:o/r@main", text: "r@main", tag: ":arrow.triangle.2.circlepath: running", color: "gold"),
         PluginRow(id: "t:o/r#27", text: "r#27  feat(search): rank by recency", tag: ":checkmark.circle: passed", color: "green"),
-        PluginRow(id: "t:o/r#22", text: "r#22  ci: cancelled by a newer push", tag: ":minus.circle: done", color: "overlay"),
+        PluginRow(id: "t:o/r#22", text: "r#22  ci: a check waits for an action", tag: ":minus.circle: done", color: "overlay"),
         PluginRow(id: "t:o/r#21", text: "r#21  docs: the new setup", tag: ":circle.dashed: no CI", color: "overlay"),
     ]) { _, _ in }, "gh-builds-popup")
 }

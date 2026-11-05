@@ -208,7 +208,8 @@ private func pill(_ name: String, _ answer: String, branches: [(repo: String, re
 }
 
 /// `failed` is a check run that failed, `timedOut` one that timed out, `errored` a status that reports an error: all three are a failed CI.
-private enum CI: String, CaseIterable, Sendable { case passed, running, failed, timedOut, errored, none, expected }
+/// `cancelled` counts as passed (Greg's call), `actionRequired` is a CI that ended but is not clean: done.
+private enum CI: String, CaseIterable, Sendable { case passed, cancelled, running, failed, timedOut, errored, actionRequired, none, expected }
 private enum Decision: String, CaseIterable, Sendable { case approved, required, changes, none }
 
 /// One PR of the table: draft or not, its CI, a conflict, the review decision, a comment waiting for me.
@@ -222,6 +223,8 @@ private struct PRCase: Sendable, CustomTestStringConvertible {
         let checks: [String]
         switch ci {
         case .passed: checks = [check("build", "SUCCESS")]
+        case .cancelled: checks = [check("build", "SUCCESS"), check("docs", "CANCELLED")]
+        case .actionRequired: checks = [check("build", "SUCCESS"), check("docs", "ACTION_REQUIRED")]
         case .running: checks = [check("build", nil, status: "IN_PROGRESS")]
         case .failed: checks = [check("build", "FAILURE")]
         case .timedOut: checks = [check("build", "TIMED_OUT")]
@@ -250,7 +253,7 @@ private struct PRCase: Sendable, CustomTestStringConvertible {
         }
         let tag: (String, String) = draft ? (":square.and.pencil: draft", "mauve") : fix ? (":xmark.circle: fix", "red")
             : decision == .required ? (":hourglass: review?", "gold") : pending ? (":arrow.triangle.2.circlepath: CI runs", "gold") : (":checkmark.circle: merge", "green")
-        let ciItem = [CI.passed: ":checkmark.circle@green: passed", .running: ":arrow.triangle.2.circlepath@gold: running", .failed: ":xmark.circle@red: failed", .timedOut: ":xmark.circle@red: failed", .errored: ":xmark.circle@red: failed",
+        let ciItem = [CI.passed: ":checkmark.circle@green: passed", .cancelled: ":checkmark.circle@green: passed", .actionRequired: ":minus.circle: done", .running: ":arrow.triangle.2.circlepath@gold: running", .failed: ":xmark.circle@red: failed", .timedOut: ":xmark.circle@red: failed", .errored: ":xmark.circle@red: failed",
                       .none: ":circle.dashed: no CI", .expected: ":arrow.triangle.2.circlepath@gold: running"][ci]!
         let detail = [ciItem] + (conflict ? [":exclamationmark.triangle@red: conflict"] : []) + (changes ? [":exclamationmark.circle@peach: changes requested"] : [])
             + (e2e ? [":play.circle@peach: run e2e"] : []) + (comments ? [commentsG + " comments"] : [])
@@ -275,16 +278,17 @@ private func ghPRsEveryCombination(c: PRCase) throws {
 
 /// One target of the builds table: its checks, a PR or a branch.
 private struct BuildCase: Sendable, CustomTestStringConvertible {
-    var failed: Bool, running: Bool, success: Bool, cancelled: Bool, branch: Bool
-    var testDescription: String { "\(branch ? "branch" : "pr") failed=\(failed) running=\(running) success=\(success) cancelled=\(cancelled)" }
-    static let all: [BuildCase] = [false, true].flatMap { br in (0..<16).map { n in
-        BuildCase(failed: n & 1 != 0, running: n & 2 != 0, success: n & 4 != 0, cancelled: n & 8 != 0, branch: br) } }
+    var failed: Bool, running: Bool, success: Bool, cancelled: Bool, actionRequired: Bool, branch: Bool
+    var testDescription: String { "\(branch ? "branch" : "pr") failed=\(failed) running=\(running) success=\(success) cancelled=\(cancelled) actionRequired=\(actionRequired)" }
+    static let all: [BuildCase] = [false, true].flatMap { br in (0..<32).map { n in
+        BuildCase(failed: n & 1 != 0, running: n & 2 != 0, success: n & 4 != 0, cancelled: n & 8 != 0, actionRequired: n & 16 != 0, branch: br) } }
     var checks: [String] {
         (failed ? [check("unit", "FAILURE")] : []) + (running ? [check("e2e", nil, status: "IN_PROGRESS")] : [])
             + (success ? [check("lint", "SUCCESS")] : []) + (cancelled ? [check("docs", "CANCELLED")] : [])
+            + (actionRequired ? [check("review", "ACTION_REQUIRED")] : [])
     }
-    /// The state of the target by its worst check: failed, running, passed (all clean), done (ended, not clean), none (no checks).
-    var state: String { failed ? "failed" : running ? "running" : checks.isEmpty ? "none" : cancelled ? "done" : "passed" }
+    /// The state of the target by its worst check: failed, running, done (ended, not clean), passed (all clean, a cancelled one is clean), none (no checks).
+    var state: String { failed ? "failed" : running ? "running" : checks.isEmpty ? "none" : actionRequired ? "done" : "passed" }
 }
 
 private let buildTags = ["failed": ":xmark.circle: failed", "running": ":arrow.triangle.2.circlepath: running", "passed": ":checkmark.circle: passed",
@@ -321,11 +325,11 @@ private func ghBuildsEveryCombination(c: BuildCase) throws {
 
 @Test("gh-builds: several targets are counted once each, by their own state", arguments: [
     ["failed", "running", "passed"], ["failed", "failed", "running", "running", "passed"], ["passed", "passed", "passed"],
-    ["running", "running"], ["none", "done", "passed"], ["failed", "none"], [],
+    ["running", "running"], ["none", "done", "passed", "passed"], ["failed", "none"], [],
 ])
 private func ghBuildsMixes(states: [String]) throws {
     let checks = ["failed": [check("unit", "FAILURE"), check("e2e", nil, status: "IN_PROGRESS")], "running": [check("e2e", nil, status: "IN_PROGRESS")],
-                  "passed": [check("lint", "SUCCESS")], "done": [check("docs", "CANCELLED")], "none": []]
+                  "passed": [check("lint", "SUCCESS")], "done": [check("docs", "ACTION_REQUIRED")], "none": []]
     let it = try pill("gh-builds", buildsAnswer(prs: states.map { checks[$0]! }, branches: []))
     let e = buildsPill(states)
     #expect(it.text == e.text && it.color == e.color && it.tooltip == e.tooltip)
