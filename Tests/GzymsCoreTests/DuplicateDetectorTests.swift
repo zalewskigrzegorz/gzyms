@@ -65,24 +65,52 @@ private let standup = ("Standup with the team", "Starts in 5 minutes")
     #expect(appPairs(["a"]).isEmpty)
 }
 
-@Test func aPairIsToldOnceInEitherOrder() throws {
-    let first = try #require(duplicateMessage(apps: ["b", "a"], seen: MessagesSeen(version: "0.0.1")))
-    #expect(first.show == .duplicateApps(apps: ["a", "b"]))
+private let seenAt = Date(timeIntervalSince1970: 1_000)
+
+@Test func aPairIsToldOnceInEitherOrder() {
+    let first = recordDuplicates(apps: ["b", "a"], at: seenAt, seen: MessagesSeen(version: "0.0.1"))
+    #expect(first.tell == ["a", "b"])
     #expect(first.seen.duplicatePairs == ["a|b"])
     #expect(first.seen.version == "0.0.1")
-    #expect(duplicateMessage(apps: ["a", "b"], seen: first.seen) == nil)
+    #expect(recordDuplicates(apps: ["a", "b"], at: seenAt, seen: first.seen).tell.isEmpty)
 }
 
-@Test func aNewAppInAKnownGroupIsToldAboutOnlyItsPairs() throws {
-    let told = MessagesSeen(duplicatePairs: ["a|b"])
-    let r = try #require(duplicateMessage(apps: ["a", "b", "c"], seen: told))
-    #expect(r.show == .duplicateApps(apps: ["a", "b", "c"]))  // c pairs with both
+@Test func aNewAppInAKnownGroupIsToldAboutOnlyItsPairs() {
+    let r = recordDuplicates(apps: ["a", "b", "c"], at: seenAt, seen: MessagesSeen(duplicatePairs: ["a|b"]))
+    #expect(r.tell == ["a", "b", "c"])  // c pairs with both
     #expect(Set(r.seen.duplicatePairs ?? []) == ["a|b", "a|c", "b|c"])
-    #expect(duplicateMessage(apps: ["a", "c"], seen: r.seen) == nil)
+    #expect(recordDuplicates(apps: ["a", "c"], at: seenAt, seen: r.seen).tell.isEmpty)
 }
 
-@Test func stoppedWarningsStayStopped() {
-    #expect(duplicateMessage(apps: ["a", "b"], seen: MessagesSeen(duplicatesOff: true)) == nil)
+@Test func stoppedWarningsStayStoppedButTheListStillGrows() {
+    let r = recordDuplicates(apps: ["a", "b"], at: seenAt, seen: MessagesSeen(duplicatesOff: true))
+    #expect(r.tell.isEmpty)
+    #expect(r.seen.duplicatePairs == nil)
+    #expect(r.seen.duplicateGroups == [DuplicateGroup(apps: ["a", "b"], count: 1, last: seenAt)])
+}
+
+@Test func theListCountsEachGroupAndKeepsTheLastTime() {
+    var seen = MessagesSeen()
+    seen = recordDuplicates(apps: ["b", "a"], at: seenAt, seen: seen).seen
+    seen = recordDuplicates(apps: ["a", "b"], at: seenAt + 60, seen: seen).seen
+    seen = recordDuplicates(apps: ["a", "b", "c"], at: seenAt + 90, seen: seen).seen
+    #expect(seen.duplicateGroups == [DuplicateGroup(apps: ["a", "b"], count: 2, last: seenAt + 60),
+                                     DuplicateGroup(apps: ["a", "b", "c"], count: 1, last: seenAt + 90)])
+}
+
+@Test func forgettingAGroupTellsItsPairsAgain() {
+    var seen = recordDuplicates(apps: ["a", "b"], at: seenAt, seen: MessagesSeen(duplicatesOff: nil)).seen
+    seen = recordDuplicates(apps: ["c", "d"], at: seenAt, seen: seen).seen
+    let after = seen.forgetting(group: ["a", "b"])
+    #expect(after.duplicateGroups == [DuplicateGroup(apps: ["c", "d"], count: 1, last: seenAt)])
+    #expect(after.duplicatePairs == ["c|d"])
+    #expect(recordDuplicates(apps: ["a", "b"], at: seenAt, seen: after).tell == ["a", "b"])
+}
+
+@Test func theNoticeNamesTheAppsAndPointsToDebug() {
+    let n = duplicateNotice(names: ["Calendar", "Spark Desktop"])
+    #expect(n.title == "Apps send the same notification")
+    #expect(n.body == "Calendar and Spark Desktop. See Debug.")
 }
 
 @Test func oldMessagesFileStillReads() throws {

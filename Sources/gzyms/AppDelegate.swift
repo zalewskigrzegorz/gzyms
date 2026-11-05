@@ -556,7 +556,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Other apps' notifications only (not plugins, the instant icon or a snooze coming back). The anomaly log gets the bundle
-    /// ids and a count, never the text. The message waits 3 s, so four calendars make one message, not three.
+    /// ids and a count, never the text. The notification waits 3 s, so four calendars make one, not three.
     private func noteDuplicates(_ n: GzymsNotification) {
         guard let app = n.app, !n.compact, !n.reminder, !app.hasPrefix("plugin:"), !n.id.hasPrefix("plugin:"),
               let hit = dupes.record(app: app, title: n.title, body: n.body, at: ProcessInfo.processInfo.systemUptime) else { return }
@@ -569,14 +569,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: w)
     }
 
+    /// Counts the group for Settings → Debug, and posts one notification when a pair of apps is new.
     private func flushDuplicates() {
         let apps = dupeApps.sorted()
         dupeApps = []
         dupeFlush = nil
-        let seen = (try? JSONDecoder().decode(MessagesSeen.self, from: Data(contentsOf: messagesFile))) ?? MessagesSeen()
-        guard let r = duplicateMessage(apps: apps, seen: seen) else { return }
+        let r = recordDuplicates(apps: apps, at: Date(), seen: messagesSeen())
         saveMessagesSeen(r.seen)
-        showMessage(r.show)
+        guard !r.tell.isEmpty else { return }
+        let names = r.tell.map { id in model.seenApps.first { $0.id == id }?.name ?? id }
+        let text = duplicateNotice(names: names)
+        post(GzymsNotification(id: duplicateNoticeID, app: nil, level: .warning, title: text.title, subtitle: nil, body: text.body,
+                               link: nil, altLink: nil, sound: nil, at: Date()))
+    }
+
+    private func messagesSeen() -> MessagesSeen {
+        (try? JSONDecoder().decode(MessagesSeen.self, from: Data(contentsOf: messagesFile))) ?? MessagesSeen()
     }
 
     private func saveMessagesSeen(_ seen: MessagesSeen) {
@@ -586,11 +594,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch { log("messages: could not save: \(error.localizedDescription)") }
     }
 
-    private func stopDuplicateWarnings() {
-        messages.next()
-        var seen = (try? JSONDecoder().decode(MessagesSeen.self, from: Data(contentsOf: messagesFile))) ?? MessagesSeen()
-        seen.duplicatesOff = true
+    private func setDuplicateWarnings(_ on: Bool) {
+        var seen = messagesSeen()
+        seen.duplicatesOff = on ? nil : true
         saveMessagesSeen(seen)
+    }
+
+    private func forgetDuplicates(_ apps: [String]) {
+        saveMessagesSeen(messagesSeen().forgetting(group: apps))
     }
 
     // MARK: - Keyboard mode (leader, hints, popups by keys)
@@ -746,7 +757,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let uuid = ncRecordUUID(noteID: b.id)
         if uuid != nil { markHandled(b.id) }
         if b.meetingStart != nil { finishMeeting(b) }
-        if let target = alt ? b.altLink : b.link {
+        if b.id == duplicateNoticeID {
+            toggleSettings(.debug)
+        } else if let target = alt ? b.altLink : b.link {
             // Any process in the session can post, sandboxed ones too: a file: link would launch whatever it points at.
             let opened = URL(string: target).map { $0.scheme != nil && !$0.isFileURL && NSWorkspace.shared.open($0) } ?? false
             if !opened { logNote(b, "link failed") }
@@ -1209,24 +1222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                              actions: [.init("Turn on debug mode") { [weak self] in self?.debugModeOn() },
                                        .init("Report a problem") { [weak self] in self?.reportIssue() }],
                              close: close)
-        case let .duplicateApps(apps):
-            duplicateView(apps, close: close)
         }
         log("messages: showing \(m)")
         messages.show(view, on: focusedScreen())
-    }
-
-    private func duplicateView(_ apps: [String], close: @escaping () -> Void) -> GzymsMessageView {
-        let names = apps.map { id in model.seenApps.first { $0.id == id }?.name ?? id }
-        return GzymsMessageView(title: "\(apps.count) apps sent the same notification",
-                                lines: ["\(joinNames(names)) sent the same text at the same moment.", "Turn one off in Apps, or uninstall it."],
-                                actions: [.init("Open Apps") { [weak self] in
-                                              self?.messages.next()
-                                              self?.model.appsFocus = apps.first
-                                              self?.toggleSettings(.apps)
-                                          },
-                                          .init("Stop these warnings") { [weak self] in self?.stopDuplicateWarnings() }],
-                                close: close)
     }
 
     /// Debug mode: the anomaly detector logs stalls and stale data, the usage HUD shows Gzyms' own CPU and lag.
@@ -1543,6 +1541,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.sendToPhone(n, done: done)
         }
         a.openAppNotifications = { [weak self] id in self?.openAppPage(id) }
+        a.duplicates = { [weak self] in
+            guard let self else { return DuplicatesState() }
+            let seen = messagesSeen()
+            return DuplicatesState(groups: seen.duplicateGroups ?? [], warningsOn: seen.duplicatesOff != true)
+        }
+        a.setDuplicateWarnings = { [weak self] on in self?.setDuplicateWarnings(on) }
+        a.forgetDuplicates = { [weak self] apps in self?.forgetDuplicates(apps) }
         a.setUpApps = { [weak self] ids in self?.startAppSetup(ids) }
         a.forgetApp = { [weak self] id in self?.forget(app: id) }
         a.openNotificationSettings = { [weak self] in

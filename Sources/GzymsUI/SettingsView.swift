@@ -16,6 +16,14 @@ public struct SeenApp: Equatable {
     public init(id: String, name: String, icon: NSImage?, mac: NCAppSettings? = nil) { self.id = id; self.name = name; self.icon = icon; self.mac = mac }
 }
 
+/// What Settings → Debug shows about apps that sent the same notification.
+public struct DuplicatesState: Equatable {
+    public var groups: [DuplicateGroup] = []
+    /// Gzyms posts a notification for a new pair of apps.
+    public var warningsOn = true
+    public init(groups: [DuplicateGroup] = [], warningsOn: Bool = true) { self.groups = groups; self.warningsOn = warningsOn }
+}
+
 /// What the panel can ask the app to do. Every setting goes through `write`, which edits one line of `config.toml`.
 public struct SettingsActions {
     public var write: (String, TOMLValue?, ConfigTable) -> Void
@@ -35,6 +43,11 @@ public struct SettingsActions {
     public var openNotificationSettings: () -> Void = {}
     /// One app's own page in System Settings → Notifications, by bundle id.
     public var openAppNotifications: (String) -> Void = { _ in }
+    /// The apps seen sending the same notification, read fresh while the Debug tab is open.
+    public var duplicates: () -> DuplicatesState = { DuplicatesState() }
+    public var setDuplicateWarnings: (Bool) -> Void = { _ in }
+    /// Takes a group off that list; its pairs get a notification again if they come back.
+    public var forgetDuplicates: ([String]) -> Void = { _ in }
     /// Takes an app off the Apps list: forgets it was seen and drops its rule.
     public var forgetApp: (String) -> Void = { _ in }
     /// Opens these apps' macOS pages one after another, with a helper next to System Settings.
@@ -211,7 +224,7 @@ public struct SettingsView: View {
             }
         }
         case .hacks: HacksTab(config: config, grants: grants, actions: actions, live: live)
-        case .debug: DebugTab(config: config, actions: actions)
+        case .debug: DebugTab(config: config, apps: apps, actions: actions, live: live)
         case .about: AboutTab(version: actions.version, open: actions.openURL, canUpdate: actions.canCheckForUpdates,
                               checkUpdates: actions.checkForUpdates, quit: actions.quit, config: config, logo: logo,
                               choose: actions.chooseLogo, write: actions.write, live: live)
@@ -1133,8 +1146,20 @@ private struct AboutTab: View {
 
 private struct DebugTab: View {
     let config: GzymsConfig
+    let apps: [SeenApp]
     let actions: SettingsActions
+    let live: Bool
     @State private var reported: String?
+    /// Bumped by Forget, so the list reads again at once.
+    @State private var reread = 0
+    @Environment(\.theme) private var theme
+    @Environment(\.fixedNow) private var fixedNow
+
+    private static let ago: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "en")
+        return f
+    }()
 
     var body: some View {
         Columns {
@@ -1153,6 +1178,38 @@ private struct DebugTab: View {
                     }
                 }
                 Row(title: "Missing something?") { Button("Request a feature…", action: actions.requestFeature) }
+            }
+            TimelineView(.periodic(from: .now, by: live ? 2 : 3600)) { _ in
+                let _ = reread
+                duplicates(actions.duplicates())
+            }
+        }
+    }
+
+    private func app(_ id: String) -> SeenApp { apps.first { $0.id == id } ?? SeenApp(id: id, name: id, icon: nil) }
+
+    private func duplicates(_ d: DuplicatesState) -> some View {
+        Section(title: "Same notification, several apps") {
+            Row(title: "Tell me about them", note: "One gzyms notification for each new pair of apps.") {
+                Switch(on: d.warningsOn) { actions.setDuplicateWarnings($0); reread += 1 }
+            }
+            if d.groups.isEmpty {
+                Row(title: "None seen", note: "Apps that send the same text at the same moment show up here.") {}
+            }
+            ForEach(d.groups.sorted { $0.last > $1.last }, id: \.apps) { g in
+                Row(title: joinNames(g.apps.map { app($0).name }),
+                    note: "\(g.count == 1 ? "Once" : "\(g.count) times"). Last \(Self.ago.localizedString(for: g.last, relativeTo: fixedNow ?? Date())).") {
+                    Button("Forget") { actions.forgetDuplicates(g.apps); reread += 1 }
+                }
+                ForEach(g.apps, id: \.self) { id in
+                    HStack(spacing: 10) {
+                        Group { if let icon = app(id).icon { Image(nsImage: icon).resizable() } else { Color.clear } }.frame(width: 18, height: 18)
+                        Text(app(id).name).lineLimit(1)
+                        Spacer()
+                        Button("Open in macOS") { actions.openAppNotifications(id) }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 4)
+                }
             }
         }
     }

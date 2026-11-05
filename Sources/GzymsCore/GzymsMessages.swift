@@ -15,8 +15,6 @@ public let testedMacOSMajor = 27
 public enum GzymsMessage: Equatable, Sendable {
     case whatsNew(version: String, lines: [String])
     case untestedMacOS(major: Int)
-    /// Bundle ids of apps that sent the same notification at once.
-    case duplicateApps(apps: [String])
 }
 
 /// What was already shown, kept in ~/Library/Application Support/Gzyms/messages.json.
@@ -28,9 +26,22 @@ public struct MessagesSeen: Codable, Equatable, Sendable {
     public var duplicatePairs: [String]?
     /// "Stop these warnings": no more duplicate messages.
     public var duplicatesOff: Bool?
-    public init(version: String? = nil, macOS: Int? = nil, duplicatePairs: [String]? = nil, duplicatesOff: Bool? = nil) {
+    /// The groups seen sending the same notification, for Settings → Debug.
+    public var duplicateGroups: [DuplicateGroup]?
+    public init(version: String? = nil, macOS: Int? = nil, duplicatePairs: [String]? = nil, duplicatesOff: Bool? = nil,
+                duplicateGroups: [DuplicateGroup]? = nil) {
         self.version = version; self.macOS = macOS; self.duplicatePairs = duplicatePairs; self.duplicatesOff = duplicatesOff
+        self.duplicateGroups = duplicateGroups
     }
+}
+
+/// Apps that sent the same notification together: how often, and when last. Bundle ids only, never the text.
+public struct DuplicateGroup: Codable, Equatable, Sendable {
+    /// Bundle ids, sorted.
+    public var apps: [String]
+    public var count: Int
+    public var last: Date
+    public init(apps: [String], count: Int, last: Date) { self.apps = apps; self.count = count; self.last = last }
 }
 
 /// Every pair of apps in the group, as "a|b" with the ids sorted.
@@ -39,17 +50,45 @@ public func appPairs(_ apps: [String]) -> [String] {
     return s.indices.flatMap { i in s[(i + 1)...].map { "\(s[i])|\($0)" } }
 }
 
-/// The message for a group of apps that sent the same notification, once per pair: nil when the user stopped them
-/// or every pair was told already. The apps listed are those in a pair not told yet; all the group's pairs are remembered.
-public func duplicateMessage(apps: [String], seen: MessagesSeen) -> (show: GzymsMessage, seen: MessagesSeen)? {
-    guard seen.duplicatesOff != true else { return nil }
-    let told = Set(seen.duplicatePairs ?? [])
-    let fresh = appPairs(apps).filter { !told.contains($0) }
-    guard !fresh.isEmpty else { return nil }
+/// A group of apps sent the same notification: counts it for Settings → Debug (even when the user stopped the warnings)
+/// and says which apps to tell about, once per pair. `tell` is empty when the user stopped them or every pair was told already:
+/// it lists the apps in a pair not told yet, and all the group's pairs are remembered.
+public func recordDuplicates(apps: [String], at now: Date, seen: MessagesSeen) -> (tell: [String], seen: MessagesSeen) {
+    let group = Array(Set(apps)).sorted()
     var next = seen
-    next.duplicatePairs = Array(told.union(appPairs(apps))).sorted()
-    return (.duplicateApps(apps: Array(Set(fresh.flatMap { $0.split(separator: "|").map(String.init) })).sorted()), next)
+    var groups = seen.duplicateGroups ?? []
+    if let i = groups.firstIndex(where: { $0.apps == group }) {
+        groups[i].count += 1; groups[i].last = now
+    } else {
+        groups.append(DuplicateGroup(apps: group, count: 1, last: now))
+    }
+    next.duplicateGroups = groups
+    guard seen.duplicatesOff != true else { return ([], next) }
+    let told = Set(seen.duplicatePairs ?? [])
+    let fresh = appPairs(group).filter { !told.contains($0) }
+    guard !fresh.isEmpty else { return ([], next) }
+    next.duplicatePairs = Array(told.union(appPairs(group))).sorted()
+    return (Array(Set(fresh.flatMap { $0.split(separator: "|").map(String.init) })).sorted(), next)
 }
+
+extension MessagesSeen {
+    /// Takes a group off the list and tells its pairs again if they come back.
+    public func forgetting(group apps: [String]) -> MessagesSeen {
+        var next = self
+        next.duplicateGroups = duplicateGroups?.filter { $0.apps != apps }
+        let gone = Set(appPairs(apps))
+        next.duplicatePairs = duplicatePairs?.filter { !gone.contains($0) }
+        return next
+    }
+}
+
+/// The notification Gzyms posts for those apps; it opens Settings → Debug.
+public func duplicateNotice(names: [String]) -> (title: String, body: String) {
+    ("Apps send the same notification", "\(joinNames(names)). See Debug.")
+}
+
+/// Id of that notification: clicking it opens Settings → Debug instead of a link.
+public let duplicateNoticeID = "gzyms-duplicates"
 
 /// "A", "A and B", "A, B and C".
 public func joinNames(_ names: [String]) -> String {

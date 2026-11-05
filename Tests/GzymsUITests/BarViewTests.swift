@@ -293,6 +293,13 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
                              devices: ["MacBook Pro Speakers", "Shure MV7"], workspaceNames: [1: "chat", 2: "term"], actions: actions).frame(width: 1000, height: 900),
                 "settings-\(tab.rawValue)")
     }
+    var dupes = actions
+    dupes.duplicates = {
+        DuplicatesState(groups: [DuplicateGroup(apps: ["com.apple.iCal", "com.readdle.SparkDesktop"], count: 7, last: fixedNow - 300),
+                                 DuplicateGroup(apps: ["com.apple.MobileSMS", "com.readdle.SparkDesktop", "com.tinyspeck.slackmacgap"], count: 1, last: fixedNow - 86_400)])
+    }
+    preview(SettingsView(tab: .constant(.debug), config: config, problems: [], broken: false, apps: apps, devices: [],
+                         actions: dupes).frame(width: 1000, height: 900), "settings-debug-duplicates")
     var dev = actions
     dev.loginItem = { nil }
     preview(SettingsView(tab: .constant(.general), config: config, problems: [], broken: false, apps: [], devices: [],

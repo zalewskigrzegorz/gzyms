@@ -86,6 +86,6 @@
     "Live-reloaded config.toml",
     "Event log and anomaly detector",
     "Start at login, with a switch in Settings → General",
-    "Warning when several apps send the same notification"
+    "Notification when several apps send the same notification, with the list in Settings → Debug"
   ]
 }
