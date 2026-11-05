@@ -74,6 +74,8 @@ public struct SettingsActions {
     /// Sparkle has a feed to ask; without it the button stays out.
     public var canCheckForUpdates = false
     public var checkForUpdates: () -> Void = {}
+    /// Installed with `brew install --cask gzyms`: Homebrew updates the app, Sparkle stays off unless turned on.
+    public var homebrew = false
     public var quit: () -> Void = {}
     public var openURL: (String) -> Void = { _ in }
     /// A shortcut recorder is listening: the keyboard tap stands aside.
@@ -226,7 +228,7 @@ public struct SettingsView: View {
         case .hacks: HacksTab(config: config, grants: grants, actions: actions, live: live)
         case .debug: DebugTab(config: config, apps: apps, actions: actions, live: live)
         case .about: AboutTab(version: actions.version, open: actions.openURL, canUpdate: actions.canCheckForUpdates,
-                              checkUpdates: actions.checkForUpdates, quit: actions.quit, config: config, logo: logo,
+                              checkUpdates: actions.checkForUpdates, homebrew: actions.homebrew, quit: actions.quit, config: config, logo: logo,
                               choose: actions.chooseLogo, write: actions.write, live: live)
         }
     }
@@ -1062,6 +1064,7 @@ private struct AboutTab: View {
     let open: (String) -> Void
     let canUpdate: Bool
     let checkUpdates: () -> Void
+    let homebrew: Bool
     let quit: () -> Void
     let config: GzymsConfig
     let logo: NSImage?
@@ -1110,6 +1113,18 @@ private struct AboutTab: View {
             Section(title: "Gzyms") {
                 Row(title: "Version \(version)", note: canUpdate ? nil : "Updates come with the first release.") {
                     if canUpdate { Button("Check for Updates…", action: checkUpdates) }
+                }
+                if canUpdate {
+                    let on = automaticUpdates(chosen: config.updatesAutomatic, homebrew: homebrew)
+                    Row(title: "Automatic updates", note: homebrew ? "Installed with Homebrew. Update with brew upgrade gzyms." : nil) {
+                        // Written only when it differs from the default, like every other setting.
+                        Switch(on: on) { write("automatic", $0 == !homebrew ? nil : .bool($0), .table(["updates"])) }
+                    }
+                    if homebrew && on {
+                        Text("Sparkle and brew can both update Gzyms. That can break an update.")
+                            .font(.system(size: 11)).foregroundStyle(theme[\.peach]).padding(.horizontal, 12).padding(.bottom, 7)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 Row(title: "Tutorial", note: "The keys in 5 minutes.") { Button("Learn Gzyms…") { open(tutorialURL.absoluteString) } }
                 Row(title: "Website") { Button("gzyms.dev") { open("https://gzyms.dev") } }

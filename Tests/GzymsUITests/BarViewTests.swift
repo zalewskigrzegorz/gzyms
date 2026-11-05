@@ -312,6 +312,14 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     updating.canCheckForUpdates = true
     preview(SettingsView(tab: .constant(.about), config: config, problems: [], broken: false, apps: apps,
                          devices: [], live: false, actions: updating).frame(width: 1000, height: 900), "settings-about-updates")
+    // Homebrew: Sparkle off with the note, then turned on by the user with the warning.
+    updating.homebrew = true
+    preview(SettingsView(tab: .constant(.about), config: config, problems: [], broken: false, apps: apps,
+                         devices: [], live: false, actions: updating).frame(width: 1000, height: 900), "settings-about-homebrew")
+    var chosen = config
+    chosen.updatesAutomatic = true
+    preview(SettingsView(tab: .constant(.about), config: chosen, problems: [], broken: false, apps: apps,
+                         devices: [], live: false, actions: updating).frame(width: 1000, height: 900), "settings-about-homebrew-on")
     preview(SettingsView(tab: .constant(.notifications), config: config, problems: [], broken: false, apps: apps,
                          devices: [], actions: actions).frame(width: 1800, height: 700), "settings-notifications-wide")
     preview(SettingsView(tab: .constant(.apps), config: config, problems: [], broken: false, apps: apps,

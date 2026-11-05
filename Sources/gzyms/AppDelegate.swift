@@ -7,9 +7,13 @@ import Sparkle
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = BarModel()
-    /// Sparkle updates. Off outside the bundle (`swift run`), where it would fail on a missing SUFeedURL.
-    private let updater = SPUStandardUpdaterController(startingUpdater: Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil,
-                                                       updaterDelegate: nil, userDriverDelegate: nil)
+    /// Sparkle updates. Not started here: `applyUpdates` does it once the config says whether it checks by itself.
+    /// Never started outside the bundle (`swift run`), where it would fail on a missing SUFeedURL.
+    private let updater = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
+    private var updaterStarted = false
+    /// GZYMS_FAKE_BREW=1 on the dev install shows the Homebrew case without a cask.
+    private let homebrew = (LoginItem.dev && ProcessInfo.processInfo.environment["GZYMS_FAKE_BREW"] == "1")
+        || installedWithHomebrew(exists: { FileManager.default.fileExists(atPath: $0) })
     private var panels: [UInt32: BarPanel] = [:]
     private var screens: ScreenManager?
     private var state: StateWatcher?
@@ -950,10 +954,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tilerCheck()
     }
 
+    /// The config is the user's choice, so it wins over what Sparkle kept in the defaults. Set before the first start,
+    /// or a Homebrew install would check once before it got the chance to say no.
+    private func applyUpdates(_ c: GzymsConfig) {
+        guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil else { return }
+        let on = automaticUpdates(chosen: c.updatesAutomatic, homebrew: homebrew)
+        if updater.updater.automaticallyChecksForUpdates != on { updater.updater.automaticallyChecksForUpdates = on }
+        if !updaterStarted { updaterStarted = true; updater.startUpdater() }
+    }
+
     private func loadConfig() {
         let load = GzymsCore.loadConfig(toml: try? String(contentsOf: ThemeCommand.configFile, encoding: .utf8))
         if !load.broken { LoginItem.sync(wanted: load.config.startAtLogin) }  // before the config lands, so General draws the new state
         model.config = load.config
+        applyUpdates(load.config)
         chords.micShortcut = load.config.micShortcut
         chords.configureNav(leader: load.config.leader, idleTimeout: load.config.idleTimeout, hintChars: load.config.hintChars,
                             verbs: load.config.verbs)
@@ -1517,6 +1531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         a.version = gzymsVersion
         a.canCheckForUpdates = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil
+        a.homebrew = homebrew
         a.checkForUpdates = { [weak self] in
             self?.settings.stepBack()  // Sparkle's window must come over the floating panel
             self?.updater.checkForUpdates(nil)
