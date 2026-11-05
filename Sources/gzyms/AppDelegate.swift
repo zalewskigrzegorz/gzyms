@@ -1430,12 +1430,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Out of SwiftUI's layout pass: resizing the window inside it would lay out again.
         a.close = { [weak self] in self?.settings.hide() }
         a.openGrant = { [weak self] g in self?.openGrant(g) }
-        // launchd starts it again; a plain quit would stay quit now that KeepAlive only covers crashes.
         a.restart = {
             let p = Process()
-            p.executableURL = URL(filePath: "/bin/launchctl")
-            p.arguments = ["kickstart", "-k", "gui/\(getuid())/dev.gzyms"]
-            do { try p.run() } catch { log("restart: \(error)") }
+            switch restartRoute(agentProgram: DevAgent.program, me: DevAgent.me) {
+            case .kickstart:  // launchd starts it again; a plain quit would stay quit now that KeepAlive only covers crashes
+                p.executableURL = URL(filePath: "/bin/launchctl")
+                p.arguments = ["kickstart", "-k", "gui/\(getuid())/dev.gzyms"]
+                do { try p.run() } catch { log("restart: \(error)") }
+            case .relaunch:  // the shell has its own process group, so it outlives this process
+                p.executableURL = URL(filePath: "/bin/sh")
+                p.arguments = relaunchArguments(pid: getpid(), bundle: Bundle.main.bundlePath)
+                do { try p.run(); log("restart: relaunching"); NSApp.terminate(nil) } catch { log("restart: \(error)") }
+            }
         }
         a.showHUD = {
             let p = Process()

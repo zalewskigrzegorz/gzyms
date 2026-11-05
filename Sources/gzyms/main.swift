@@ -52,13 +52,9 @@ if args.first == "hud" {
 } else {
     // Started by hand or by Sparkle after an update, while install-dev.sh's login item runs this same binary:
     // hand over to launchd, which keeps the log and brings the bar back after a crash.
-    let agent = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/dev.gzyms.plist")
     let fromLaunchd = ProcessInfo.processInfo.environment["GZYMS_LAUNCHD"] == "1"
     unsetenv("GZYMS_LAUNCHD")  // Sparkle's relaunch is a child of this process and would inherit it
-    if !fromLaunchd,
-       let plist = NSDictionary(contentsOf: agent), let program = (plist["ProgramArguments"] as? [String])?.first,
-       let me = Bundle.main.executablePath,
-       URL(fileURLWithPath: program).resolvingSymlinksInPath() == URL(fileURLWithPath: me).resolvingSymlinksInPath() {
+    if !fromLaunchd, restartRoute(agentProgram: DevAgent.program, me: DevAgent.me) == .kickstart {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         p.arguments = ["kickstart", "gui/\(getuid())/dev.gzyms"]
