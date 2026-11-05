@@ -207,7 +207,8 @@ private func pill(_ name: String, _ answer: String, branches: [(repo: String, re
     return try #require(items.last)
 }
 
-private enum CI: String, CaseIterable, Sendable { case passed, running, failed, none, expected }
+/// `failed` is a check run that failed, `timedOut` one that timed out, `errored` a status that reports an error: all three are a failed CI.
+private enum CI: String, CaseIterable, Sendable { case passed, running, failed, timedOut, errored, none, expected }
 private enum Decision: String, CaseIterable, Sendable { case approved, required, changes, none }
 
 /// One PR of the table: draft or not, its CI, a conflict, the review decision, a comment waiting for me.
@@ -223,6 +224,8 @@ private struct PRCase: Sendable, CustomTestStringConvertible {
         case .passed: checks = [check("build", "SUCCESS")]
         case .running: checks = [check("build", nil, status: "IN_PROGRESS")]
         case .failed: checks = [check("build", "FAILURE")]
+        case .timedOut: checks = [check("build", "TIMED_OUT")]
+        case .errored: checks = ["{\"__typename\":\"StatusContext\",\"context\":\"preview\",\"state\":\"ERROR\",\"targetUrl\":\"\"}"]
         case .none: checks = []
         case .expected: checks = ["{\"__typename\":\"StatusContext\",\"context\":\"e2e-required\",\"state\":\"EXPECTED\",\"targetUrl\":\"\"}"]
         }
@@ -233,10 +236,11 @@ private struct PRCase: Sendable, CustomTestStringConvertible {
 
     /// What the plugin has to print, worked out here from the rules and not from its code.
     var expected: (pill: String, color: String, tooltip: String, tag: String, tagColor: String, detail: String) {
+        let failed = ci == .failed || ci == .timedOut || ci == .errored
         let pending = ci == .running || ci == .expected
         let e2e = ci == .expected && decision != .required   // a status waits and nothing like e2e runs: someone starts it
         let changes = decision == .changes
-        let fix = ci == .failed || conflict || changes || e2e
+        let fix = failed || conflict || changes || e2e
         let merge = !draft && !fix && decision != .required && !pending
         var states: [(String, String)] = []  // glyph, word
         if draft { states = [(draftG, "draft")] } else {
@@ -246,7 +250,7 @@ private struct PRCase: Sendable, CustomTestStringConvertible {
         }
         let tag: (String, String) = draft ? (":square.and.pencil: draft", "mauve") : fix ? (":xmark.circle: fix", "red")
             : decision == .required ? (":hourglass: review?", "gold") : pending ? (":arrow.triangle.2.circlepath: CI runs", "gold") : (":checkmark.circle: merge", "green")
-        let ciItem = [CI.passed: ":checkmark.circle@green: passed", .running: ":arrow.triangle.2.circlepath@gold: running", .failed: ":xmark.circle@red: failed",
+        let ciItem = [CI.passed: ":checkmark.circle@green: passed", .running: ":arrow.triangle.2.circlepath@gold: running", .failed: ":xmark.circle@red: failed", .timedOut: ":xmark.circle@red: failed", .errored: ":xmark.circle@red: failed",
                       .none: ":circle.dashed: no CI", .expected: ":arrow.triangle.2.circlepath@gold: running"][ci]!
         let detail = [ciItem] + (conflict ? [":exclamationmark.triangle@red: conflict"] : []) + (changes ? [":exclamationmark.circle@peach: changes requested"] : [])
             + (e2e ? [":play.circle@peach: run e2e"] : []) + (comments ? [commentsG + " comments"] : [])

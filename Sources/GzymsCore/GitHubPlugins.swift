@@ -177,7 +177,8 @@ let ghPRs = CatalogPlugin(
     def foreign($me): (.author.login // "") as $l | (.author.__typename // "") != "Bot" and $l != $me and $l != "github-actions";
     def pr($me):
       (.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // []) as $c
-      | ([$c[] | select(.conclusion == "FAILURE" or .state == "FAILURE")] | length) as $failed
+      # failed as gh-builds counts it, so a PR and its build never disagree
+      | ([$c[] | select((.conclusion // "" | IN("FAILURE", "TIMED_OUT", "STARTUP_FAILURE")) or (.state // "" | IN("FAILURE", "ERROR")))] | length) as $failed
       | ([$c[] | select(((.status // "") != "" and .status != "COMPLETED") or (.state // "" | IN("PENDING", "EXPECTED")))] | length) as $pending
       # a required status that waits while nothing like e2e runs: someone has to start it
       | ([$c[] | select(.state == "EXPECTED")] | length) as $expected
