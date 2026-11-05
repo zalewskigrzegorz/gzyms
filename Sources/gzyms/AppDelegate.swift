@@ -1456,11 +1456,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         a.quit = { NSApp.terminate(nil) }
         a.openURL = { [weak self] s in
-            self?.settings.stepBack()
+            self?.settings.hide()  // the page is what you look at now; a panel left behind kept the CPU busy (Greg)
             if let url = URL(string: s) { NSWorkspace.shared.open(url) }
         }
         a.requestFeature = { [weak self] in
-            self?.settings.stepBack()
+            self?.settings.hide()
             if let url = URL(string: "https://github.com/zalewskigrzegorz/gzyms/discussions/new?category=ideas") { NSWorkspace.shared.open(url) }
         }
         a.height = { h in DispatchQueue.main.async { MainActor.assumeIsolated { [weak self] in self?.settings.fit(height: h) } } }
