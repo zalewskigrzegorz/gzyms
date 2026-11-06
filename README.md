@@ -8,11 +8,8 @@
 Glance, decide, move on.
 
 [![Release](https://img.shields.io/github/v/release/zalewskigrzegorz/gzyms?color=b347ff)](https://github.com/zalewskigrzegorz/gzyms/releases/latest)
-![macOS 26+](https://img.shields.io/badge/macOS-26%2B-8be9fd)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Homebrew tap](https://img.shields.io/badge/brew-zalewskigrzegorz%2Ftap-fbb040)](https://github.com/zalewskigrzegorz/homebrew-tap)
 
-### [🌐 gzyms.dev](https://gzyms.dev)
+### [gzyms.dev](https://gzyms.dev)
 
 <img src="assets/readme/bar-left.png" alt="The left side of the bar: workspaces with their apps, agents, GitHub builds and pull requests" width="760"><br>
 <img src="assets/readme/bar-right.png" alt="The right side of the bar: CPU, memory, network, screen, Do Not Disturb, caffeine, battery and the clock" width="760">
@@ -35,7 +32,7 @@ You need:
 - Accessibility, for banner keys and Dock badges
 - Full Disk Access, for notifications from other apps
 
-A wizard asks for both on first launch. This is 0.0.1, so expect rough edges.
+A wizard asks for both on first launch. It is an early release, so expect rough edges.
 
 ## What it does
 
@@ -57,7 +54,7 @@ Something broken, an idea or a question? Open a [Discussion](https://github.com/
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md). Before every deploy run `scripts/check.sh`. It runs a release build and all tests, and ends with `ALL GREEN`.
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Before you open a PR, run `scripts/check.sh`. It runs a release build and all tests, and ends with `ALL GREEN`.
 
 ## License
 
