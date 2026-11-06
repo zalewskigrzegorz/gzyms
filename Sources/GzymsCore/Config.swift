@@ -342,12 +342,10 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         config.appRules[app] = rule
     }
     if let ph = raw.notifications?.phone {
-        if let u = ph.url, !u.isEmpty {
-            if let scheme = URL(string: u)?.scheme?.lowercased(), ["http", "https"].contains(scheme) { config.phone.url = u }
-            else { problems.append("notifications.phone.url: \"\(u)\" must start with https:// (an ntfy topic like https://ntfy.sh/your-topic), phone push stays off") }
+        // Secrets come from the Keychain (`withPhoneSecrets`); one left in the file is ignored and reported.
+        for (s, v) in [(PhoneSecret.url, ph.url), (.pushover_user, ph.pushover_user), (.pushover_token, ph.pushover_token)] where v?.isEmpty == false {
+            problems.append(s.inFileProblem)
         }
-        config.phone.pushoverUser = ph.pushover_user.flatMap { $0.isEmpty ? nil : $0 }
-        config.phone.pushoverToken = ph.pushover_token.flatMap { $0.isEmpty ? nil : $0 }
         if let f = ph.format {
             if let v = PushFormat(rawValue: f) { config.phone.format = v } else { problems.append("notifications.phone.format: \"\(f)\" must be ntfy, json or pushover, kept ntfy") }
         }

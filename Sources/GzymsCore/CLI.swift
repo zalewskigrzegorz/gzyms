@@ -14,7 +14,7 @@ public struct CLICommand: Sendable {
 
 public let cliTable: [CLICommand] = [
     .init(name: "notify", usage: "--title <text> [flags]", summary: "Show a notification on the island.", words: notifyFlags + notifySwitches),
-    .init(name: "set", usage: "<key> <value>", summary: "Change a setting in config.toml.", words: []),
+    .init(name: "set", usage: "<key> <value>", summary: "Change a setting in config.toml. Phone push keys go to the Keychain.", words: []),
     .init(name: "unset", usage: "<key>", summary: "Put a setting back to its default.", words: []),
     .init(name: "theme", usage: "[name | -l, --list]", summary: "Print, list or switch the theme.", words: ["--list"] + Theme.all.map(\.name)),
     .init(name: "settings", usage: "[tab]", summary: "Open the settings panel, on a tab when given.", words: []),

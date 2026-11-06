@@ -908,7 +908,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         play(SoundSource(e.defaultChoice, event: e))
     }
 
-    /// Left alone long enough: it goes to `[notifications.phone] url`. `done` gets one line for Settings.
+    /// Left alone long enough: it goes to the phone push address from the Keychain. `done` gets one line for Settings.
     private func sendToPhone(_ n: GzymsNotification, done: (@MainActor (String) -> Void)? = nil) {
         let name = n.app.flatMap { id in model.seenApps.first { $0.id == id }?.name }
         guard let request = model.config.phone.request(n, appName: name) else { done?(model.config.phone.format == .pushover ? "Fill in both keys first" : "Set an https:// address first"); return }
@@ -1003,7 +1003,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func loadConfig() {
-        let load = GzymsCore.loadConfig(toml: try? String(contentsOf: ThemeCommand.configFile, encoding: .utf8))
+        let load = withPhoneSecrets(GzymsCore.loadConfig(toml: try? String(contentsOf: ThemeCommand.configFile, encoding: .utf8)),
+                                    store: KeychainStore())
         if !load.broken { LoginItem.sync(wanted: load.config.startAtLogin) }  // before the config lands, so General draws the new state
         model.config = load.config
         applyUpdates(load.config)
@@ -1600,6 +1601,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let n = GzymsNotification(id: "phone-test", app: nil, level: .critical, title: "Gzyms test", subtitle: nil,
                                       body: "Phone push works.", link: nil, altLink: nil, sound: nil, at: Date())
             self?.sendToPhone(n, done: done)
+        }
+        a.savePhoneSecret = { [weak self] s, value in
+            let problem = GzymsCore.savePhoneSecret(s, value, store: KeychainStore())
+            log("settings: " + (problem ?? "\(s.account) \(value == nil ? "removed from" : "saved in") the Keychain"))
+            self?.loadConfig()
+            return problem
         }
         a.openAppNotifications = { [weak self] id in self?.openAppPage(id) }
         a.duplicates = { [weak self] in

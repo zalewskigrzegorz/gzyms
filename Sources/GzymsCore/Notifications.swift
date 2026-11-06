@@ -98,6 +98,8 @@ public struct PhonePush: Equatable, Sendable {
     /// Seconds without a reaction before it goes out; 0 = at once.
     public var after: Double = 300
     public var levels: Set<NotifyLevel> = [.critical, .armageddon]
+    /// Which keys the Keychain holds, a bad address too. Settings shows this, never the values.
+    public var saved: Set<PhoneSecret> = []
     public init() {}
 
     public static let pushoverAPI = "https://api.pushover.net/1/messages.json"

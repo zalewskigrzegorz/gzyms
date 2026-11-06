@@ -82,20 +82,17 @@ private func store(after: Double = 300) -> NotificationStore {
 @Test func phoneConfigIsRead() {
     let load = loadConfig(toml: """
     [notifications.phone]
-    url = "https://ntfy.sh/my-topic"
     after = 2
     levels = ["error", "critical"]
     [notifications.apps."com.slack"]
     phone = true
     """)
     #expect(load.problems.isEmpty)
-    #expect(load.config.phone.url == "https://ntfy.sh/my-topic")
     #expect(load.config.phone.after == 120)
     #expect(load.config.phone.levels == [.error, .critical])
     #expect(load.config.appRules["com.slack"]?.phone == true)
-    let bad = loadConfig(toml: "[notifications.phone]\nurl = \"ntfy.sh/my-topic\"\nlevels = [\"loud\"]")
-    #expect(bad.config.phone.url == nil)
-    #expect(bad.problems.count == 2)
+    let bad = loadConfig(toml: "[notifications.phone]\nlevels = [\"loud\"]")
+    #expect(bad.problems.count == 1)
 }
 
 @Test func theJSONWebhookCarriesEveryField() throws {
@@ -124,7 +121,8 @@ private func store(after: Double = 300) -> NotificationStore {
     #expect(r.url?.absoluteString == PhonePush.pushoverAPI)
     let form = String(decoding: r.httpBody ?? Data(), as: UTF8.self)
     #expect(form.contains("token=t1&user=u1&title=a%26b%3Dc%2Bd&message=a%26b%3Dc%2Bd&priority=1"))
-    let c = loadConfig(toml: "[notifications.phone]\nformat = \"pushover\"\npushover_user = \"u\"\npushover_token = \"t\"").config.phone
+    let store = MemoryStore(["notifications.phone.pushover_user": "u", "notifications.phone.pushover_token": "t"])
+    let c = withPhoneSecrets(loadConfig(toml: "[notifications.phone]\nformat = \"pushover\""), store: store).config.phone
     #expect(c.isOn && c.format == .pushover)
 }
 

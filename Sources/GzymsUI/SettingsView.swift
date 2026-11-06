@@ -61,6 +61,8 @@ public struct SettingsActions {
     /// Picks an audio file for the event and writes it to `[sounds]`.
     public var chooseSound: (SoundEvent) -> Void = { _ in }
     public var testPhone: (@escaping @MainActor (String) -> Void) -> Void = { _ in }
+    /// Saves a phone push key in the Keychain, nil removes it. Returns what went wrong, if anything.
+    public var savePhoneSecret: (PhoneSecret, String?) -> String? = { _, _ in nil }
     /// The height the panel needs to show everything; it grows up to the whole screen, then scrolls.
     public var height: (CGFloat) -> Void = { _ in }
     public var close: () -> Void = {}
@@ -954,6 +956,8 @@ private struct CommitField: NSViewRepresentable {
     let text: String
     /// Dots instead of the value: keys and tokens.
     var secure = false
+    /// Set: the field takes the keys when it shows, only Enter commits, leaving it any other way calls this.
+    var cancel: (() -> Void)?
     let commit: (String) -> Void
 
     func makeNSView(context: Context) -> NSTextField {
@@ -961,22 +965,59 @@ private struct CommitField: NSViewRepresentable {
         f.bezelStyle = .roundedBezel
         f.lineBreakMode = .byTruncatingHead  // a long path shows its file name
         f.delegate = context.coordinator
+        if cancel != nil { DispatchQueue.main.async { f.window?.makeFirstResponder(f) } }
         return f
     }
 
     func updateNSView(_ f: NSTextField, context: Context) {
         context.coordinator.commit = commit
+        context.coordinator.cancel = cancel
         if f.currentEditor() == nil, f.stringValue != text { f.stringValue = text }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(commit: commit) }
+    func makeCoordinator() -> Coordinator { Coordinator(commit: commit, cancel: cancel) }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var commit: (String) -> Void
-        init(commit: @escaping (String) -> Void) { self.commit = commit }
+        var cancel: (() -> Void)?
+        init(commit: @escaping (String) -> Void, cancel: (() -> Void)?) { self.commit = commit; self.cancel = cancel }
         func controlTextDidEndEditing(_ n: Notification) {
-            if let f = n.object as? NSTextField { commit(f.stringValue) }
+            guard let f = n.object as? NSTextField else { return }
+            if let cancel, (n.userInfo?["NSTextMovement"] as? Int) != NSTextMovement.return.rawValue { cancel(); return }
+            commit(f.stringValue)
         }
+    }
+}
+
+/// A phone push key: whether the Keychain holds it, never its value. Change opens a hidden field, Enter saves,
+/// Esc cancels. Remove deletes it.
+private struct SecretRow: View {
+    let title: String
+    let secret: PhoneSecret
+    let saved: Bool
+    let hint: String
+    let save: (PhoneSecret, String?) -> String?
+    @State private var editing = false
+    @State private var problem: String?
+    @Environment(\.settingsNav) private var nav
+
+    var body: some View {
+        Row(title: title, note: problem ?? (editing ? "Paste it, then Enter. Esc cancels." : saved ? "Saved in Keychain" : "Not set. \(hint)")) {
+            HStack(spacing: 8) {
+                if editing {
+                    CommitField(text: "", secure: true, cancel: { editing = false }) { v in
+                        editing = false
+                        if !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { problem = save(secret, v) }
+                    }
+                    .frame(width: 200)
+                } else {
+                    Button("Change") { problem = nil; editing = true }
+                    if saved { Button("Remove") { problem = save(secret, nil) } }
+                }
+            }
+        }
+        .onChange(of: editing) { _, e in nav?.escape = e ? { editing = false } : nil }
+        .onDisappear { if editing { nav?.escape = nil } }
     }
 }
 
@@ -1607,16 +1648,10 @@ private struct NotificationsTab: View {
                 }
             }
             if config.phone.format == .pushover {
-                Row(title: "User key", note: Self.saved(config.phone.pushoverUser) ?? "On pushover.net, top of the page after you log in") {
-                    field("pushover_user", config.phone.pushoverUser, secure: true)
-                }
-                Row(title: "API token", note: Self.saved(config.phone.pushoverToken) ?? "Create an application on pushover.net, then copy its token") {
-                    field("pushover_token", config.phone.pushoverToken, secure: true)
-                }
+                secretRow("User key", .pushover_user, hint: "On pushover.net, top of the page after you log in.")
+                secretRow("API token", .pushover_token, hint: "Create an application on pushover.net, then copy its token.")
             } else {
-                Row(title: "Send to", note: config.phone.format == .ntfy ? "An ntfy topic like https://ntfy.sh/your-topic. Empty turns it off." : "The webhook address. Empty turns it off.") {
-                    field("url", config.phone.url)
-                }
+                secretRow("Send to", .url, hint: config.phone.format == .ntfy ? "An ntfy topic like https://ntfy.sh/your-topic." : "The webhook address.")
             }
             Group {
                 Row(title: "Send it", note: "when nobody opened, dismissed or snoozed it by then") {
@@ -1636,18 +1671,11 @@ private struct NotificationsTab: View {
     private static let formatNotes: [PushFormat: String] = [
         .ntfy: "Title, text and priority for an ntfy topic",
         .json: "One JSON object with title, body, level, app and link. Tina, n8n or Home Assistant can take it.",
-        .pushover: "High priority for critical and armageddon. The keys stay in config.toml as plain text.",
+        .pushover: "High priority for critical and armageddon.",
     ]
 
-    /// A key that is set says so, with its last four characters to tell keys apart.
-    private static func saved(_ key: String?) -> String? { key.map { "Saved, ends in \($0.suffix(4)). Paste a new one to replace it." } }
-
-    private func field(_ key: String, _ value: String?, secure: Bool = false) -> some View {
-        CommitField(text: value ?? "", secure: secure) { u in
-            let t = u.trimmingCharacters(in: .whitespaces)
-            write(key, t.isEmpty ? nil : .string(t), Self.phoneTable)
-        }
-        .frame(width: 260)
+    private func secretRow(_ title: String, _ secret: PhoneSecret, hint: String) -> some View {
+        SecretRow(title: title, secret: secret, saved: config.phone.saved.contains(secret), hint: hint, save: actions.savePhoneSecret)
     }
 
     /// Click to add or take out a kind. Back at the defaults, the line leaves the file.
