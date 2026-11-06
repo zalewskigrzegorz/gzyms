@@ -53,7 +53,7 @@ private func blob(_ req: [String: Any]) throws -> Data {
              "com.global": "Previews off", "com.default": "Previews off", "com.two": "Banners off, Sound on"])
     #expect(warnings(try prefs([("com.global", banners, nil)], global: 2)) == [:])
     let off = try PropertyListSerialization.data(fromPropertyList: ["AppleSymbolicHotKeys": ["163": ["enabled": false]]], format: .binary, options: 0)
-    #expect(warnings(try prefs([("com.ok", banners, 3)]), hotkeys: off) == ["com.ok": "globe+N shortcut off"])
+    #expect(warnings(try prefs([("com.ok", banners, 3)]), hotkeys: off) == ["com.ok": "🌐 N shortcut off"])
     #expect(warnings(try prefs([("com.apple.mail", banners, 3)]), ["com.apple.mail"]) ==
             ["com.apple.mail": "macOS does not let you set notifications for Mail."])
     #expect(warnings(Data("nope".utf8)) == nil)

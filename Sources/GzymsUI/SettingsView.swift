@@ -1873,7 +1873,7 @@ struct MacMirror: View {
                 row("Summarize notifications", fix: nil) { toggle(nil) }
             }
             if wrong(shown.shortcutOff) {
-                Text("The globe+N shortcut is off. Turn on Show Notification Center in Keyboard Shortcuts.")
+                Text("Turn on Show Notification Center (🌐 N) in System Settings → Keyboard → Keyboard Shortcuts → Mission Control. Gzyms presses it to reach a notification whose banner is already gone.")
                     .font(.system(size: 11)).foregroundStyle(theme[\.peach])
             }
         }

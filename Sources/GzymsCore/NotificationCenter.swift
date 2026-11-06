@@ -47,7 +47,7 @@ public struct NCAppSettings: Equatable, Sendable {
     public var previews = 0
     /// The top of Notifications says Never, so Default hides the text too.
     public var defaultHidden = false
-    /// The globe+N shortcut is off: no way to the panel. Not per app, but every app needs it.
+    /// The 🌐 N shortcut is off: no way to the panel. Not per app, but every app needs it.
     public var shortcutOff = false
     /// Mail: macOS lets nothing be set for it.
     public var unsupported = false
@@ -63,13 +63,13 @@ public struct NCAppSettings: Equatable, Sendable {
     }
 
     public var previewsHidden: Bool { previews == 1 || (previews == 0 && defaultHidden) }
-    /// Everything its own page can fix is set: the step-by-step setup moves on. The globe+N shortcut is not on that page.
+    /// Everything its own page can fix is set: the step-by-step setup moves on. The 🌐 N shortcut is not on that page.
     public var pageDone: Bool { unsupported || hidden || (allowed && desktop && center && !sound && !previewsHidden) }
     /// What to change in macOS, in the order of its page. Empty = set up right.
     public var problems: [String] {
         if unsupported || hidden { return [] }
         return [(!allowed, "Notifications off"), (!desktop, "Banners off"), (!center, "Notification Center off"), (previewsHidden, "Previews off"),
-                (sound, "Sound on"), (shortcutOff, "globe+N shortcut off")].filter(\.0).map(\.1)
+                (sound, "Sound on"), (shortcutOff, "🌐 N shortcut off")].filter(\.0).map(\.1)
     }
     public var warning: String? {
         unsupported ? "macOS does not let you set notifications for Mail." : problems.isEmpty ? nil : problems.joined(separator: ", ")

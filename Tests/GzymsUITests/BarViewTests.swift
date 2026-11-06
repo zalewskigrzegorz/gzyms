@@ -327,7 +327,7 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
 @MainActor @Test func settingsPreviews() {
     var config = GzymsConfig.defaults
     config.appRules["com.tinyspeck.slackmacgap"] = AppRule(sound: false, level: .critical)
-    let apps = [SeenApp(id: "com.tinyspeck.slackmacgap", name: "Slack", icon: nil, mac: NCAppSettings(center: false, sound: true)),
+    let apps = [SeenApp(id: "com.tinyspeck.slackmacgap", name: "Slack", icon: nil, mac: NCAppSettings(center: false, sound: true, shortcutOff: true)),
                 SeenApp(id: "com.readdle.SparkDesktop", name: "Spark", icon: nil),
                 SeenApp(id: "com.apple.MobileSMS", name: "Messages", icon: nil, mac: NCAppSettings())]
     let actions = SettingsActions { _, _, _ in }

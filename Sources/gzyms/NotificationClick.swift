@@ -68,7 +68,7 @@ private final class PanelPress: @unchecked Sendable {
 
     func waitOpen() {
         guard nc.panelOpen else {
-            if elapsed > 1.5 { log("nc click: Notification Center did not open via \(how) (is the globe+N shortcut on?)"); finish(false); return }
+            if elapsed > 1.5 { log("nc click: Notification Center did not open via \(how) (is the 🌐 N shortcut on?)"); finish(false); return }
             after(0.005) { self.waitOpen() }
             return
         }
