@@ -154,7 +154,8 @@ public struct BarView: View {
         case .widget(let w): widget(w).hintTarget(w == .clock ? nil : "widget:\(w.rawValue)", popup: true)
         case .plugin(let f):
             let pills = pluginPills.filter { $0.plugin == f }
-            let notes = pluginInbox(inboxes, plugin: f)
+            // An agent's row carries its notification, so Agents gets no pile of them on top.
+            let notes = f == agentsPill ? [] : pluginInbox(inboxes, plugin: f)
             Redraw(pills, notes, small) {
                 HStack(spacing: small ? 4 : 6) {
                     ForEach(pills, id: \.key) { p in
@@ -962,6 +963,7 @@ private struct PluginRowView: View {
             Spacer(minLength: 8)
             if let d = row.detail { pluginText(d, theme).foregroundStyle(theme[\.overlay]).lineLimit(1).layoutPriority(1) }
         }
+        .opacity(row.dim ? 0.5 : 1)
         .font(.system(size: 12))
         .padding(.horizontal, 6).padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 6).fill(hover && row.id != nil ? theme[\.surface] : .clear))

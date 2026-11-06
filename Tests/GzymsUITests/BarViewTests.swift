@@ -420,25 +420,36 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
                          plugins: all, openPlugin: "gh-prs", actions: actions).frame(width: 1400, height: 500), "settings-plugins-changed")
     preview(SettingsView(tab: .constant(.modules), config: config, problems: [], broken: false, apps: [], devices: [],
                          plugins: [pr], actions: actions).frame(width: 1400, height: 900), "settings-built-in")
-    // Agents have their own tab: on with its options open, edited since the catalog, and not installed yet.
-    let ag = PluginStatus(folder: "agents", name: "Agents", description: "The coding agents tuios sees (Claude Code, Codex and others). Tells you when one waits for you.",
-                          enabled: true, running: true, options: [
-        PluginOption(key: "done_after", title: "Done after (min)", kind: .number, defaultValue: .int(3)),
-        PluginOption(key: "sounds", title: "Sounds", kind: .toggle, defaultValue: .bool(true)),
-    ], icon: "sparkles")
-    var agEdited = ag
-    agEdited.catalogNewer = true
-    var agOff = ag
-    agOff.enabled = false
-    agOff.running = false
+    // Agents: one row per source with its live state, the open one's options on the side.
+    let featuresOff = "Agent features are off. Set agents.enabled = true in the config to use this command."
+    let fine: [AgentSource: AgentSourceStatus] = [.tuios: AgentSourceStatus(line: "3 agents"),
+                                                  .claude: AgentSourceStatus(line: "Plugin not installed", notInstalled: true)]
     preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
-                         plugins: [ag], openPlugin: "agents", actions: actions).frame(width: 1400, height: 500), "settings-agents-on")
+                         agents: fine, openPlugin: "tuios", actions: actions).frame(width: 1400, height: 400), "settings-agents-on")
     preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
-                         plugins: [agEdited], openPlugin: "agents", actions: actions).frame(width: 1400, height: 500), "settings-agents-changed")
+                         agents: fine, openPlugin: "claude", actions: actions).frame(width: 1400, height: 400), "settings-agents-claude")
     preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
-                         plugins: [agOff], actions: actions).frame(width: 1400, height: 300), "settings-agents-off")
-    preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
-                         plugins: [], actions: actions).frame(width: 1400, height: 300), "settings-agents-not-installed")
+                         agents: [.tuios: AgentSourceStatus(line: "Agent features are off", problem: featuresOff), .claude: AgentSourceStatus(line: "1 agent")],
+                         openPlugin: "tuios", actions: actions).frame(width: 1400, height: 400), "settings-agents-error")
+    var allOff = config
+    allOff.agentsTuios = false
+    allOff.agentsClaude = false
+    preview(SettingsView(tab: .constant(.agents), config: allOff, problems: [], broken: false, apps: [], devices: [],
+                         agents: [.tuios: AgentSourceStatus(line: "Off"), .claude: AgentSourceStatus(line: "Off")], actions: actions)
+        .frame(width: 1400, height: 300), "settings-agents-off")
+}
+
+/// The agents popup: what waits on top with its question, idle dimmed, a failing source's rows under its message.
+@MainActor @Test func agentsPopupPreview() {
+    func a(_ s: AgentSource, _ name: String, _ state: AgentState, _ place: String, _ message: String = "") -> Agent {
+        Agent(source: s, id: name, name: name, place: place, state: state, message: message)
+    }
+    let item = agentsItem([
+        .claude: AgentSourceLook(agents: [a(.claude, "gzyms-site", .waits, "gzyms-site", "Claude needs your permission"), a(.claude, "notes", .idle, "notes")]),
+        .tuios: AgentSourceLook(agents: [a(.tuios, "Fix login", .done, "web"), a(.tuios, "Orchestrator", .working, "gzyms")],
+                                problem: "Agent features are off. Set agents.enabled = true in the config to use this command.", since: fixedNow),
+    ]).item
+    preview(PluginMenuView(rows: item.menu ?? []) { _, _ in }, "agents-popup")
 }
 
 @Test func everyDeviceKindHasASymbol() {

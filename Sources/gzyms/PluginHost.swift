@@ -108,7 +108,8 @@ final class PluginHost {
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
         var found: [String: PluginManifest] = [:]
         broken = [:]
-        for url in folders where !isPluginBackup(url.lastPathComponent) {
+        // agents is built in now: a copy the user changed stays on disk and does not run, or every agent would ping twice.
+        for url in folders where !isPluginBackup(url.lastPathComponent) && url.lastPathComponent != agentsPill {
             let folder = url.lastPathComponent
             let toml: String?
             if runs[folder] == nil, !disabled.contains(folder) {

@@ -61,6 +61,8 @@ final class BarModel {
     var shelf: [URL] = []
     @ObservationIgnored var onShelf: (ShelfChange) -> Void = { _ in }
     var plugins: [PluginStatus] = []
+    /// Settings → Agents: each source's live state in a few words.
+    var agentSources: [AgentSource: AgentSourceStatus] = [:]
     /// The keyboard mode's hints, on the one panel it runs on; nil = off.
     var nav: NavShown?
 

@@ -81,6 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var mediaServer = MediaServer { [weak self] tabs in if self?.model.tabs != tabs { self?.model.tabs = tabs } }
     private let pluginHost = PluginHost(dir: Paths.configDir(env: ProcessInfo.processInfo.environment).appendingPathComponent("plugins"))
     private var pluginsStarted = false
+    private let agents = AgentsHost()
+    /// The bar's pills and Settings' plugin list: the plugins' own, plus Agents while a source is on.
+    private var hostPills: [PluginPill] = [], agentPill: PluginPill?
+    private var hostPlugins: [PluginStatus] = []
     private let caffeine = CaffeineController()
     private let dropZone = ShelfDropZone()
     private var meetingTimer: Timer?
@@ -123,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                (NSWorkspace.didWakeNotification, false), (NSWorkspace.screensDidWakeNotification, false)] {
             ws.addObserver(forName: name, object: nil, queue: .main) { [watchdog] _ in watchdog.asleep(asleep) }
         }
+        migrateAgents()
         loadConfig()
         startDaily()
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -770,6 +775,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Any process in the session can post, sandboxed ones too: a file: link would launch whatever it points at.
             let opened = URL(string: target).map { $0.scheme != nil && !$0.isFileURL && NSWorkspace.shared.open($0) } ?? false
             if !opened { logNote(b, "link failed") }
+        } else if let key = AgentWatch.key(noteID: b.id) {
+            agents.focus(key)
         } else if let owner = pluginNoteOwner(b.id, plugins: model.plugins.map(\.folder)) {
             pluginHost.send(plugin: owner.plugin, alt ? .notifyAlt : .notifyOpen, id: owner.id)  // the plugin knows where it leads
         } else if model.config.openOriginal, let uuid {
@@ -1011,6 +1018,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pluginHost.setOptions(load.config.pluginOptions)
             pluginHost.setDisabled(load.config.disabledPlugins)
         } else { startPlugins(disabled: load.config.disabledPlugins, options: load.config.pluginOptions) }
+        agents.apply(.init(tuios: load.config.agentsTuios, claude: load.config.agentsClaude, doneAfter: load.config.agentsDoneAfter,
+                           terminal: load.config.agentsTerminal))
         model.customLogo = load.config.logo.flatMap { path in
             let image = NSImage(contentsOfFile: (path as NSString).expandingTildeInPath)
             if image == nil { log("bar: logo \(path) could not be read, the cat stays") }
@@ -1682,28 +1691,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startPlugins(disabled: Set<String>, options: [String: [String: TOMLValue]]) {
         pluginsStarted = true
-        pluginHost.onItems = { [weak self] pills in
-            guard let self, model.pluginPills != pills else { return }
-            model.pluginPills = pills
-            let gone = goneRowNotes(notes.inboxes, pills: pills)
-            guard !gone.isEmpty else { return }
-            for id in gone { notes.remove(id, now: ProcessInfo.processInfo.systemUptime) }
-            log("plugins: \(gone.count) notifications left with their rows")
-            notesChanged()
-        }
-        pluginHost.onStatus = { [weak self] s in if self?.model.plugins != s { self?.model.plugins = s } }
+        pluginHost.onItems = { [weak self] pills in self?.hostPills = pills; self?.pillsChanged() }
+        agents.onPill = { [weak self] pill in self?.agentPill = pill; self?.pillsChanged() }
+        pluginHost.onStatus = { [weak self] s in self?.hostPlugins = s; self?.pillsChanged() }
         pluginHost.onNotify = { [weak self] n in self?.post(n) }
-        pluginHost.onDismiss = { [weak self] id in
+        agents.onNotify = { [weak self] n in self?.post(n) }
+        let dismiss: (String) -> Void = { [weak self] id in
             guard let self else { return }
             notes.remove(id, now: ProcessInfo.processInfo.systemUptime)
             notesChanged()
         }
-        model.onPluginEvent = { [weak self] plugin, e, id in self?.pluginHost.send(plugin: plugin, e, id: id) }
-        pluginHost.start(disabled: disabled, options: options)
-        // Plugins get EOF and a SIGTERM when Gzyms quits, so none outlives it.
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pluginHost.stopAll() }
+        pluginHost.onDismiss = dismiss
+        agents.onDismiss = dismiss
+        agents.onStatus = { [weak self] s in if self?.model.agentSources != s { self?.model.agentSources = s } }
+        model.onPluginEvent = { [weak self] plugin, e, id in
+            guard plugin == agentsPill else { self?.pluginHost.send(plugin: plugin, e, id: id); return }
+            if e == .click || e == .rightClick, id != agentsPill { self?.agents.focus(id) }
         }
+        pluginHost.start(disabled: disabled, options: options)
+        // Plugins get EOF and a SIGTERM when Gzyms quits, so none outlives it. tuios subscribe neither.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pluginHost.stopAll(); self?.agents.stopAll() }
+        }
+    }
+
+    private func pillsChanged() {
+        let pills = hostPills + (agentPill.map { [$0] } ?? [])
+        // Agents sits in Settings' plugin list too, for its slot in the layout and its rule in Apps.
+        let statuses = hostPlugins + (agentPill == nil ? [] : [PluginStatus(folder: agentsPill, name: "Agents",
+            description: "Your coding agents. Tells you when one waits for you or ends a long run.", enabled: true, running: true, icon: "sparkles")])
+        if model.plugins != statuses { model.plugins = statuses }
+        guard model.pluginPills != pills else { return }
+        model.pluginPills = pills
+        let gone = goneRowNotes(notes.inboxes, pills: pills)
+        guard !gone.isEmpty else { return }
+        for id in gone { notes.remove(id, now: ProcessInfo.processInfo.systemUptime) }
+        log("plugins: \(gone.count) notifications left with their rows")
+        notesChanged()
+    }
+
+    /// The catalog `agents` plugin is built in now: its unchanged copy goes to the Trash (as `gzyms plugin remove` does)
+    /// and its options move to `[agents]`. A copy the user changed stays in its folder and no longer runs.
+    private func migrateAgents() {
+        let fm = FileManager.default, folder = pluginHost.dir.appendingPathComponent(agentsPill)
+        if fm.fileExists(atPath: folder.path) {
+            if isUntouchedCatalogCopy(in: pluginHost.dir, folder: agentsPill) {
+                do { try fm.trashItem(at: folder, resultingItemURL: nil); log("agents: the agents plugin moved to the Trash, Agents is built in now") }
+                catch { log("agents: could not move the agents plugin to the Trash: \(error.localizedDescription)") }
+            } else {
+                log("agents: you changed plugins/agents, so it stays. It does not run: Agents is built in now. Rename the folder to run your copy.")
+            }
+        }
+        let target = ThemeCommand.configFile.resolvingSymlinksInPath()
+        guard let toml = try? String(contentsOf: target, encoding: .utf8), let next = agentsMigration(toml: toml) else { return }
+        do { try next.write(to: target, atomically: true, encoding: .utf8); log("agents: [plugins.agents] moved to [agents]") }
+        catch { log("agents: could not move [plugins.agents] to [agents]: \(error.localizedDescription)") }
     }
 
     // MARK: - `gzyms debug`

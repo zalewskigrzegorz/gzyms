@@ -12,7 +12,7 @@ enum SetCommand {
               gzyms set appearance.animations false
               gzyms set appearance.banner_entry pop    (icon, drop, notch, unroll, pop, fade)
               gzyms set widgets.cpu false
-              gzyms set plugins.agents.done_after 0
+              gzyms set agents.done_after 0
               gzyms set notifications.apps."com.mitchellh.ghostty".banner false
               gzyms set calendar.points [5, 0]
             the file: \(ThemeCommand.configFile.path)

@@ -181,8 +181,11 @@ public struct PluginRow: Equatable, Sendable {
     public var color: String?
     public var detail: String?
     public var separator: Bool
-    public init(id: String? = nil, text: String = "", tag: String? = nil, color: String? = nil, detail: String? = nil, separator: Bool = false) {
-        self.id = id; self.text = text; self.tag = tag; self.color = color; self.detail = detail; self.separator = separator
+    /// Drawn faded: an idle agent, or one from a source that failed. Gzyms' own rows only, not in the protocol.
+    public var dim: Bool
+    public init(id: String? = nil, text: String = "", tag: String? = nil, color: String? = nil, detail: String? = nil, separator: Bool = false,
+                dim: Bool = false) {
+        self.id = id; self.text = text; self.tag = tag; self.color = color; self.detail = detail; self.separator = separator; self.dim = dim
     }
 }
 

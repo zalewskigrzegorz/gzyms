@@ -6,8 +6,10 @@ A plugin is a folder with a `plugin.toml` and a program in any language. Gzyms s
 
 - `gzyms plugin new <name>` makes `~/.config/gzyms/plugins/<name>/` with a working click counter in bash. Start from it. The name is lowercase letters, digits, `-` and `_`.
 - `gzyms plugin list` lists the plugins with `on`, `off` or `broken` and why.
-- `gzyms plugin add <name>` installs a ready plugin from the built-in catalog. Without a name it lists them: `log-watcher` (log lines to notifications), `agents` (coding agents from tuios; it lives in Settings → Agents, where "Turn on" does the same as `add`, and not in the Plugins list), `gh-prs` (your pull requests through the gh CLI: a glyph per state, fix, merge, comments and draft, with the number of PRs in it) and `gh-builds` (CI of your pull requests and chosen branches: a glyph for failed, running and passed, with the number of PRs or branches) and `star-watcher` (GitHub stars of repos you pick on one gold pill, a row per repo that opens its stargazers, a notification with the name of each new stargazer, also for stars that came while Gzyms was off). Each is a plain script you can read and change after `add`. Gzyms keeps an unchanged catalog plugin up to date: on launch it puts the new version in place before the plugin starts, and options in config.toml stay. A plugin you edited is left alone. When the catalog has a newer version, the plugin's side panel in Settings → Plugins (Settings → Agents for `agents`) offers Update, which keeps your copy as `<name>.bak-<date>` next to it. The `.gzyms-catalog` file in the folder is how Gzyms tells an edit from an old copy.
+- `gzyms plugin add <name>` installs a ready plugin from the built-in catalog. Without a name it lists them: `log-watcher` (log lines to notifications), `gh-prs` (your pull requests through the gh CLI: a glyph per state, fix, merge, comments and draft, with the number of PRs in it) and `gh-builds` (CI of your pull requests and chosen branches: a glyph for failed, running and passed, with the number of PRs or branches) and `star-watcher` (GitHub stars of repos you pick on one gold pill, a row per repo that opens its stargazers, a notification with the name of each new stargazer, also for stars that came while Gzyms was off). Each is a plain script you can read and change after `add`. Gzyms keeps an unchanged catalog plugin up to date: on launch it puts the new version in place before the plugin starts, and options in config.toml stay. A plugin you edited is left alone. When the catalog has a newer version, the plugin's side panel in Settings → Plugins offers Update, which keeps your copy as `<name>.bak-<date>` next to it. The `.gzyms-catalog` file in the folder is how Gzyms tells an edit from an old copy.
 - `gzyms plugin remove <name>` moves the folder to the Trash.
+
+Coding agents are no plugin any more: they are built into Gzyms (Settings → Agents, and the `[agents]` keys under Settings in `gzyms skill`). An unchanged `agents` plugin from the catalog goes to the Trash on launch and its options move to `[agents]`. A copy you changed stays in its folder and does not run, since the name `agents` is Gzyms' own now. Rename the folder to run it.
 
 Gzyms watches the plugins folder, so a new or removed folder needs no restart. Gzyms keeps running the program it started: after editing it, turn the plugin off and on with `gzyms set plugins.<name>.enabled false` and then `gzyms set plugins.<name>.enabled true` (or in Settings → Plugins).
 
@@ -83,28 +85,28 @@ A notification, with the same fields as `gzyms notify`. Its `"level"` is one of 
 {"notify":{"id":"deploy","title":"Deploy done","subtitle":"api","body":"1.4.2 is live","level":"info","sound":"success","link":"https://example.com"}}
 ```
 
-`"row"` ties a notification to a menu row of the plugin's: once no pill of the plugin has a row with that id, the notification leaves the list. The agents plugin uses it, so an agent's notification goes when its pane closes.
+`"row"` ties a notification to a menu row of the plugin's: once no pill of the plugin has a row with that id, the notification leaves the list. Use it for a notification about a thing a row stands for, so it goes when the thing does.
 
 ```json
-{"notify":{"id":"agent-3","title":"Agent waits","row":"3"}}
+{"notify":{"id":"job-3","title":"Job waits","row":"3"}}
 ```
 
-`"dismiss"` takes one of the plugin's notifications off the bar and out of the list, by the `"id"` it gave it. The agents plugin sends it when you answer an agent, so a question you already answered does not wait in the list.
+`"dismiss"` takes one of the plugin's notifications off the bar and out of the list, by the `"id"` it gave it. Send it once a notification has nothing left to say, for example a question that was answered.
 
 ```json
-{"dismiss":"agent-3"}
+{"dismiss":"job-3"}
 ```
 
 A second action: `"alt_label"` names it on the banner's hints, `"alt_link"` is the URL it opens. With `"alt_label"` and no `"alt_link"`, the second action sends `notify_alt` back to the plugin, so the plugin does the work itself.
 
 ```json
-{"notify":{"id":"agent-3","title":"Agent waits","alt_label":"Open in agent"}}
+{"notify":{"id":"job-3","title":"Job waits","alt_label":"Open in agent"}}
 ```
 
 A line for `~/Library/Logs/Gzyms/gzyms.log`, written as `plugin <name>: …`. Use it to say what a click did.
 
 ```json
-{"log":"agents click: 1a2b3c4d focused"}
+{"log":"click: job 3 opened"}
 ```
 
 ## Gzyms to plugin: stdin, one JSON object per line

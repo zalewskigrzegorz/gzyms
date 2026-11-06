@@ -80,6 +80,8 @@ gzyms unset widgets.cpu
 
 The key is the dotted name as in `~/.config/gzyms/config.toml` (or `$XDG_CONFIG_HOME/gzyms/config.toml`). A value is `true`/`false`, a number, `[a, b]` or text. A wrong key or value writes nothing and exits 1 with the problem. `gzyms unset <key>` puts the default back. The running bar applies a change at once. Run `gzyms set` alone for its usage.
 
+Coding agents (Settings → Agents) are built in, one switch per source: `agents.tuios` (the agents tuios sees) and `agents.claude` (Claude Code sessions, through the Gzyms Claude Code plugin: `claude plugin marketplace add zalewskigrzegorz/gzyms-claude-plugin`, then `claude plugin install gzyms@gzyms`). Both are on by default. `agents.done_after` (minutes, default 3) is the shortest run that notifies when it ends, `agents.terminal` (default `Ghostty`) is the app tuios runs in. Each agent gets one row on the agents pill, what waits for you first with its question. It notifies once when it starts to wait and once when a long run ends, and the notification goes when the agent moves on. A Claude session in a tuios pane shows only through tuios.
+
 How a banner arrives: `appearance.banner_entry` is `icon`, `drop` (the default), `notch`, `unroll`, `pop` or `fade`. `appearance.animation_speed` is `slow`, `normal` (the default) or `fast`. With `appearance.animations false` nothing moves. Under macOS Reduce motion every entry is a fade, unless `appearance.follow_reduce_motion` is false.
 
 ## Themes: gzyms theme

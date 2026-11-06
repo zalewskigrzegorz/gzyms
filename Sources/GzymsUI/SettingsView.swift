@@ -109,6 +109,8 @@ public struct SettingsView: View {
     /// false while the panel is put away: it stays alive, and About's animation must not tick unseen.
     let live: Bool
     let plugins: [PluginStatus]
+    /// Settings → Agents: how each source is right now.
+    let agents: [AgentSource: AgentSourceStatus]
     let actions: SettingsActions
     /// The app open on the side of Apps when the panel first draws (snapshots).
     let openApp: String?
@@ -122,8 +124,9 @@ public struct SettingsView: View {
 
     public init(tab: Binding<SettingsTab>, config: GzymsConfig, problems: [String], broken: Bool, apps: [SeenApp],
                 devices: [String], workspaceNames: [Int: String] = [:], grants: [GrantState] = [], calendars: [CalendarInfo] = [],
-                logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], openApp: String? = nil, openPlugin: String? = nil, actions: SettingsActions) {
-        self.logo = logo; self.live = live; self.plugins = plugins; self.openApp = openApp; self.openPlugin = openPlugin
+                logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], agents: [AgentSource: AgentSourceStatus] = [:],
+                openApp: String? = nil, openPlugin: String? = nil, actions: SettingsActions) {
+        self.logo = logo; self.live = live; self.plugins = plugins; self.agents = agents; self.openApp = openApp; self.openPlugin = openPlugin
         _tab = tab; self.config = config; self.problems = problems; self.broken = broken
         self.apps = apps; self.devices = devices; self.workspaceNames = workspaceNames; self.grants = grants
         self.calendars = calendars; self.actions = actions
@@ -222,7 +225,7 @@ public struct SettingsView: View {
         case .modules: ModulesTab(config: config, write: actions.write, plugins: plugins)
         case .plugins: PluginsTab(config: config, write: actions.write, plugins: plugins, actions: actions, selected: openPlugin)
         case .calendar: CalendarTab(config: config, calendars: calendars, write: actions.write)
-        case .agents: AgentsTab(config: config, write: actions.write, plugins: plugins, actions: actions, open: openPlugin == agentsFolder)
+        case .agents: AgentsTab(config: config, write: actions.write, status: agents, open: openPlugin.flatMap(AgentSource.init(rawValue:)))
         case .sounds: SoundsTab(config: config, write: actions.write, actions: actions)
         case .shortcuts: ShortcutsTab(config: config, write: actions.write, recording: actions.recording)
         case .permissions: Section(title: "Permissions") {
@@ -666,9 +669,9 @@ private struct PluginsTab: View {
     @Environment(\.theme) private var theme
     @Environment(\.settingsNav) private var nav
 
-    /// Agents have their own tab, so the list and the catalog leave it out.
-    private var listed: [PluginStatus] { plugins.filter { $0.folder != agentsFolder } }
-    private var addable: [CatalogPlugin] { pluginCatalog.filter { c in c.name != agentsFolder && !plugins.contains { $0.folder == c.name } } }
+    /// Agents are built in and have their own tab, so the list leaves them out.
+    private var listed: [PluginStatus] { plugins.filter { $0.folder != agentsPill } }
+    private var addable: [CatalogPlugin] { pluginCatalog.filter { c in !plugins.contains { $0.folder == c.name } } }
 
     var body: some View {
         Columns {
@@ -724,7 +727,7 @@ private struct PluginsTab: View {
     }
 }
 
-/// One line of a plugin list: icon, name, what it does, how it is, a switch. Plugins and Agents draw it the same way.
+/// One line of a plugin list: icon, name, what it does, how it is, a switch.
 private struct PluginRow: View {
     let p: PluginStatus
     var name: String?
@@ -776,8 +779,6 @@ private struct PluginDrawer: View {
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let actions: SettingsActions
     let close: () -> Void
-    /// Agents are built in: the switch turns them off, there is nothing to remove.
-    var removable = true
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -799,56 +800,92 @@ private struct PluginDrawer: View {
                 write(o.key, v == o.defaultValue ? nil : v, .table(["plugins", p.folder]))
             }
         }
-        if removable {
-            HStack {
-                Button("Remove") { close(); actions.removePlugin(p.folder) }
-                Spacer()
-                Button("Show in Finder") { actions.revealPlugin(p.folder) }
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
+        HStack {
+            Button("Remove") { close(); actions.removePlugin(p.folder) }
+            Spacer()
+            Button("Show in Finder") { actions.revealPlugin(p.folder) }
         }
+        .padding(.horizontal, 12).padding(.vertical, 8)
     }
 }
 
-/// The catalog plugin that holds the agents for now. Settings → Agents shows it, Settings → Plugins does not.
-private let agentsFolder = "agents"
-
-/// Agents: the tuios integration as one row and its options on the side, drawn like Plugins. Not installed: Turn on.
+/// Agents: one row per source with its switch and live state, its options in a drawer on the side, like Plugins.
 private struct AgentsTab: View {
     let config: GzymsConfig
     let write: (String, TOMLValue?, ConfigTable) -> Void
-    let plugins: [PluginStatus]
-    let actions: SettingsActions
-    @State var open = false
+    let status: [AgentSource: AgentSourceStatus]
+    @State var open: AgentSource?
     @Environment(\.theme) private var theme
     @Environment(\.settingsNav) private var nav
 
+    private static let doneAfter = PluginOption(key: "done_after", title: "Done after (min)", kind: .number, defaultValue: .int(3),
+                                                note: "a run at least this long gets a notification when it ends. 0 = every run.")
+    private static let terminal = PluginOption(key: "terminal", title: "Terminal", kind: .text, defaultValue: .string("Ghostty"),
+                                               note: "the app tuios runs in. A click on an agent brings it to the front on its pane.")
+
+    private func on(_ s: AgentSource) -> Bool { s == .tuios ? config.agentsTuios : config.agentsClaude }
+
     var body: some View {
-        let p = plugins.first { $0.folder == agentsFolder }
         Columns {
             Section(title: "Agents") {
-                if let p {
-                    PluginRow(p: p, name: "tuios", selected: open, write: write) { open.toggle() }
-                } else if let c = pluginCatalog.first(where: { $0.name == agentsFolder }) {
-                    Row(title: "tuios", note: c.summary.components(separatedBy: ". ").first ?? c.summary) {
-                        Button("Turn on") { actions.addPlugin(c.name) }
+                ForEach(AgentSource.allCases, id: \.self) { s in
+                    AgentSourceRow(source: s, on: on(s), status: status[s] ?? agentSourceStatus(on: on(s), look: nil, notInstalled: false),
+                                   selected: open == s, write: write) { open = open == s ? nil : s }
+                }
+            }
+            if let s = open {
+                Section(title: s.title) {
+                    if let p = status[s]?.problem {
+                        Text(p).font(.system(size: 12)).foregroundStyle(theme[\.red]).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 7)
                     }
+                    if s == .claude {
+                        Row(title: "Install the plugin", note: "In a terminal: claude plugin marketplace add zalewskigrzegorz/gzyms-claude-plugin, then claude plugin install gzyms@gzyms") { EmptyView() }
+                    }
+                    option(Self.doneAfter, .int(config.agentsDoneAfter))
+                    if s == .tuios { option(Self.terminal, .string(config.agentsTerminal)) }
                 }
-            }
-            if let p, open {
-                Section(title: "tuios") {
-                    PluginDrawer(p: p, config: config, write: write, actions: actions, close: { open = false }, removable: false)
-                }
-            }
-            Section(title: "Coming later") {
-                Text("Other agent tools come later.")
-                    .font(.system(size: 12)).foregroundStyle(theme[\.overlay])
-                    .padding(.horizontal, 12).padding(.vertical, 7)
             }
         }
         // Esc closes the drawer first, the panel on the next press.
-        .onChange(of: open) { _, o in nav?.escape = o ? { open = false } : nil }
+        .onChange(of: open) { _, o in nav?.escape = o == nil ? nil : { open = nil } }
         .onDisappear { nav?.escape = nil }
+    }
+
+    private func option(_ o: PluginOption, _ value: TOMLValue) -> some View {
+        PluginOptionRow(option: o, value: value) { v in write(o.key, v == o.defaultValue ? nil : v, .table(["agents"])) }
+    }
+}
+
+/// One source of agents: its name, how it is right now, its switch.
+private struct AgentSourceRow: View {
+    let source: AgentSource
+    let on: Bool
+    let status: AgentSourceStatus
+    let selected: Bool
+    let write: (String, TOMLValue?, ConfigTable) -> Void
+    let pick: () -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        let warn = on && (status.problem != nil || status.notInstalled)
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles").foregroundStyle(theme[\.overlay]).frame(width: 18, height: 18)
+            Text(source.title).lineLimit(1)
+            Spacer(minLength: 8)
+            HStack(spacing: 5) {
+                Circle().fill(warn ? theme[\.peach] : on ? theme[\.green] : theme[\.overlay]).frame(width: 7, height: 7)
+                Text(status.line).lineLimit(1)
+            }
+            .font(.system(size: 12)).foregroundStyle(warn ? theme[\.peach] : theme[\.overlay])
+            Switch(on: on) { write(source.rawValue, $0 ? nil : .bool(false), .table(["agents"])) }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(selected ? theme[\.surface] : .clear).padding(.horizontal, 4))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: pick)
+        .settingsSlot(choose: pick)
+        .help(status.problem ?? "")
     }
 }
 

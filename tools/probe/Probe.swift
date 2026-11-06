@@ -467,7 +467,6 @@ struct PluginsTab: View {
             GroupBox("Agents") {
                 VStack(alignment: .leading) {
                     HStack {
-                        Button("Add the plugin") { Gzyms.run(["plugin", "add", "agents"]) { output = $0 } }
                         Picker("agent", selection: $agent) {
                             ForEach(agents, id: \.window_id) { Text("\($0.session) · \($0.name) (\($0.state))").tag($0.window_id) }
                         }.frame(width: 420)
@@ -487,7 +486,7 @@ struct PluginsTab: View {
             .onAppear(perform: loadAgents)
             Output(text: output)
             GroupBox("Gzyms log (plugin, notify)") {
-                LogTail(prefixes: ["plugin ", "notify:"]).frame(height: 260)
+                LogTail(prefixes: ["plugin ", "notify:", "agents"]).frame(height: 260)
             }
         }
     }

@@ -73,6 +73,11 @@ public struct GzymsConfig: Equatable, Sendable {
     public var calendarSkip: Set<String> = []
     /// Open = the check before the meeting (camera, mic, speakers), then Join; off = straight to the link.
     public var meetingPreview = true
+    /// `[agents]`: each source's switch, the shortest run that notifies when it ends (minutes), the app tuios runs in.
+    public var agentsTuios = true
+    public var agentsClaude = true
+    public var agentsDoneAfter = 3
+    public var agentsTerminal = "Ghostty"
     public var animations = true
     public var followReduceMotion = true
     /// `[appearance] banner_entry`: how a banner arrives on an empty island.
@@ -251,6 +256,10 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         else { problems.append("calendar.points: \(p) must be some of 5, 3, 0, -3, kept 3") }
     }
     if let s = raw.calendar?.skip { config.calendarSkip = Set(s) }
+    if let v = raw.agents?.tuios { config.agentsTuios = v }
+    if let v = raw.agents?.claude { config.agentsClaude = v }
+    if let v = raw.agents?.done_after { config.agentsDoneAfter = max(0, v) }
+    if let v = raw.agents?.terminal, !v.isEmpty { config.agentsTerminal = v }
     // Before [keys]: the hint letters leave the verbs out.
     if let v = raw.keys?.verbs.flatMap({ parseVerbs($0, path: "keys.verbs", &problems) }) { config.verbs = v }
     else if raw.keys?.verbs == nil, let v = raw.notifications?.letters.flatMap({ parseVerbs($0, path: "notifications.letters", &problems) }) {
@@ -462,6 +471,7 @@ private struct RawConfig: Decodable {
     var shortcuts: RawShortcuts?
     var keys: RawKeys?
     var calendar: RawCalendar?
+    var agents: RawAgents?
     var widgets: RawWidgets?
     var plugins: [String: [String: TOMLValue]]?
     var caffeine: RawCaffeine?
@@ -470,7 +480,7 @@ private struct RawConfig: Decodable {
     var updates: RawUpdates?
     var sounds: [String: String]?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case theme, cpu, workspaces, notifications, appearance, audio, bar, debug, shortcuts, keys, calendar, widgets, plugins, caffeine, dnd, hacks, updates, sounds }
+    enum CodingKeys: String, CodingKey { case theme, cpu, workspaces, notifications, appearance, audio, bar, debug, shortcuts, keys, calendar, agents, widgets, plugins, caffeine, dnd, hacks, updates, sounds }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         theme = lenient(c, .theme, "theme", &unknown)
@@ -484,6 +494,7 @@ private struct RawConfig: Decodable {
         shortcuts = lenient(c, .shortcuts, "shortcuts", &unknown)
         keys = lenient(c, .keys, "keys", &unknown)
         calendar = lenient(c, .calendar, "calendar", &unknown)
+        agents = lenient(c, .agents, "agents", &unknown)
         widgets = lenient(c, .widgets, "widgets", &unknown)
         plugins = lenient(c, .plugins, "plugins", &unknown)
         caffeine = lenient(c, .caffeine, "caffeine", &unknown)
@@ -492,8 +503,8 @@ private struct RawConfig: Decodable {
         updates = lenient(c, .updates, "updates", &unknown)
         sounds = lenient(c, .sounds, "sounds", &unknown)
         unknown += try unknownKeys(in: decoder, known: ["theme", "cpu", "workspaces", "notifications", "appearance", "audio", "bar", "debug",
-                                                        "shortcuts", "keys", "calendar", "widgets", "plugins", "caffeine", "dnd", "hacks", "updates", "sounds"], prefix: "")
-        unknown += (calendar?.unknown ?? []) + (widgets?.unknown ?? [])
+                                                        "shortcuts", "keys", "calendar", "agents", "widgets", "plugins", "caffeine", "dnd", "hacks", "updates", "sounds"], prefix: "")
+        unknown += (calendar?.unknown ?? []) + (agents?.unknown ?? []) + (widgets?.unknown ?? [])
         unknown += (appearance?.unknown ?? []) + (audio?.unknown ?? []) + (bar?.unknown ?? []) + (debug?.unknown ?? [])
         unknown += shortcuts?.unknown ?? []
         unknown += keys?.unknown ?? []
@@ -737,6 +748,23 @@ private struct RawHacks: Decodable {
 
 private struct RawUpdates: Decodable {
     var automatic: Bool?
+}
+
+private struct RawAgents: Decodable {
+    var tuios: Bool?
+    var claude: Bool?
+    var done_after: Int?
+    var terminal: String?
+    var unknown: [String] = []
+    enum CodingKeys: String, CodingKey { case tuios, claude, done_after, terminal }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        tuios = lenient(c, .tuios, "agents.tuios", &unknown)
+        claude = lenient(c, .claude, "agents.claude", &unknown)
+        done_after = lenient(c, .done_after, "agents.done_after", &unknown)
+        terminal = lenient(c, .terminal, "agents.terminal", &unknown)
+        unknown += try unknownKeys(in: decoder, known: ["tuios", "claude", "done_after", "terminal"], prefix: "agents.")
+    }
 }
 
 private struct RawCaffeine: Decodable {
