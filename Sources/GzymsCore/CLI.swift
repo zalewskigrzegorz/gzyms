@@ -26,6 +26,8 @@ public let cliTable: [CLICommand] = [
           words: ["--json"] + debugTopics),
     .init(name: "hud", usage: "", summary: "Open the usage HUD, a second call closes it.", words: []),
     .init(name: "report", usage: "", summary: "Put a zip for a bug report on the Desktop.", words: []),
+    .init(name: "agents", usage: "status | install claude | remove claude", summary: "Agents on the bar: their state, the Claude Code plugin in or out.",
+          words: ["status", "install", "remove", "claude"]),
     .init(name: "plugin", usage: "list|new <name>|add <name>|remove <name>", summary: "Manage plugins.", words: ["list", "new", "add", "remove"]),
     .init(name: "skill", usage: "[topic] | install [-a, --agents] [-y, --yes]", summary: "The guide for coding agents.",
           words: ["install", "--agents", "--yes"] + skillTopics),

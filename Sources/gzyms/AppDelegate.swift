@@ -1514,6 +1514,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             catch { log("plugin \(name): could not add: \((error as? NotifyArgsError)?.message ?? error.localizedDescription)") }
         }
         a.installPlugin = { [weak self] url in self?.installPluginFolder(url) }
+        a.claudePlugin = { [weak self] action in self?.agents.claudePlugin(action) }
         a.updatePlugin = { [weak self] folder in self?.pluginHost.replaceFromCatalog(folder) }
         a.choosePlugin = { [weak self] in
             guard let self else { return }

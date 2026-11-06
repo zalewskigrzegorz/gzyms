@@ -106,12 +106,16 @@ private func agent(_ id: String, _ state: AgentState, _ source: AgentSource = .t
 }
 
 @Test func settingsLineSaysTheStateInAFewWords() {
-    #expect(agentSourceStatus(on: false, look: nil, notInstalled: true).line == "Off")
-    #expect(agentSourceStatus(on: true, look: nil, notInstalled: true) == AgentSourceStatus(line: "Plugin not installed", notInstalled: true))
+    let missing = ClaudePluginLook(state: .missing)
+    #expect(agentSourceStatus(on: false, look: nil, plugin: missing) == AgentSourceStatus(line: "Off", plugin: missing))
+    #expect(agentSourceStatus(on: true, look: AgentSourceLook(), plugin: missing) == AgentSourceStatus(line: "Not installed", notInstalled: true, plugin: missing))
+    #expect(agentSourceStatus(on: true, look: nil, plugin: ClaudePluginLook(state: .noClaude)).line == "Claude Code not found")
+    #expect(agentSourceStatus(on: true, look: AgentSourceLook(), plugin: ClaudePluginLook(state: .installed("0.1.1"))).line == "No agents")
+    #expect(agentSourceStatus(on: true, look: AgentSourceLook(), plugin: ClaudePluginLook()).line == "No agents")  // not checked yet
     let off = "Agent features are off. Set agents.enabled = true in the config to use this command."
-    #expect(agentSourceStatus(on: true, look: AgentSourceLook(problem: off), notInstalled: false) == AgentSourceStatus(line: "Agent features are off", problem: off))
-    #expect(agentSourceStatus(on: true, look: AgentSourceLook(agents: [agent("a", .idle)]), notInstalled: false).line == "1 agent")
-    #expect(agentSourceStatus(on: true, look: AgentSourceLook(), notInstalled: false).line == "No agents")
+    #expect(agentSourceStatus(on: true, look: AgentSourceLook(problem: off)) == AgentSourceStatus(line: "Agent features are off", problem: off))
+    #expect(agentSourceStatus(on: true, look: AgentSourceLook(agents: [agent("a", .idle)])).line == "1 agent")
+    #expect(agentSourceStatus(on: true, look: nil).line == "Starting")
 }
 
 // MARK: - When to notify

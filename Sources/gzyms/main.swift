@@ -36,6 +36,7 @@ if args.first == "completions" { CompletionsCommand.run(Array(args.dropFirst()))
 if args.first == "message" { MessageCommand.run(args.dropFirst().first) }
 if args.first == "meeting-test" { MeetingTestCommand.run(args.dropFirst().first) }
 if args.first == "plugin" { PluginCommand.run(Array(args.dropFirst())) }
+if args.first == "agents" { AgentsCommand.run(Array(args.dropFirst())) }
 if args.first == "skill" { SkillCommand.run(Array(args.dropFirst())) }
 if args.first == "set" || args.first == "unset" { SetCommand.run(Array(args.dropFirst()), remove: args.first == "unset") }
 

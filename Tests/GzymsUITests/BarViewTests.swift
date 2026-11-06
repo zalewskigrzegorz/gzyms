@@ -423,11 +423,21 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     // Agents: one row per source with its live state, the open one's options on the side.
     let featuresOff = "Agent features are off. Set agents.enabled = true in the config to use this command."
     let fine: [AgentSource: AgentSourceStatus] = [.tuios: AgentSourceStatus(line: "3 agents"),
-                                                  .claude: AgentSourceStatus(line: "Plugin not installed", notInstalled: true)]
+                                                  .claude: AgentSourceStatus(line: "Not installed", notInstalled: true, plugin: ClaudePluginLook(state: .missing))]
     preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
                          agents: fine, openPlugin: "tuios", actions: actions).frame(width: 1400, height: 400), "settings-agents-on")
     preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
                          agents: fine, openPlugin: "claude", actions: actions).frame(width: 1400, height: 400), "settings-agents-claude")
+    // The plugin just installed: Remove, and what open sessions need. Then an install that failed, in Claude's words.
+    let installed = ClaudePluginLook(state: .installed("0.1.1"), note: claudePluginReloadNote)
+    preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
+                         agents: [.tuios: AgentSourceStatus(line: "3 agents"), .claude: AgentSourceStatus(line: "1 agent", plugin: installed)],
+                         openPlugin: "claude", actions: actions).frame(width: 1400, height: 400), "settings-agents-claude-installed")
+    let failedRun = ClaudePluginLook(state: .missing, problem: "✘ Failed to add marketplace: git clone failed")
+    preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
+                         agents: [.tuios: AgentSourceStatus(line: "3 agents"),
+                                  .claude: AgentSourceStatus(line: "Not installed", notInstalled: true, plugin: failedRun)],
+                         openPlugin: "claude", actions: actions).frame(width: 1400, height: 400), "settings-agents-claude-failed")
     preview(SettingsView(tab: .constant(.agents), config: config, problems: [], broken: false, apps: [], devices: [],
                          agents: [.tuios: AgentSourceStatus(line: "Agent features are off", problem: featuresOff), .claude: AgentSourceStatus(line: "1 agent")],
                          openPlugin: "tuios", actions: actions).frame(width: 1400, height: 400), "settings-agents-error")

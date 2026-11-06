@@ -1,5 +1,5 @@
 {
-  "count": 92,
+  "count": 93,
   "updated": "2026-11-06",
   "features": [
     "gzyms notify command",
@@ -93,6 +93,7 @@
     "Start at login, with a switch in Settings → General",
     "Notification when several apps send the same notification, with the list in Settings → Debug",
     "Automatic updates switch, off by default for Homebrew installs",
-    "Homebrew installs hear about a new version once, with brew upgrade in Settings → About"
+    "Homebrew installs hear about a new version once, with brew upgrade in Settings → About",
+    "Install the Claude Code plugin from Gzyms (CLI and Settings)"
   ]
 }

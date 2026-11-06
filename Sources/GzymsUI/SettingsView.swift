@@ -40,6 +40,8 @@ public struct SettingsActions {
     /// A plugin folder from disk, dropped or chosen: copied into the plugins folder. Returns what went wrong, if anything.
     public var installPlugin: (URL) -> String? = { _ in nil }
     public var choosePlugin: () -> Void = {}
+    /// Settings → Agents → Claude Code: nil checks the Gzyms plugin, else installs or removes it. The answer comes back in `agents`.
+    public var claudePlugin: (ClaudePluginAction?) -> Void = { _ in }
     public var dropApp: (URL) -> Void = { _ in }
     public var revealConfig: () -> Void = {}
     public var openNotificationSettings: () -> Void = {}
@@ -225,7 +227,8 @@ public struct SettingsView: View {
         case .modules: ModulesTab(config: config, write: actions.write, plugins: plugins)
         case .plugins: PluginsTab(config: config, write: actions.write, plugins: plugins, actions: actions, selected: openPlugin)
         case .calendar: CalendarTab(config: config, calendars: calendars, write: actions.write)
-        case .agents: AgentsTab(config: config, write: actions.write, status: agents, open: openPlugin.flatMap(AgentSource.init(rawValue:)))
+        case .agents: AgentsTab(config: config, write: actions.write, status: agents, plugin: actions.claudePlugin,
+                                open: openPlugin.flatMap(AgentSource.init(rawValue:)))
         case .sounds: SoundsTab(config: config, write: actions.write, actions: actions)
         case .shortcuts: ShortcutsTab(config: config, write: actions.write, recording: actions.recording)
         case .permissions: Section(title: "Permissions") {
@@ -814,6 +817,7 @@ private struct AgentsTab: View {
     let config: GzymsConfig
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let status: [AgentSource: AgentSourceStatus]
+    let plugin: (ClaudePluginAction?) -> Void
     @State var open: AgentSource?
     @Environment(\.theme) private var theme
     @Environment(\.settingsNav) private var nav
@@ -829,7 +833,7 @@ private struct AgentsTab: View {
         Columns {
             Section(title: "Agents") {
                 ForEach(AgentSource.allCases, id: \.self) { s in
-                    AgentSourceRow(source: s, on: on(s), status: status[s] ?? agentSourceStatus(on: on(s), look: nil, notInstalled: false),
+                    AgentSourceRow(source: s, on: on(s), status: status[s] ?? agentSourceStatus(on: on(s), look: nil),
                                    selected: open == s, write: write) { open = open == s ? nil : s }
                 }
             }
@@ -839,9 +843,7 @@ private struct AgentsTab: View {
                         Text(p).font(.system(size: 12)).foregroundStyle(theme[\.red]).fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 7)
                     }
-                    if s == .claude {
-                        Row(title: "Install the plugin", note: "In a terminal: claude plugin marketplace add zalewskigrzegorz/gzyms-claude-plugin, then claude plugin install gzyms@gzyms") { EmptyView() }
-                    }
+                    if s == .claude { claudePlugin(status[.claude]?.plugin ?? ClaudePluginLook()) }
                     option(Self.doneAfter, .int(config.agentsDoneAfter))
                     if s == .tuios { option(Self.terminal, .string(config.agentsTerminal)) }
                 }
@@ -850,6 +852,20 @@ private struct AgentsTab: View {
         // Esc closes the drawer first, the panel on the next press.
         .onChange(of: open) { _, o in nav?.escape = o == nil ? nil : { open = nil } }
         .onDisappear { nav?.escape = nil }
+        .onAppear { plugin(nil) }  // removed or added in a terminal since
+    }
+
+    /// The Gzyms plugin for Claude Code: its state, one button, what broke.
+    @ViewBuilder private func claudePlugin(_ p: ClaudePluginLook) -> some View {
+        let installed = p.state?.isInstalled == true
+        Row(title: "Gzyms plugin", note: p.step.map { $0 + "…" } ?? p.state?.line ?? "Checking") {
+            Button(installed ? "Remove" : "Install") { plugin(installed ? .remove : .install) }.disabled(p.step != nil)
+        }
+        ForEach([p.problem, p.note].compactMap { $0 }, id: \.self) { line in
+            Text(line).font(.system(size: 12)).foregroundStyle(line == p.problem ? theme[\.red] : theme[\.overlay])
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 7)
+        }
     }
 
     private func option(_ o: PluginOption, _ value: TOMLValue) -> some View {

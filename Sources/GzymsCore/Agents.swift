@@ -186,19 +186,33 @@ public struct AgentSourceStatus: Equatable, Sendable {
     public var line: String
     public var problem: String?
     public var notInstalled: Bool
-    public init(line: String, problem: String? = nil, notInstalled: Bool = false) { self.line = line; self.problem = problem; self.notInstalled = notInstalled }
+    /// Claude Code only: its plugin, for the drawer.
+    public var plugin: ClaudePluginLook?
+    public init(line: String, problem: String? = nil, notInstalled: Bool = false, plugin: ClaudePluginLook? = nil) {
+        self.line = line; self.problem = problem; self.notInstalled = notInstalled; self.plugin = plugin
+    }
 }
 
-public func agentSourceStatus(on: Bool, look: AgentSourceLook?, notInstalled: Bool) -> AgentSourceStatus {
-    guard on else { return AgentSourceStatus(line: "Off") }
-    if notInstalled { return AgentSourceStatus(line: "Plugin not installed", notInstalled: true) }
-    guard let look else { return AgentSourceStatus(line: "Starting") }
-    if let p = look.problem {
-        let first = p.components(separatedBy: ". ").first ?? p
-        return AgentSourceStatus(line: first.hasSuffix(".") ? String(first.dropLast()) : first, problem: p)
+/// `plugin` is the Claude Code plugin; a source that needs one and lacks it says so instead of "No agents".
+public func agentSourceStatus(on: Bool, look: AgentSourceLook?, plugin: ClaudePluginLook? = nil) -> AgentSourceStatus {
+    var s: AgentSourceStatus
+    if !on {
+        s = AgentSourceStatus(line: "Off")
+    } else if let p = plugin?.state, !p.isInstalled {
+        s = AgentSourceStatus(line: p.line, notInstalled: true)
+    } else if let look {
+        if let p = look.problem {
+            let first = p.components(separatedBy: ". ").first ?? p
+            s = AgentSourceStatus(line: first.hasSuffix(".") ? String(first.dropLast()) : first, problem: p)
+        } else {
+            let n = look.agents.count
+            s = AgentSourceStatus(line: n == 0 ? "No agents" : n == 1 ? "1 agent" : "\(n) agents")
+        }
+    } else {
+        s = AgentSourceStatus(line: "Starting")
     }
-    let n = look.agents.count
-    return AgentSourceStatus(line: n == 0 ? "No agents" : n == 1 ? "1 agent" : "\(n) agents")
+    s.plugin = plugin
+    return s
 }
 
 // MARK: - When to notify

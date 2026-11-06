@@ -18,7 +18,7 @@ final class AgentsHost {
     private var timers: [AgentSource: Timer] = [:]
     private var tuiosBusy = false, tuiosAgain = false
     private var dirWatch: DispatchSourceFileSystemObject?
-    private var claudeSeen = false
+    private var plugin = ClaudePluginLook()
     private var shown: (item: PluginItem, failure: PluginFailure?)?
     /// nil = no source on, no pill.
     var onPill: (PluginPill?) -> Void = { _ in }
@@ -100,6 +100,39 @@ final class AgentsHost {
     private func startClaude() {
         every(5, .claude) { $0.lookClaude() }
         lookClaude()
+        claudePlugin(nil)
+    }
+
+    /// Settings → Agents → Claude Code: nil checks the Gzyms plugin, else installs or removes it. One run at a time.
+    func claudePlugin(_ action: ClaudePluginAction?) {
+        guard plugin.step == nil else { return }
+        if let action { plugin = ClaudePluginLook(state: plugin.state, step: action == .install ? "Installing" : "Removing"); publish() }
+        DispatchQueue.global().async {
+            let run: CommandRunner = { Self.runSync($0, $1, timeout: 120) }
+            let claude = claudeBinary(home: NSHomeDirectory(), run: run, executable: FileManager.default.isExecutableFile)
+            let error = action.flatMap { a in
+                changeClaudePlugin(a, claude: claude, run: run) { line in
+                    DispatchQueue.main.async { MainActor.assumeIsolated { self.plugin.step = line; self.publish() } }
+                }
+            }
+            let state = claudePluginState(claude: claude, run: run)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard action != nil || self.plugin.step == nil else { return }  // an install or remove runs: its own check comes
+                    if let error { log("agents: claude plugin \(action?.rawValue ?? "") failed: \(error.message)") }
+                    else if let action { log("agents: claude plugin \(action.rawValue) done") }
+                    var problem = error?.message
+                    switch state {
+                    case .success(.noClaude): problem = problem ?? claudeMissing
+                    case .failure(let e): problem = problem ?? e.message
+                    default: break
+                    }
+                    self.plugin = ClaudePluginLook(state: (try? state.get()) ?? self.plugin.state, problem: problem,
+                                                   note: action == .install && error == nil ? claudePluginReloadNote : nil)
+                    self.publish()
+                }
+            }
+        }
     }
 
     private func lookClaude() {
@@ -109,7 +142,6 @@ final class AgentsHost {
         if dirWatch == nil { watchDir(dir) }
         let files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?.filter { $0.pathExtension == "json" } ?? []
         let sessions = files.compactMap { (try? Data(contentsOf: $0)).flatMap(claudeSession) }
-        if !sessions.isEmpty { claudeSeen = true }
         let r = claudeAgents(sessions, tuiosOn: settings.tuios, alive: { kill($0, 0) == 0 || errno != ESRCH },
                              modified: { (try? fm.attributesOfItem(atPath: $0))?[.modificationDate] as? Date })
         for id in r.dead {
@@ -172,8 +204,7 @@ final class AgentsHost {
     private func publish() {
         let on = AgentSource.allCases.filter { $0 == .tuios ? settings.tuios : settings.claude }
         onStatus(Dictionary(uniqueKeysWithValues: AgentSource.allCases.map { s in
-            (s, agentSourceStatus(on: on.contains(s), look: looks[s],
-                                notInstalled: s == .claude && !claudeSeen && !FileManager.default.fileExists(atPath: Self.claudeDir.path)))
+            (s, agentSourceStatus(on: on.contains(s), look: looks[s], plugin: s == .claude ? plugin : nil))
         }))
         guard !on.isEmpty else { if shown != nil { shown = nil; onPill(nil) }; return }
         let now = agentsItem(Dictionary(uniqueKeysWithValues: on.map { ($0, looks[$0] ?? AgentSourceLook()) }))
@@ -216,23 +247,28 @@ final class AgentsHost {
     /// Runs off the main thread, at most 10 s, and hands stdout and stderr back on it.
     private static func run(_ path: String, _ args: [String], done: @escaping @MainActor (Data, Data) -> Void) {
         DispatchQueue.global().async {
-            let p = Process(), out = Pipe(), err = Pipe()
-            p.executableURL = URL(filePath: path)
-            p.arguments = args
-            p.standardOutput = out
-            p.standardError = err
-            var o = Data(), e = Data()
-            do {
-                try p.run()
-                let kill = DispatchWorkItem { if p.isRunning { p.terminate() } }
-                DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: kill)
-                // Read before waiting: a full pipe would block the child forever.
-                o = out.fileHandleForReading.readDataToEndOfFile()
-                e = err.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                kill.cancel()
-            } catch { e = Data("\(path) did not start: \(error.localizedDescription)".utf8) }
-            DispatchQueue.main.async { MainActor.assumeIsolated { done(o, e) } }
+            let r = runSync(path, args, timeout: 10)
+            DispatchQueue.main.async { MainActor.assumeIsolated { done(Data(r.out.utf8), Data(r.err.utf8)) } }
         }
+    }
+
+    /// Runs and waits, at most `timeout` seconds. Never on the main thread. The CLI uses it too.
+    nonisolated static func runSync(_ path: String, _ args: [String], timeout: TimeInterval) -> CommandOutput {
+        let p = Process(), out = Pipe(), err = Pipe()
+        p.executableURL = URL(filePath: path)
+        p.arguments = args
+        p.standardInput = FileHandle.nullDevice  // nothing may wait for an answer
+        p.standardOutput = out
+        p.standardError = err
+        do {
+            try p.run()
+            let kill = DispatchWorkItem { if p.isRunning { p.terminate() } }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: kill)
+            // Read before waiting: a full pipe would block the child forever.
+            let o = out.fileHandleForReading.readDataToEndOfFile(), e = err.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            kill.cancel()
+            return CommandOutput(p.terminationStatus, out: String(decoding: o, as: UTF8.self), err: String(decoding: e, as: UTF8.self))
+        } catch { return CommandOutput(-1, err: "\(path) did not start: \(error.localizedDescription)") }
     }
 }
