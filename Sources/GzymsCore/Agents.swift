@@ -5,6 +5,10 @@ import Foundation
 /// `plugin:agents`, notifications `plugin:agents:<agent key>`.
 public let agentsPill = "agents"
 
+/// tuios's 16 px mark from tuios.dev/brand. Its rules allow it on a tool that works with tuios, used as it is:
+/// no new colours, no smaller than this size. Its colours are its own, so it lives here and not in a view.
+public let tuiosMarkSVG = ##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16" viewBox="0 0 16 16"><g transform="translate(0 0) scale(1.0000)"><g fill="#7f849c"><rect x="4" y="2" width="1" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="11" y="2" width="1" height="1"/><rect x="10" y="3" width="1" height="1"/></g><rect x="2" y="0" width="2" height="2" fill="#f9e2af"/><rect x="12" y="0" width="2" height="2" fill="#89dceb"/><rect x="0" y="4" width="16" height="12" rx="3.5" fill="#11111b"/><rect x="1" y="5" width="14" height="10" rx="2.5" fill="#cba6f7"/><rect x="2" y="5" width="12" height="1" fill="#e5cffc"/><rect x="3" y="7" width="10" height="6" rx="1" fill="#11111b"/><g fill="#89dceb"><rect x="5" y="8" width="2" height="3"/><rect x="9" y="8" width="2" height="3"/></g><rect x="7" y="12" width="2" height="1" fill="#a6e3a1"/></g></svg>"##
+
 public enum AgentSource: String, CaseIterable, Sendable {
     case tuios, claude
     public var title: String { self == .tuios ? "tuios" : "Claude Code" }

@@ -142,7 +142,9 @@ final class AgentsHost {
         if dirWatch == nil { watchDir(dir) }
         let files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?.filter { $0.pathExtension == "json" } ?? []
         let sessions = files.compactMap { (try? Data(contentsOf: $0)).flatMap(claudeSession) }
-        let r = claudeAgents(sessions, tuiosOn: settings.tuios, alive: { kill($0, 0) == 0 || errno != ESRCH },
+        // tuios shows its panes only while it answers. Failing, its Claude sessions come from here. Not asked yet counts as fine.
+        let tuiosShows = settings.tuios && looks[.tuios].map { $0.problem == nil } ?? true
+        let r = claudeAgents(sessions, tuiosOn: tuiosShows, alive: { kill($0, 0) == 0 || errno != ESRCH },
                              modified: { (try? fm.attributesOfItem(atPath: $0))?[.modificationDate] as? Date })
         for id in r.dead {
             try? fm.removeItem(at: dir.appendingPathComponent("\(id).json"))
