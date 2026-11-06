@@ -48,6 +48,13 @@ private func file(_ id: String, state: String = "waits", pid: Int = 0, pane: Str
     #expect(claudeSession(d(#"{"id":"a","state":"waits","si"#)) == nil)  // half written
     #expect(claudeSession(file("a", state: "thinking")) == nil)
     #expect(claudeSession(d(#"{"id":"b","state":"idle","since":1,"cwd":"/p/repo"}"#))?.name == "repo")
+    #expect(claudeSession(d(#"{"id":"b","state":"idle","since":1,"cwd":"/p/repo","name":"repo","title":"Fix login"}"#))?.name == "Fix login")
+    #expect(claudeSession(d(#"{"id":"b","state":"idle","since":1,"cwd":"/p/repo","name":"repo","title":""}"#))?.name == "repo")
+}
+
+@Test func aDesktopSessionSaysItRunsInClaudeDesktop() throws {
+    let s = try #require(claudeSession(file("a", term: "", entry: "claude-desktop")))
+    #expect(claudeAgents([s], tuiosOn: true, alive: { _ in true }, modified: { _ in nil }).agents.first?.place == "Claude Desktop")
 }
 
 @Test func deadSessionsGoAndAnAnswerWithoutAHookMeansIdle() throws {

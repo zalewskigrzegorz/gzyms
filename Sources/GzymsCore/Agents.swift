@@ -114,13 +114,15 @@ public struct ClaudeSession: Equatable, Sendable {
 public func claudeSession(_ data: Data) -> ClaudeSession? {
     struct Raw: Decodable {
         var id: String?, state: String?, since: Double?, pid: Int32?, transcript: String?, cwd: String?, name: String?, message: String?
-        var tuios_pane: String?, term: String?, entry: String?
+        var tuios_pane: String?, term: String?, entry: String?, title: String?
     }
     guard let r = try? JSONDecoder().decode(Raw.self, from: data), let id = r.id, !id.isEmpty,
           let state = r.state.flatMap(AgentState.init(rawValue:)), let since = r.since else { return nil }
     let cwd = r.cwd ?? ""
+    // The session's title (the one you gave it, else Claude's own) says what it does. The folder is the fallback.
+    let name = [r.title, r.name].compactMap { $0 }.first { !$0.isEmpty } ?? (cwd as NSString).lastPathComponent
     return ClaudeSession(id: id, state: state, since: Date(timeIntervalSince1970: since), pid: r.pid ?? 0, transcript: r.transcript ?? "",
-                         cwd: cwd, name: (r.name ?? "").isEmpty ? (cwd as NSString).lastPathComponent : r.name ?? "", message: r.message ?? "",
+                         cwd: cwd, name: name, message: r.message ?? "",
                          tuiosPane: r.tuios_pane ?? "", term: r.term ?? "", entry: r.entry ?? "")
 }
 
@@ -140,7 +142,9 @@ public func claudeAgents(_ sessions: [ClaudeSession], tuiosOn: Bool, alive: (Int
         if tuiosOn, !s.tuiosPane.isEmpty { continue }
         var state = s.state
         if state == .waits, let m = modified(s.transcript), m.timeIntervalSince(s.since) > 2 { state = .idle }
-        agents.append(Agent(source: .claude, id: s.id, name: s.name, place: (s.cwd as NSString).lastPathComponent, state: state,
+        // Claude Desktop works in a scratch folder with a made-up name: where it runs says more.
+        let place = s.entry.localizedCaseInsensitiveContains("desktop") ? "Claude Desktop" : (s.cwd as NSString).lastPathComponent
+        agents.append(Agent(source: .claude, id: s.id, name: s.name, place: place, state: state,
                             message: s.message, since: s.since, target: claudeApp(term: s.term, entry: s.entry)))
     }
     return (agents, dead)
