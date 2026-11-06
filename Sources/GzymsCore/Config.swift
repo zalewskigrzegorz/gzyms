@@ -343,9 +343,9 @@ public func loadConfig(toml: String?) -> ConfigLoad {
     }
     if let ph = raw.notifications?.phone {
         // Secrets come from the Keychain (`withPhoneSecrets`); one left in the file is ignored and reported.
-        for (s, v) in [(PhoneSecret.url, ph.url), (.pushover_user, ph.pushover_user), (.pushover_token, ph.pushover_token)] where v?.isEmpty == false {
-            problems.append(s.inFileProblem)
-        }
+        let left = [(PhoneSecret.url, ph.url), (.pushover_user, ph.pushover_user), (.pushover_token, ph.pushover_token)]
+            .filter { $0.1?.isEmpty == false }.map(\.0)
+        if !left.isEmpty { problems.append(PhoneSecret.inFileProblem(left)) }
         if let f = ph.format {
             if let v = PushFormat(rawValue: f) { config.phone.format = v } else { problems.append("notifications.phone.format: \"\(f)\" must be ntfy, json or pushover, kept ntfy") }
         }

@@ -63,8 +63,7 @@ final class MemoryStore: SecretStore {
     """
     let load = withPhoneSecrets(loadConfig(toml: toml), store: MemoryStore())
     #expect(load.config.phone.url == nil && load.config.phone.pushoverUser == nil)
-    #expect(load.problems == [PhoneSecret.url.inFileProblem, PhoneSecret.pushover_user.inFileProblem])
-    #expect(load.problems.first == "notifications.phone.url is kept in the Keychain now. Set it in Settings → Notifications or with gzyms set notifications.phone.url.")
+    #expect(load.problems == ["Delete url, pushover_user from [notifications.phone] in config.toml. Gzyms keeps them in the Keychain now (Settings → Notifications), so in the file they are only a secret in plain text."])
     #expect(!load.problems.joined().contains("secret-topic") && !load.problems.joined().contains("u123"))
     #expect(load.config.phone.after == 120)  // the rest of the table still counts
 }

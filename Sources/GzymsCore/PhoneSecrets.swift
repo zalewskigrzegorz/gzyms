@@ -13,9 +13,10 @@ public enum PhoneSecret: String, CaseIterable, Sendable {
         self = s
     }
 
-    /// What config.toml says when it still holds the key. The value is ignored and never repeated.
-    public var inFileProblem: String {
-        "\(account) is kept in the Keychain now. Set it in Settings → Notifications or with gzyms set \(account)."
+    /// One line for the keys config.toml still holds: what to do first, then why. Values are ignored and never repeated.
+    public static func inFileProblem(_ keys: [PhoneSecret]) -> String {
+        "Delete \(keys.map(\.rawValue).joined(separator: ", ")) from [notifications.phone] in config.toml. "
+            + "Gzyms keeps them in the Keychain now (Settings → Notifications), so in the file they are only a secret in plain text."
     }
 }
 
