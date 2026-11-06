@@ -221,6 +221,8 @@ public enum PluginMessage: Equatable, Sendable {
     case item(PluginItem)
     case removeItem(String)
     case notify(GzymsNotification)
+    /// Takes one of its notifications off the bar and out of the list (the full id, as `notify` made it).
+    case dismiss(String)
     /// A line for Gzyms's log, e.g. what a click did.
     case log(String)
 }
@@ -236,7 +238,7 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
         var id: String?, title: String?, subtitle: String?, body: String?, level: String?, sound: String?, link: String?
         var alt_link: String?, alt_label: String?, row: String?
     }
-    struct Raw: Decodable { var item: Item?; var notify: Notify?; var log: String? }
+    struct Raw: Decodable { var item: Item?; var notify: Notify?; var dismiss: String?; var log: String? }
     guard let raw = try? JSONDecoder().decode(Raw.self, from: Data(line.utf8)) else { return nil }
     if let i = raw.item, let id = i.id, !id.isEmpty {
         if i.remove == true { return .removeItem(id) }
@@ -258,6 +260,7 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
         note.row = n.row
         return .notify(note)
     }
+    if let d = raw.dismiss, !d.isEmpty { return .dismiss("plugin:\(plugin):" + d) }
     if let l = raw.log, !l.isEmpty { return .log(l) }
     return nil
 }

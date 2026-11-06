@@ -307,16 +307,19 @@ private let agents = CatalogPlugin(
     fi
 
     shown_text="" shown_menu=""  # the last good pill, kept to grey out when tuios stops answering
-    prev=""   # what the last check saw: id, state, needs you, working since (s)
+    prev=""   # what the last check saw: id, state, needs you, working since (s), its notification
     rows=""   # id, session, state, needs you, name, message
     # n starts from the clock: after a bar restart a counter from 0 reused ids still in the bell, and the new note replaced the old one silently.
     first=1 last="" n=$(date +%s)000
 
-    say() {  # level id session title body
+    unsay() { [ -n "$note" ] && echo "{\"dismiss\":\"$note\"}"; note=""; }  # the agent's last notification leaves the bar
+
+    say() {  # level id session title body. The agent has one notification at a time: a new one takes the old one's place.
       # A fresh id each time: the same id again would only update the old note in the bell, without a banner.
-      n=$((n + 1))
+      unsay
+      n=$((n + 1)) note="agent-$2-$n"
       local sound=success; [ "$1" = warning ] && sound=waiting  # waits for you, or done
-      echo "{\"notify\":{\"id\":\"agent-$2-$n\",\"level\":\"$1\",\"sound\":\"$sound\",\"title\":\"$(j "$4")\",\"subtitle\":\"$(j "$3") · click to go there\",\"body\":\"$(j "$5")\",\"row\":\"$2\"}}"
+      echo "{\"notify\":{\"id\":\"$note\",\"level\":\"$1\",\"sound\":\"$sound\",\"title\":\"$(j "$4")\",\"subtitle\":\"$(j "$3") · click to go there\",\"body\":\"$(j "$5")\",\"row\":\"$2\"}}"
     }
 
     fail() {  # sentence: the last pill with what broke. Gzyms greys it out, so its numbers do not pass for fresh.
@@ -325,7 +328,7 @@ private let agents = CatalogPlugin(
     }
 
     poll() {
-      local now id session state needs name msg ostate oneeds since tag waiting=0 working=0 menu="" next="" raw
+      local now id session state needs name msg ostate oneeds since note tag waiting=0 working=0 menu="" next="" raw
       now=$(date +%s)
       raw=$("$TUIOS" list-agents --all-sessions --json 2>/dev/null) || { fail "tuios did not answer. Is it running? This pill updates by itself when it does."; return; }
       rows=$(printf '%s\n' "$raw" | "$JQ" -r '.agents[] | [.window_id, .session, .state,
@@ -333,8 +336,11 @@ private let agents = CatalogPlugin(
         || { fail "tuios answered with something this plugin cannot read. Update tuios."; return; }
       while IFS=$'\t' read -r id session state needs name msg; do
         [ -n "$id" ] || continue
-        IFS=$'\t' read -r ostate oneeds since <<< "$(printf '%s\n' "$prev" | awk -F'\t' -v id="$id" '$1 == id { print $2 "\t" $3 "\t" $4 }')"
+        # "|", not a tab: read folds empty fields between tabs, so an empty "since" would take the notification's id.
+        IFS='|' read -r ostate oneeds since note <<< "$(printf '%s\n' "$prev" | awk -F'\t' -v id="$id" '$1 == id { print $2 "|" $3 "|" $4 "|" $5 }')"
         [ "$state" = working ] && [ "$ostate" != working ] && since=$now
+        # You answered: it no longer waits, or it works again after it was done. Its notification has nothing left to say.
+        { [ "$oneeds" = true ] && [ "$needs" != true ]; } || { [ "$state" = working ] && [ "$ostate" != working ]; } && unsay
         # The first check after a start only looks: a Gzyms restart must not ping for every agent again.
         if [ "$needs" = true ]; then
           waiting=$((waiting + 1))
@@ -345,7 +351,7 @@ private let agents = CatalogPlugin(
         [ "$state" = working ] && working=$((working + 1))
         tag=$state; [ "$needs" = true ] && tag=waits
         menu+="{\"id\":\"$id\",\"tag\":\"$tag\",\"color\":\"$(color "$tag")\",\"text\":\"$(j "$name")\",\"detail\":\"$(j "$session")\"},"
-        next+="$id"$'\t'"$state"$'\t'"$needs"$'\t'"$since"$'\n'
+        next+="$id"$'\t'"$state"$'\t'"$needs"$'\t'"$since"$'\t'"$note"$'\n'
       done <<< "$rows"
       prev="$next" first=0
       local text="" c=overlay

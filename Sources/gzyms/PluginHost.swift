@@ -36,6 +36,7 @@ final class PluginHost {
     private var failing: Set<String> = []
     var onItems: ([PluginPill]) -> Void = { _ in }
     var onNotify: (GzymsNotification) -> Void = { _ in }
+    var onDismiss: (String) -> Void = { _ in }
     var onStatus: ([PluginStatus]) -> Void = { _ in }
 
     init(dir: URL) { self.dir = dir }
@@ -254,6 +255,7 @@ final class PluginHost {
                 r.held.removeAll { $0.item.id == id }
                 changed = changed || r.held.count != before
             case .notify(let n)?: onNotify(n)
+            case .dismiss(let id)?: onDismiss(id)
             case .log(let l)?: log("plugin \(folder): \(l.prefix(200))")
             case nil: log("plugin \(folder): not a message: \(line.prefix(120))")
             }

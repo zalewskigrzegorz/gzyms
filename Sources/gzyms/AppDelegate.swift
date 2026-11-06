@@ -1693,6 +1693,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         pluginHost.onStatus = { [weak self] s in if self?.model.plugins != s { self?.model.plugins = s } }
         pluginHost.onNotify = { [weak self] n in self?.post(n) }
+        pluginHost.onDismiss = { [weak self] id in
+            guard let self else { return }
+            notes.remove(id, now: ProcessInfo.processInfo.systemUptime)
+            notesChanged()
+        }
         model.onPluginEvent = { [weak self] plugin, e, id in self?.pluginHost.send(plugin: plugin, e, id: id) }
         pluginHost.start(disabled: disabled, options: options)
         // Plugins get EOF and a SIGTERM when Gzyms quits, so none outlives it.

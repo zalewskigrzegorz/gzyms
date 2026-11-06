@@ -89,6 +89,12 @@ A notification, with the same fields as `gzyms notify`. Its `"level"` is one of 
 {"notify":{"id":"agent-3","title":"Agent waits","row":"3"}}
 ```
 
+`"dismiss"` takes one of the plugin's notifications off the bar and out of the list, by the `"id"` it gave it. The agents plugin sends it when you answer an agent, so a question you already answered does not wait in the list.
+
+```json
+{"dismiss":"agent-3"}
+```
+
 A second action: `"alt_label"` names it on the banner's hints, `"alt_link"` is the URL it opens. With `"alt_label"` and no `"alt_link"`, the second action sends `notify_alt` back to the plugin, so the plugin does the work itself.
 
 ```json

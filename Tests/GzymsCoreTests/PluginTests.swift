@@ -15,6 +15,8 @@ import Testing
     #expect(pluginMessage(#"{"item":{"id":"b","text":"✓ 12","icon":"hammer","color":"green"}}"#, plugin: "ci", now: now)
         == .item(PluginItem(id: "b", text: "✓ 12", icon: "hammer", color: "green")))
     #expect(pluginMessage(#"{"item":{"id":"b","remove":true}}"#, plugin: "ci", now: now) == .removeItem("b"))
+    #expect(pluginMessage(#"{"dismiss":"agent-3"}"#, plugin: "agents", now: now) == .dismiss("plugin:agents:agent-3"))
+    #expect(pluginMessage(#"{"dismiss":""}"#, plugin: "agents", now: now) == nil)
     guard case .notify(let n) = pluginMessage(#"{"notify":{"id":"d","title":"Deploy done","level":"error"}}"#, plugin: "ci", now: now)
     else { Issue.record("not a notify"); return }
     #expect(n.id == "plugin:ci:d" && n.level == .error && n.title == "Deploy done")
