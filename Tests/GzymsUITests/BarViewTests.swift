@@ -363,6 +363,10 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     chosen.updatesAutomatic = true
     preview(SettingsView(tab: .constant(.about), config: chosen, problems: [], broken: false, apps: apps,
                          devices: [], live: false, actions: updating).frame(width: 1000, height: 900), "settings-about-homebrew-on")
+    // Homebrew found a newer version: how to get it, with Copy and the release.
+    updating.newVersion = { "0.0.3" }
+    preview(SettingsView(tab: .constant(.about), config: config, problems: [], broken: false, apps: apps,
+                         devices: [], live: false, actions: updating).frame(width: 1000, height: 900), "settings-about-new-version")
     preview(SettingsView(tab: .constant(.notifications), config: config, problems: [], broken: false, apps: apps,
                          devices: [], actions: actions).frame(width: 1800, height: 700), "settings-notifications-wide")
     preview(SettingsView(tab: .constant(.apps), config: config, problems: [], broken: false, apps: apps,

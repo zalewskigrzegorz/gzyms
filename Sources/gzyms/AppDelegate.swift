@@ -9,8 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let model = BarModel()
     /// Sparkle updates. Not started here: `applyUpdates` does it once the config says whether it checks by itself.
     /// Never started outside the bundle (`swift run`), where it would fail on a missing SUFeedURL.
-    private let updater = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
+    private let updateFound = UpdateFound()
+    private lazy var updater = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: updateFound, userDriverDelegate: nil)
     private var updaterStarted = false
+    private var dailyTimer: Timer?
     /// GZYMS_FAKE_BREW=1 on the dev install shows the Homebrew case without a cask.
     private let homebrew = (LoginItem.dev && ProcessInfo.processInfo.environment["GZYMS_FAKE_BREW"] == "1")
         || installedWithHomebrew(exists: { FileManager.default.fileExists(atPath: $0) })
@@ -122,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ws.addObserver(forName: name, object: nil, queue: .main) { [watchdog] _ in watchdog.asleep(asleep) }
         }
         loadConfig()
+        startDaily()
         let home = FileManager.default.homeDirectoryForCurrentUser
         let watcher = StateWatcher(url: home.appendingPathComponent("Library/Application Support/HyprMac/state.json")) { [weak self] read in
             self?.stateEvents.hit(at: ProcessInfo.processInfo.systemUptime)
@@ -964,6 +967,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !updaterStarted { updaterStarted = true; updater.startUpdater() }
     }
 
+    /// Once a day, and a minute after start: rotate the log, and let a Homebrew install hear about a new version.
+    private func startDaily() {
+        updateFound.found = { [weak self] v in self?.newVersionFound(v) }
+        let t = Timer(fire: Date(timeIntervalSinceNow: 60), interval: 86_400, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.daily() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        dailyTimer = t
+    }
+
+    private func daily() {
+        LogFile.rotateIfBig()
+        // Sparkle checks by itself when it is on; this only reads the appcast and installs nothing.
+        guard homebrew, updaterStarted, !updater.updater.automaticallyChecksForUpdates else { return }
+        updater.updater.checkForUpdateInformation()
+    }
+
+    private func newVersionFound(_ version: String) {
+        guard homebrew, !updater.updater.automaticallyChecksForUpdates, isNewer(version, than: gzymsVersion) else { return }
+        model.newVersion = version
+        let key = "toldUpdate"
+        guard shouldTellUpdate(found: version, current: gzymsVersion, told: UserDefaults.standard.string(forKey: key)) else { return }
+        UserDefaults.standard.set(version, forKey: key)
+        log("update: \(version) is out, told once")
+        post(GzymsNotification(id: "update-\(version)", app: nil, level: .info, title: "Gzyms \(version) is out", subtitle: nil,
+                               body: "Update with brew upgrade gzyms.", link: releaseURL(version: version), altLink: nil, sound: nil, at: Date()))
+    }
+
     private func loadConfig() {
         let load = GzymsCore.loadConfig(toml: try? String(contentsOf: ThemeCommand.configFile, encoding: .utf8))
         if !load.broken { LoginItem.sync(wanted: load.config.startAtLogin) }  // before the config lands, so General draws the new state
@@ -1536,6 +1567,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         a.version = gzymsVersion
         a.canCheckForUpdates = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil
         a.homebrew = homebrew
+        a.newVersion = { [weak self] in self?.model.newVersion }
         a.checkForUpdates = { [weak self] in
             self?.settings.stepBack()  // Sparkle's window must come over the floating panel
             self?.updater.checkForUpdates(nil)
@@ -1932,4 +1964,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 func log(_ message: String) {
     FileHandle.standardError.write(Data("\(Date().ISO8601Format()) \(message)\n".utf8))
+}
+
+/// What Sparkle's informational check found (`checkForUpdateInformation`). Sparkle holds its delegate weakly.
+@MainActor
+final class UpdateFound: NSObject, @preconcurrency SPUUpdaterDelegate {
+    var found: (String) -> Void = { _ in }
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) { found(item.displayVersionString) }
 }

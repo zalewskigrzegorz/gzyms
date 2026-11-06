@@ -39,6 +39,8 @@ final class BarModel {
     @ObservationIgnored var onSettingsTab: () -> Void = {}
     var configProblems: [String] = []
     var configBroken = false
+    /// A Homebrew install's daily look at the appcast found this newer version (Settings → About).
+    var newVersion: String?
     var seenApps: [SeenApp] = []
     /// Settings → Apps, step by step: the apps to set up in macOS, and which one is open now. nil = not running.
     var appSetup: (queue: [String], at: Int)?

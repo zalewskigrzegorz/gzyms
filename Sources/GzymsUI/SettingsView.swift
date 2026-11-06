@@ -78,6 +78,8 @@ public struct SettingsActions {
     public var checkForUpdates: () -> Void = {}
     /// Installed with `brew install --cask gzyms`: Homebrew updates the app, Sparkle stays off unless turned on.
     public var homebrew = false
+    /// A newer version the Homebrew install found (Settings → About shows how to get it).
+    public var newVersion: () -> String? = { nil }
     public var quit: () -> Void = {}
     public var openURL: (String) -> Void = { _ in }
     /// A shortcut recorder is listening: the keyboard tap stands aside.
@@ -232,7 +234,7 @@ public struct SettingsView: View {
         case .hacks: HacksTab(config: config, grants: grants, actions: actions, live: live)
         case .debug: DebugTab(config: config, apps: apps, actions: actions, live: live)
         case .about: AboutTab(version: actions.version, open: actions.openURL, canUpdate: actions.canCheckForUpdates,
-                              checkUpdates: actions.checkForUpdates, homebrew: actions.homebrew, quit: actions.quit, config: config, logo: logo,
+                              checkUpdates: actions.checkForUpdates, homebrew: actions.homebrew, newVersion: actions.newVersion(), quit: actions.quit, config: config, logo: logo,
                               choose: actions.chooseLogo, write: actions.write, live: live)
         }
     }
@@ -1175,6 +1177,7 @@ private struct AboutTab: View {
     let canUpdate: Bool
     let checkUpdates: () -> Void
     let homebrew: Bool
+    let newVersion: String?
     let quit: () -> Void
     let config: GzymsConfig
     let logo: NSImage?
@@ -1224,6 +1227,17 @@ private struct AboutTab: View {
             Section(title: "Gzyms") {
                 Row(title: "Version \(version)", note: canUpdate ? nil : "Updates come with the first release.") {
                     if canUpdate { Button("Check for Updates…", action: checkUpdates) }
+                }
+                if let newVersion {
+                    Row(title: "Update to \(newVersion)", note: "Run brew upgrade gzyms in a terminal.") {
+                        HStack(spacing: 8) {
+                            Button("Copy") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString("brew upgrade gzyms", forType: .string)
+                            }
+                            Button("Release") { open(releaseURL(version: newVersion)) }
+                        }
+                    }
                 }
                 if canUpdate {
                     let on = automaticUpdates(chosen: config.updatesAutomatic, homebrew: homebrew)

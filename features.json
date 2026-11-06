@@ -1,6 +1,6 @@
 {
-  "count": 89,
-  "updated": "2026-11-05",
+  "count": 90,
+  "updated": "2026-11-06",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -90,6 +90,7 @@
     "Event log and anomaly detector",
     "Start at login, with a switch in Settings → General",
     "Notification when several apps send the same notification, with the list in Settings → Debug",
-    "Automatic updates switch, off by default for Homebrew installs"
+    "Automatic updates switch, off by default for Homebrew installs",
+    "Homebrew installs hear about a new version once, with brew upgrade in Settings → About"
   ]
 }
