@@ -69,6 +69,7 @@ if args.first == "hud" {
         exit(0)
     }
     barLock = lock
+    LogFile.take()  // after the lock: a second bar must not write into the first one's log
     delegate = AppDelegate()
 }
 app.delegate = delegate
