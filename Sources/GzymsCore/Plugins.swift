@@ -129,9 +129,47 @@ public struct PluginItem: Equatable, Sendable {
     public var tooltip: String?
     /// Rows of the list a click opens; nil = a click goes straight to the plugin.
     public var menu: [PluginRow]?
-    public init(id: String, text: String, icon: String? = nil, color: String? = nil, tooltip: String? = nil, menu: [PluginRow]? = nil) {
+    /// The plugin could not get this pill's data: what broke and how to fix it. The pill greys out until a line without it.
+    public var error: String?
+    /// Seconds in which the plugin promises to say something about this pill again. Silent for much longer = failed.
+    /// nil = no promise (a plugin that speaks only when something happens).
+    public var expect: Int?
+    public init(id: String, text: String, icon: String? = nil, color: String? = nil, tooltip: String? = nil, menu: [PluginRow]? = nil,
+                error: String? = nil, expect: Int? = nil) {
         self.id = id; self.text = text; self.icon = icon; self.color = color; self.tooltip = tooltip; self.menu = menu
+        self.error = error; self.expect = expect
     }
+}
+
+/// Why a pill is greyed out, and since when. The numbers on it are old.
+public struct PluginFailure: Equatable, Sendable {
+    public var message: String
+    public var since: Date
+    public init(message: String, since: Date) { self.message = message; self.since = since }
+}
+
+/// A pill the host keeps for a plugin: the last line about it, when it came, and since when the plugin has said it failed.
+public struct HeldItem: Equatable, Sendable {
+    public var item: PluginItem
+    public var heard: Date
+    public var errorSince: Date?
+    public init(item: PluginItem, heard: Date, errorSince: Date? = nil) { self.item = item; self.heard = heard; self.errorSince = errorSince }
+}
+
+/// A new line about a pill. An error that carries on keeps the time it started.
+public func hold(_ item: PluginItem, previous: HeldItem?, now: Date) -> HeldItem {
+    HeldItem(item: item, heard: now, errorSince: item.error == nil ? nil : (previous?.item.error == nil ? now : previous?.errorSince ?? now))
+}
+
+/// Failed when the plugin said so, when its process is gone (`exit`), or when it has been silent for much longer
+/// than it promised (`expect`: twice that and half a minute, for a slow call). nil = the numbers are fresh.
+public func pluginFailure(_ h: HeldItem, exit: PluginFailure?, now: Date) -> PluginFailure? {
+    if let exit { return exit }
+    if let e = h.item.error { return PluginFailure(message: e, since: h.errorSince ?? h.heard) }
+    if let s = h.item.expect, now.timeIntervalSince(h.heard) > Double(s) * 2 + 30 {
+        return PluginFailure(message: "No answer for a while. These numbers may be old.", since: h.heard)
+    }
+    return nil
 }
 
 /// One row of a plugin's list: a coloured tag on the left, the text, a detail on the right. A click (left or right)
@@ -152,7 +190,9 @@ public struct PluginRow: Equatable, Sendable {
 public struct PluginPill: Equatable, Sendable {
     public var plugin: String
     public var item: PluginItem
-    public init(plugin: String, item: PluginItem) { self.plugin = plugin; self.item = item }
+    /// nil = fresh. Set = greyed out with a warning, and its popup says why.
+    public var failure: PluginFailure?
+    public init(plugin: String, item: PluginItem, failure: PluginFailure? = nil) { self.plugin = plugin; self.item = item; self.failure = failure }
     /// Two plugins may both call a pill "status".
     public var key: String { "\(plugin)/\(item.id)" }
 }
@@ -190,6 +230,7 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
     struct Row: Decodable { var id, text, tag, color, detail: String?; var separator: Bool? }
     struct Item: Decodable {
         var id: String?; var text: String?; var icon: String?; var color: String?; var tooltip: String?; var remove: Bool?; var menu: [Row]?
+        var error: String?; var expect: Int?
     }
     struct Notify: Decodable {
         var id: String?, title: String?, subtitle: String?, body: String?, level: String?, sound: String?, link: String?
@@ -203,7 +244,8 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
         let menu = i.menu.map { rows in
             rows.map { PluginRow(id: $0.id, text: $0.text ?? "", tag: $0.tag, color: $0.color, detail: $0.detail, separator: $0.separator ?? false) }
         }
-        return .item(PluginItem(id: id, text: text, icon: i.icon, color: i.color, tooltip: i.tooltip, menu: menu))
+        return .item(PluginItem(id: id, text: text, icon: i.icon, color: i.color, tooltip: i.tooltip, menu: menu,
+                                error: i.error.flatMap { $0.isEmpty ? nil : $0 }, expect: i.expect.flatMap { $0 > 0 ? $0 : nil }))
     }
     if let n = raw.notify, let title = n.title, !title.isEmpty {
         let level = n.level.flatMap(NotifyLevel.init(rawValue:)) ?? .info

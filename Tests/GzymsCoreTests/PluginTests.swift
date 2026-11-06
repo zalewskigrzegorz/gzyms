@@ -94,3 +94,42 @@ import Testing
     #expect(l.config.disabledPlugins == ["prs"])
     #expect(l.problems.isEmpty)
 }
+
+// MARK: - A pill that cannot get its data
+
+@Test func anItemCanSayItFailedAndWhenItWillSpeakAgain() {
+    let now = Date(timeIntervalSince1970: 0)
+    #expect(pluginMessage(#"{"item":{"id":"p","text":"3","error":"gh is logged out","expect":120}}"#, plugin: "gh", now: now)
+        == .item(PluginItem(id: "p", text: "3", error: "gh is logged out", expect: 120)))
+    // An empty error and a promise of 0 seconds mean nothing.
+    #expect(pluginMessage(#"{"item":{"id":"p","text":"3","error":"","expect":0}}"#, plugin: "gh", now: now)
+        == .item(PluginItem(id: "p", text: "3")))
+}
+
+@Test func aPillFailsWhenItSaysSoWhenTheProcessIsGoneOrWhenItGoesQuiet() {
+    let t0 = Date(timeIntervalSince1970: 1000)
+    let fine = HeldItem(item: PluginItem(id: "p", text: "3", expect: 60), heard: t0)
+    #expect(pluginFailure(fine, exit: nil, now: t0.addingTimeInterval(60)) == nil)
+    // Silent for twice what it promised and half a minute: failed, since the last word.
+    #expect(pluginFailure(fine, exit: nil, now: t0.addingTimeInterval(150)) == nil)
+    #expect(pluginFailure(fine, exit: nil, now: t0.addingTimeInterval(151))?.since == t0)
+    // A plugin that promised nothing may be quiet for ever.
+    let quiet = HeldItem(item: PluginItem(id: "p", text: "3"), heard: t0)
+    #expect(pluginFailure(quiet, exit: nil, now: t0.addingTimeInterval(86400)) == nil)
+    // Its own word, and a dead process: both fail every pill it left.
+    let said = HeldItem(item: PluginItem(id: "p", text: "3", error: "no network"), heard: t0, errorSince: t0.addingTimeInterval(-30))
+    #expect(pluginFailure(said, exit: nil, now: t0) == PluginFailure(message: "no network", since: t0.addingTimeInterval(-30)))
+    let gone = PluginFailure(message: "stopped", since: t0)
+    #expect(pluginFailure(quiet, exit: gone, now: t0) == gone)
+}
+
+@Test func anErrorKeepsItsStartWhileItLastsAndGoesWithTheNextGoodLine() {
+    let t0 = Date(timeIntervalSince1970: 1000)
+    let bad = PluginItem(id: "p", text: "3", error: "no network"), good = PluginItem(id: "p", text: "4")
+    let h1 = hold(bad, previous: hold(good, previous: nil, now: t0), now: t0.addingTimeInterval(10))
+    #expect(h1.errorSince == t0.addingTimeInterval(10))
+    let h2 = hold(PluginItem(id: "p", text: "3", error: "still no network"), previous: h1, now: t0.addingTimeInterval(70))
+    #expect(h2.errorSince == t0.addingTimeInterval(10) && h2.heard == t0.addingTimeInterval(70))
+    let h3 = hold(good, previous: h2, now: t0.addingTimeInterval(130))
+    #expect(h3.errorSince == nil && pluginFailure(h3, exit: nil, now: t0.addingTimeInterval(130)) == nil)
+}

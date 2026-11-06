@@ -1,5 +1,5 @@
 {
-  "count": 90,
+  "count": 92,
   "updated": "2026-11-06",
   "features": [
     "gzyms notify command",
@@ -21,8 +21,10 @@
     "Log watcher plugin",
     "GitHub pull requests plugin",
     "GitHub builds plugin",
+    "Star watcher plugin (GitHub stars, a note for each new stargazer)",
     "Coding agents plugin (tuios)",
     "Catalog plugins update themselves unless you edited them",
+    "A pill that cannot get its data greys out with a warning and says what broke",
     "Five notification levels",
     "Banner stack with a waiting queue",
     "Armageddon full-screen alert",

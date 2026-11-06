@@ -830,6 +830,7 @@ public struct PluginPillView: View {
     @Environment(\.theme) private var theme
     @Environment(\.reportIconFrame) private var report
     @Environment(\.hiddenCounts) private var hiddenCounts
+    @Environment(\.timeZone) private var timeZone
     public init(pill: PluginPill, small: Bool, notes: [GzymsNotification] = [], onOpen: @escaping (String) -> Void = { _ in },
                 onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
         self.pill = pill; self.small = small; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
@@ -837,13 +838,16 @@ public struct PluginPillView: View {
     var popupID: String { "plugin:\(pill.plugin):\(pill.item.id)" }
 
     public var body: some View {
-        let i = pill.item
+        let i = pill.item, failure = pill.failure
         HStack(spacing: small ? 4 : 5) {
             if let icon = i.icon { Image(systemName: icon).font(.system(size: small ? 9 : 10)) }
             pluginText(i.text, theme).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 160)
+            if failure != nil { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: small ? 8 : 9)).foregroundStyle(theme[\.peach]) }
         }
         .font(.system(size: small ? 10 : 11))
-        .foregroundStyle(theme.tint(i.color))
+        // A pill that cannot get its data greys out: its numbers are old and must not pass for fresh.
+        .foregroundStyle(failure == nil ? theme.tint(i.color) : theme[\.overlay])
+        .opacity(failure == nil ? 1 : 0.6)
         .padding(.horizontal, small ? 6 : 8)
         .padding(.vertical, small ? 2 : 4)
         .background(theme[\.surface], in: RoundedRectangle(cornerRadius: 10))
@@ -855,24 +859,33 @@ public struct PluginPillView: View {
             }
         }
         .overlay(Clicks(left: {
-            guard i.menu != nil || !notes.isEmpty else { send(.click, i.id); return }
+            guard i.menu != nil || !notes.isEmpty || failure != nil else { send(.click, i.id); return }
             popups.binding(popupID).wrappedValue.toggle()
         }, right: { send(.rightClick, i.id) }))
-        .help(i.tooltip ?? pill.plugin)
+        .help(failure.map { "\($0.message) \(failureSince($0, timeZone))" } ?? i.tooltip ?? pill.plugin)
         // Opened by a click or by the keyboard: the plugin hears it either way.
         .onChange(of: popups.open == popupID) { _, on in if on { send(.open, i.id) } }
         // dd clears its notifications; a popup that was only them closes when they are gone.
         .onChange(of: notes.map(\.id), initial: true) {
             popups.clears[popupID] = notes.isEmpty ? nil : { [notes, onRemove] in notes.forEach { onRemove($0.id) } }
-            if notes.isEmpty, i.menu == nil, popups.open == popupID { popups.open = nil }
+            if notes.isEmpty, i.menu == nil, failure == nil, popups.open == popupID { popups.open = nil }
         }
         .onDisappear { popups.clears[popupID] = nil }
         .popover(isPresented: popups.binding(popupID), arrowEdge: .bottom) {
-            PluginMenuView(rows: i.menu ?? [], notes: notes, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove) { e, id in
+            PluginMenuView(rows: i.menu ?? [], notes: notes, failure: failure, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove) { e, id in
                 popups.open = nil; send(e, id)
             }.environment(\.theme, theme).environment(\.popups, popups)
         }
     }
+}
+
+/// "Since 19:02", in the viewer's time.
+func failureSince(_ f: PluginFailure, _ tz: TimeZone) -> String {
+    let fmt = DateFormatter()
+    fmt.locale = Locale(identifier: "en_US_POSIX")
+    fmt.timeZone = tz
+    fmt.dateFormat = "HH:mm"
+    return "Since \(fmt.string(from: f.since))."
 }
 
 /// A plugin's text with its `:symbol:` pieces drawn as SF Symbols, in the text's font and colour, or the `@colour` they name.
@@ -891,17 +904,30 @@ func pluginText(_ s: String, _ theme: Theme) -> Text {
 public struct PluginMenuView: View {
     let rows: [PluginRow]
     let notes: [GzymsNotification]
+    /// Why the pill is greyed out: said first, and the rows under it are old.
+    let failure: PluginFailure?
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
     let send: (PluginEvent, String) -> Void
     @Environment(\.theme) private var theme
-    public init(rows: [PluginRow], notes: [GzymsNotification] = [], onOpen: @escaping (String) -> Void = { _ in },
+    @Environment(\.timeZone) private var timeZone
+    public init(rows: [PluginRow], notes: [GzymsNotification] = [], failure: PluginFailure? = nil, onOpen: @escaping (String) -> Void = { _ in },
                 onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
-        self.rows = rows; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
+        self.rows = rows; self.notes = notes; self.failure = failure; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 1) {
+            if let failure {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme[\.peach])
+                    Text(failure.message).lineLimit(2).foregroundStyle(theme[\.text])
+                    Spacer(minLength: 8)
+                    Text(failureSince(failure, timeZone)).foregroundStyle(theme[\.overlay]).layoutPriority(1)
+                }
+                .font(.system(size: 12)).padding(.horizontal, 6).padding(.vertical, 4)
+                if !rows.isEmpty || !notes.isEmpty { Divider().padding(.vertical, 3) }
+            }
             if !notes.isEmpty {
                 InboxRows(notes: notes, onOpen: onOpen, onRemove: onRemove)
                 if !rows.isEmpty { Divider().padding(.vertical, 3) }
@@ -912,6 +938,7 @@ public struct PluginMenuView: View {
                 if r.separator { Divider().padding(.vertical, 3) }
                 else { PluginRowView(row: r, index: live.firstIndex(of: n).map { $0 + notes.count }, send: send) }
             }
+            .opacity(failure == nil ? 1 : 0.5)
         }
         .popupStyle(theme, width: 580) { if !notes.isEmpty { InboxHeader(notes: notes, onRemove: onRemove) } }
     }

@@ -6,7 +6,7 @@ A plugin is a folder with a `plugin.toml` and a program in any language. Gzyms s
 
 - `gzyms plugin new <name>` makes `~/.config/gzyms/plugins/<name>/` with a working click counter in bash. Start from it. The name is lowercase letters, digits, `-` and `_`.
 - `gzyms plugin list` lists the plugins with `on`, `off` or `broken` and why.
-- `gzyms plugin add <name>` installs a ready plugin from the built-in catalog. Without a name it lists them: `log-watcher` (log lines to notifications), `agents` (coding agents from tuios; it lives in Settings → Agents, where "Turn on" does the same as `add`, and not in the Plugins list), `gh-prs` (your pull requests through the gh CLI: a glyph per state, fix, merge, comments and draft, with the number of PRs in it) and `gh-builds` (CI of your pull requests and chosen branches: a glyph for failed, running and passed, with the number of PRs or branches). Each is a plain script you can read and change after `add`. Gzyms keeps an unchanged catalog plugin up to date: on launch it puts the new version in place before the plugin starts, and options in config.toml stay. A plugin you edited is left alone. When the catalog has a newer version, the plugin's side panel in Settings → Plugins (Settings → Agents for `agents`) offers Update, which keeps your copy as `<name>.bak-<date>` next to it. The `.gzyms-catalog` file in the folder is how Gzyms tells an edit from an old copy.
+- `gzyms plugin add <name>` installs a ready plugin from the built-in catalog. Without a name it lists them: `log-watcher` (log lines to notifications), `agents` (coding agents from tuios; it lives in Settings → Agents, where "Turn on" does the same as `add`, and not in the Plugins list), `gh-prs` (your pull requests through the gh CLI: a glyph per state, fix, merge, comments and draft, with the number of PRs in it) and `gh-builds` (CI of your pull requests and chosen branches: a glyph for failed, running and passed, with the number of PRs or branches) and `star-watcher` (GitHub stars of repos you pick on one gold pill, a row per repo that opens its stargazers, a notification with the name of each new stargazer, also for stars that came while Gzyms was off). Each is a plain script you can read and change after `add`. Gzyms keeps an unchanged catalog plugin up to date: on launch it puts the new version in place before the plugin starts, and options in config.toml stay. A plugin you edited is left alone. When the catalog has a newer version, the plugin's side panel in Settings → Plugins (Settings → Agents for `agents`) offers Update, which keeps your copy as `<name>.bak-<date>` next to it. The `.gzyms-catalog` file in the folder is how Gzyms tells an edit from an old copy.
 - `gzyms plugin remove <name>` moves the folder to the Trash.
 
 Gzyms watches the plugins folder, so a new or removed folder needs no restart. Gzyms keeps running the program it started: after editing it, turn the plugin off and on with `gzyms set plugins.<name>.enabled false` and then `gzyms set plugins.<name>.enabled true` (or in Settings → Plugins).
@@ -59,6 +59,18 @@ A pill on the bar. A line with the same `"id"` updates it.
 {"item":{"id":"prs","remove":true}}
 ```
 
+A pill that cannot get its data says so with `"error"` on the item, a sentence of what broke and how to fix it. Gzyms greys the pill out with a small warning, and the tooltip and the top of its popup say the sentence and since when. Send the same pill without `"error"` once it works again. Never keep showing old numbers as if they were fresh: send the error instead.
+
+```json
+{"item":{"id":"prs","text":"3","icon":"arrow.triangle.branch","error":"gh is logged out. Run gh auth login in a terminal."}}
+```
+
+A plugin that polls promises how often with `"expect"`, in seconds, on every item it sends. Gzyms greys the pill out when the plugin stays silent for more than twice that and half a minute, for example when a call hangs. Then print the pill on every poll, also when nothing changed, so Gzyms hears that you are alive. No `"expect"` means no promise: a plugin that speaks only when something happens may be quiet for ever.
+
+```json
+{"item":{"id":"prs","text":"3","expect":120}}
+```
+
 A pill with `"menu"` opens a list on click. A row with an `"id"` can be clicked, a row without one is a label, `"separator":true` draws a line. `"tag"` is a coloured tag on the left, `"detail"` sits on the right.
 
 ```json
@@ -104,8 +116,8 @@ A line for `~/Library/Logs/Gzyms/gzyms.log`, written as `plugin <name>: …`. Us
 
 ## Rules
 
-- Print only when something changed. Gzyms redraws on every line.
+- Print only when something changed. Gzyms redraws only when a line differs. A plugin with `"expect"` prints every poll anyway.
 - When stdin ends, Gzyms is gone: exit.
 - Long work (network, a slow command) runs in the background, so clicks are still read.
-- A plugin that exits is started again after 1 s, 2 s, 4 s and so on, up to a minute.
+- A plugin that exits is started again after 1 s, 2 s, 4 s and so on, up to a minute. Until it talks again, its pills stay on the bar greyed out with a warning, so a crash never shows old numbers as fresh.
 - A line that is not a message, and the first 20 lines of stderr, go to `~/Library/Logs/Gzyms/gzyms.log` as `plugin <name>: …`. Read it when a pill does not show up.

@@ -10,7 +10,7 @@ public struct CatalogPlugin: Sendable {
     }
 }
 
-public let pluginCatalog: [CatalogPlugin] = [logWatcher, agents, ghPRs, ghBuilds]
+public let pluginCatalog: [CatalogPlugin] = [logWatcher, agents, ghPRs, ghBuilds, starWatcher]
 
 /// Holds the hash of the catalog files Gzyms last wrote into the folder: files that differ from it are the user's edit.
 public let catalogMarker = ".gzyms-catalog"
@@ -189,9 +189,13 @@ private let logWatcher = CatalogPlugin(
       done
       [ -z "$rows" ] && rows='{"text":"Nothing matched yet."},'
       rows+='{"separator":true},{"id":"clear","text":"Clear the list"}'
-      local text="" c=overlay
+      local text="" c=overlay err="" f
       [ "$unseen" -gt 0 ] && text="$unseen" && c=$(color "$worst")
-      echo "{\"item\":{\"id\":\"logs\",\"text\":\"$text\",\"icon\":\"doc.text.magnifyingglass\",\"color\":\"$c\",\"tooltip\":\"$(j "${#files[@]} file(s) watched")\",\"menu\":[$rows]}}"
+      # tail would stay silent about it: a pill that says nothing matched would be a lie
+      for f in "${files[@]}"; do
+        [ -e "$f" ] && [ ! -r "$f" ] && { err=",\"error\":\"$(j "Cannot read $f. Check its permissions.")\""; break; }
+      done
+      echo "{\"item\":{\"id\":\"logs\",\"text\":\"$text\",\"icon\":\"doc.text.magnifyingglass\",\"color\":\"$c\",\"tooltip\":\"$(j "${#files[@]} file(s) watched")\",\"menu\":[$rows]$err}}"
     }
 
     matched() {  # level line
@@ -298,10 +302,11 @@ private let agents = CatalogPlugin(
     color() { case "$1" in waits) echo peach;; working) echo sky;; done) echo green;; *) echo overlay;; esac; }
 
     if [ ! -x "$TUIOS" ]; then
-      echo '{"item":{"id":"agents","text":"no tuios","icon":"sparkles","color":"overlay","tooltip":"This plugin reads tuios. Without it there is nothing to show."}}'
+      echo '{"item":{"id":"agents","text":"no tuios","icon":"sparkles","error":"tuios is not installed. This plugin reads it. Install tuios, then turn the plugin off and on."}}'
       exec cat >/dev/null  # stays until Gzyms closes stdin
     fi
 
+    shown_text="" shown_menu=""  # the last good pill, kept to grey out when tuios stops answering
     prev=""   # what the last check saw: id, state, needs you, working since (s)
     rows=""   # id, session, state, needs you, name, message
     # n starts from the clock: after a bar restart a counter from 0 reused ids still in the bell, and the new note replaced the old one silently.
@@ -314,11 +319,18 @@ private let agents = CatalogPlugin(
       echo "{\"notify\":{\"id\":\"agent-$2-$n\",\"level\":\"$1\",\"sound\":\"$sound\",\"title\":\"$(j "$4")\",\"subtitle\":\"$(j "$3") · click to go there\",\"body\":\"$(j "$5")\",\"row\":\"$2\"}}"
     }
 
+    fail() {  # sentence: the last pill with what broke. Gzyms greys it out, so its numbers do not pass for fresh.
+      local item="{\"item\":{\"id\":\"agents\",\"text\":\"$shown_text\",\"icon\":\"sparkles\",\"error\":\"$(j "$1")\"${shown_menu:+,\"menu\":[${shown_menu%,}]}}}"
+      [ "$item" != "$last" ] && echo "$item" && last="$item"
+    }
+
     poll() {
-      local now id session state needs name msg ostate oneeds since tag waiting=0 working=0 menu="" next=""
+      local now id session state needs name msg ostate oneeds since tag waiting=0 working=0 menu="" next="" raw
       now=$(date +%s)
-      rows=$("$TUIOS" list-agents --all-sessions --json 2>/dev/null | "$JQ" -r '.agents[] | [.window_id, .session, .state,
-        (.needs_you | tostring), .name, (if (.message // "") != "" then .message else (.meta.prompt // "") end)] | @tsv' 2>/dev/null) || return
+      raw=$("$TUIOS" list-agents --all-sessions --json 2>/dev/null) || { fail "tuios did not answer. Is it running? This pill updates by itself when it does."; return; }
+      rows=$(printf '%s\n' "$raw" | "$JQ" -r '.agents[] | [.window_id, .session, .state,
+        (.needs_you | tostring), .name, (if (.message // "") != "" then .message else (.meta.prompt // "") end)] | @tsv' 2>/dev/null) \
+        || { fail "tuios answered with something this plugin cannot read. Update tuios."; return; }
       while IFS=$'\t' read -r id session state needs name msg; do
         [ -n "$id" ] || continue
         IFS=$'\t' read -r ostate oneeds since <<< "$(printf '%s\n' "$prev" | awk -F'\t' -v id="$id" '$1 == id { print $2 "\t" $3 "\t" $4 }')"
@@ -339,6 +351,7 @@ private let agents = CatalogPlugin(
       local text="" c=overlay
       if [ $waiting -gt 0 ]; then text=$waiting c=peach; elif [ $working -gt 0 ]; then text=$working c=sky; fi
       [ -z "$menu" ] && menu='{"text":"No agents in tuios."},'
+      shown_text=$text shown_menu=$menu
       local pill="{\"item\":{\"id\":\"agents\",\"text\":\"$text\",\"icon\":\"sparkles\",\"color\":\"$c\",\"tooltip\":\"$waiting waiting, $working working\",\"menu\":[${menu%,}]}}"
       [ "$pill" != "$last" ] && echo "$pill" && last="$pill"
     }

@@ -11,7 +11,11 @@ final class PluginHost {
         var process: Process?
         var stdin: FileHandle?
         var buffer = Data()
-        var items: [PluginItem] = []
+        var held: [HeldItem] = []
+        /// The process is gone: every pill it left greys out until the new one talks.
+        var exit: PluginFailure?
+        /// Started again with old pills still held: the first line it prints replaces them.
+        var restarted = false
         var failures = 0
         var started = Date()
         var retry: Timer?
@@ -28,6 +32,8 @@ final class PluginHost {
     private var values: [String: [String: TOMLValue]] = [:]  // config.toml's `[plugins.<folder>]` options
     private var watchers: [DispatchSourceFileSystemObject] = []
     private var pending: DispatchWorkItem?
+    private var staleTimer: Timer?
+    private var failing: Set<String> = []
     var onItems: ([PluginPill]) -> Void = { _ in }
     var onNotify: (GzymsNotification) -> Void = { _ in }
     var onStatus: ([PluginStatus]) -> Void = { _ in }
@@ -39,6 +45,14 @@ final class PluginHost {
         values = options
         watch()
         rescan()
+        // A plugin gone silent sends nothing, so a clock asks whether a pill has outlived its promise.
+        let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.checkStale() } }
+        RunLoop.main.add(t, forMode: .common)
+        staleTimer = t
+    }
+
+    private func checkStale() {
+        if Set(pills().filter { $0.failure != nil }.map(\.key)) != failing { publish() }
     }
 
     /// A plugin reads its options once, from its environment: a change restarts just that plugin.
@@ -57,7 +71,7 @@ final class PluginHost {
         rescan()
     }
 
-    func stopAll() { for f in Array(runs.keys) { stop(f) } }
+    func stopAll() { staleTimer?.invalidate(); for f in Array(runs.keys) { stop(f) } }
 
     func send(plugin: String, _ e: PluginEvent, id: String) {
         guard let h = runs[plugin]?.stdin else { return }
@@ -174,6 +188,7 @@ final class PluginHost {
             r.stdin = inp.fileHandleForWriting
             r.started = Date()
             r.stderrLines = 0
+            r.restarted = !r.held.isEmpty
             log("plugin \(folder): started")
         } catch {
             r.problem = "could not start: \(error.localizedDescription)"
@@ -188,19 +203,20 @@ final class PluginHost {
         r.process = nil
         try? r.stdin?.close()  // EOF: a well-behaved plugin exits by itself
         p?.terminate()
-        if !r.items.isEmpty { publish() }
+        if !r.held.isEmpty { publish() }
     }
 
     private func ended(_ folder: String, _ p: Process, status: Int32) {
         guard let r = runs[folder], r.process === p else { return }  // stopped on purpose
         r.process = nil
         r.stdin = nil
-        r.items = []
         r.buffer = Data()
         // A plugin that ran a while and then died starts a fresh streak.
         r.failures = Date().timeIntervalSince(r.started) > 60 ? 1 : r.failures + 1
         let wait = min(60, pow(2, Double(r.failures - 1)))
         r.problem = "exited (\(status)), starting again in \(Int(wait)) s"
+        // Its pills stay, greyed out: gone would hide that it broke, and the old numbers must not pass for fresh.
+        r.exit = PluginFailure(message: "The plugin stopped (exit \(status)). Starting it again in \(Int(wait)) s.", since: Date())
         if r.failures <= 3 || r.failures % 10 == 0 { log("plugin \(folder): \(r.problem!)") }
         let t = Timer(timeInterval: wait, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -223,19 +239,25 @@ final class PluginHost {
             let line = String(decoding: r.buffer[..<nl], as: UTF8.self).trimmingCharacters(in: .whitespaces)
             r.buffer.removeSubrange(...nl)
             guard !line.isEmpty else { continue }
-            switch pluginMessage(line, plugin: folder, now: Date()) {
+            let now = Date()
+            if r.restarted { r.held = []; r.restarted = false; changed = true }
+            switch pluginMessage(line, plugin: folder, now: now) {
             case .item(let i)?:
-                if let at = r.items.firstIndex(where: { $0.id == i.id }) { if r.items[at] != i { r.items[at] = i; changed = true } }
-                else { r.items.append(i); changed = true }
+                if let at = r.held.firstIndex(where: { $0.item.id == i.id }) {
+                    let old = r.held[at], new = hold(i, previous: old, now: now)
+                    r.held[at] = new
+                    // A line that repeats the pill still counts: it is how a plugin says it is alive.
+                    changed = changed || old.item != i || pluginFailure(old, exit: r.exit, now: now) != pluginFailure(new, exit: nil, now: now)
+                } else { r.held.append(hold(i, previous: nil, now: now)); changed = true }
             case .removeItem(let id)?:
-                let before = r.items.count
-                r.items.removeAll { $0.id == id }
-                changed = changed || r.items.count != before
+                let before = r.held.count
+                r.held.removeAll { $0.item.id == id }
+                changed = changed || r.held.count != before
             case .notify(let n)?: onNotify(n)
             case .log(let l)?: log("plugin \(folder): \(l.prefix(200))")
             case nil: log("plugin \(folder): not a message: \(line.prefix(120))")
             }
-            if r.problem != nil { r.problem = nil; r.failures = 0; publish() }  // it talks: it works
+            if r.problem != nil { r.problem = nil; r.exit = nil; r.failures = 0; changed = true }  // it talks: it works
         }
         if r.buffer.count > 1 << 20 { r.buffer = Data(); log("plugin \(folder): a line over 1 MB, dropped") }
         if changed { publish() }
@@ -249,22 +271,31 @@ final class PluginHost {
         }
     }
 
+    private func pills() -> [PluginPill] {
+        let now = Date()
+        return runs.keys.sorted().flatMap { f in
+            runs[f]!.held.map { PluginPill(plugin: f, item: $0.item, failure: pluginFailure($0, exit: runs[f]!.exit, now: now)) }
+        }
+    }
+
     private func publish() {
-        onItems(runs.keys.sorted().flatMap { f in runs[f]!.items.map { PluginPill(plugin: f, item: $0) } })
-        var all: [PluginStatus] = runs.values.map { r in
+        let all = pills()
+        failing = Set(all.filter { $0.failure != nil }.map(\.key))
+        onItems(all)
+        var statuses: [PluginStatus] = runs.values.map { r in
             PluginStatus(folder: r.manifest.folder, name: r.manifest.name, description: r.manifest.description, enabled: true,
                          running: r.process != nil, problem: r.problem, options: r.manifest.options,
                          catalogNewer: catalogNewer.contains(r.manifest.folder), icon: r.manifest.icon)
         }
-        all += broken.map { PluginStatus(folder: $0.key, name: $0.value.name, description: "", enabled: !disabled.contains($0.key),
+        statuses += broken.map { PluginStatus(folder: $0.key, name: $0.value.name, description: "", enabled: !disabled.contains($0.key),
                                          running: false, problem: $0.value.problem) }
         // Disabled ones are still listed so they can be turned back on.
-        let listed = Set(all.map(\.folder))
+        let listed = Set(statuses.map(\.folder))
         for folder in disabled where !listed.contains(folder) {
             guard let toml = try? String(contentsOf: dir.appendingPathComponent(folder).appendingPathComponent("plugin.toml"), encoding: .utf8),
                   case .success(let m) = pluginManifest(toml: toml, folder: folder) else { continue }
-            all.append(PluginStatus(folder: folder, name: m.name, description: m.description, enabled: false, running: false, options: m.options, icon: m.icon))
+            statuses.append(PluginStatus(folder: folder, name: m.name, description: m.description, enabled: false, running: false, options: m.options, icon: m.icon))
         }
-        onStatus(all.sorted { $0.folder < $1.folder })
+        onStatus(statuses.sorted { $0.folder < $1.folder })
     }
 }

@@ -253,3 +253,73 @@ private func script(_ d: URL) -> String { (try? String(contentsOf: d.appending(p
     p.waitUntilExit()
     #expect(String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) == "v2\n")
 }
+
+// MARK: - Errors stay visible
+
+/// Runs a plugin script, lets it print for `seconds`, closes stdin and returns what it printed as pills.
+private func pills(of script: String, env: [String: String], seconds: Double = 2) throws -> [PluginItem] {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "gzyms-err-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let file = dir.appending(path: "plugin.sh")
+    try script.write(to: file, atomically: true, encoding: .utf8)
+    let p = Process(), out = Pipe(), inp = Pipe()
+    p.executableURL = URL(filePath: "/bin/bash")
+    p.arguments = [file.path]
+    p.environment = env
+    p.standardOutput = out
+    p.standardInput = inp
+    try p.run()
+    Thread.sleep(forTimeInterval: seconds)
+    try inp.fileHandleForWriting.close()
+    let deadline = Date().addingTimeInterval(5)
+    while p.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+    if p.isRunning { p.terminate() }
+    return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").compactMap { l in
+        if case .item(let i)? = pluginMessage(String(l), plugin: "t", now: Date()) { return i } else { return nil }
+    }
+}
+
+/// No tuios, and a tuios that stops answering after the first look: the pill keeps its numbers and says it failed. It recovers by itself.
+@Test func agentsSaysWhenTuiosIsMissingOrStopsAnswering() throws {
+    let ag = try #require(pluginCatalog.first { $0.name == "agents" })
+    let none = try pills(of: ag.script, env: ["TUIOS_BIN": "/nonexistent/tuios", "PATH": "/usr/bin:/bin"], seconds: 0.5)
+    #expect(none.map(\.text) == ["no tuios"] && none.first?.error?.contains("tuios is not installed") == true)
+
+    let dir = FileManager.default.temporaryDirectory.appending(path: "gzyms-agf-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let fake = dir.appending(path: "tuios"), down = dir.appending(path: "down")
+    let one = #"{"agents":[{"window_id":"a","session":"s","state":"needs_input","needs_you":true,"name":"A","message":""}]}"#
+    try "#!/bin/bash\n[ -e '\(down.path)' ] && exit 1\necho '\(one)'\n".write(to: fake, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+    let m = try pluginManifest(toml: ag.manifest, folder: "agents").get()
+    let env = pluginEnvironment(m, values: ["source": .string("poll"), "every": .int(1)]).merging(["TUIOS_BIN": fake.path, "PATH": "/usr/bin:/bin"]) { $1 }
+    // The first look is fine, then tuios goes down.
+    DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { try? "".write(to: down, atomically: true, encoding: .utf8) }
+    let seen = try pills(of: ag.script, env: env, seconds: 3.5)
+    #expect(seen.first?.text == "1" && seen.first?.error == nil)
+    #expect(seen.last?.text == "1" && seen.last?.error?.contains("tuios did not answer") == true)
+    #expect(seen.last?.menu?.first?.text == "A")
+}
+
+/// A file that exists and cannot be read would never match: the pill says so.
+@Test func logWatcherSaysWhenAFileCannotBeRead() throws {
+    let lw = try #require(pluginCatalog.first { $0.name == "log-watcher" })
+    let dir = FileManager.default.temporaryDirectory.appending(path: "gzyms-lwe-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: dir.appending(path: "locked.log").path); try? FileManager.default.removeItem(at: dir) }
+    let locked = dir.appending(path: "locked.log")
+    try "x".write(to: locked, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+    let m = try pluginManifest(toml: lw.manifest, folder: "log-watcher").get()
+    let r = try pills(of: lw.script, env: pluginEnvironment(m, values: ["files": .strings([locked.path])]).merging(["PATH": "/usr/bin:/bin"]) { $1 }, seconds: 1)
+    #expect(r.last?.error == "Cannot read \(locked.path). Check its permissions.")
+}
+
+@Test func theStarWatcherIsInTheCatalogWithItsOptions() throws {
+    let c = try #require(pluginCatalog.first { $0.name == "star-watcher" })
+    let m = try pluginManifest(toml: c.manifest, folder: c.name).get()
+    #expect(m.options.map(\.key) == ["repos", "every"] && m.icon == "star")
+    #expect(m.options.map(\.kind) == [.list, .number])
+}

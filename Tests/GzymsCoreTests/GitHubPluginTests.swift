@@ -5,7 +5,7 @@ import Testing
 /// Runs a catalog plugin's real script against a fake gh that answers with `answers[i]` from the i-th step on,
 /// then closes stdin and returns every line it printed. `events` go to stdin after the last answer.
 private func runGH(_ name: String, values: [String: TOMLValue], answers: [String], gh: String? = nil, noGH: Bool = false,
-                   events: [String] = []) throws -> (notes: [GzymsNotification], pills: [PluginItem], lines: [String]) {
+                   events: [String] = [], env: [String: String] = [:]) throws -> (notes: [GzymsNotification], pills: [PluginItem], lines: [String]) {
     let c = try #require(pluginCatalog.first { $0.name == name })
     let dir = FileManager.default.temporaryDirectory.appending(path: "gzyms-gh-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -21,7 +21,7 @@ private func runGH(_ name: String, values: [String: TOMLValue], answers: [String
     p.executableURL = URL(filePath: "/bin/bash")
     p.arguments = [script.path]
     p.environment = pluginEnvironment(m, values: values.merging(["every": .int(1)]) { a, _ in a })
-        .merging(["GH_BIN": noGH ? dir.appending(path: "nope").path : fake.path, "PATH": "/usr/bin:/bin"]) { $1 }
+        .merging(["GH_BIN": noGH ? dir.appending(path: "nope").path : fake.path, "PATH": "/usr/bin:/bin"].merging(env) { $1 }) { $1 }
     let out = Pipe(), inp = Pipe()
     p.standardOutput = out
     p.standardInput = inp
@@ -153,10 +153,28 @@ private func last(_ name: String, _ answer: String, values: [String: TOMLValue] 
 @Test func ghPRsSaysWhatIsMissing() throws {
     let none = try runGH("gh-prs", values: [:], answers: [], noGH: true)
     #expect(none.pills.map(\.text) == ["install gh"])
+    #expect(none.pills.last?.error?.contains("brew install gh") == true)
     let logout = "#!/bin/bash\n[ \"$1\" = auth ] && exit 1\necho 'To get started with GitHub CLI, please run:  gh auth login' >&2\nexit 4\n"
     let r = try runGH("gh-prs", values: [:], answers: [""], gh: logout)
-    #expect(r.pills.last?.text == "gh auth login")
-    #expect(r.pills.last?.menu?.first?.text.contains("gh auth login") == true)
+    // The pill says it failed instead of showing a number: Gzyms greys it out, and promises to hear from it every `every` seconds.
+    #expect(r.pills.last?.error?.contains("gh auth login") == true)
+    #expect(r.pills.last?.expect == 1)
+}
+
+/// Every way GitHub can fail ends in a pill with an error that says what broke, and the next good answer takes it away.
+@Test func ghPluginsReportRateLimitNoNetworkAndRecovery() throws {
+    let rate = "#!/bin/bash\n[ \"$1\" = auth ] && exit 0\necho '{\"message\":\"API rate limit exceeded\"}'\nexit 1\n"
+    let limited = try runGH("gh-builds", values: ["branches": .strings(["o/r@main"])], answers: [""], gh: rate)
+    #expect(limited.pills.last?.error?.contains("rate limit") == true)
+    let offline = "#!/bin/bash\n[ \"$1\" = auth ] && exit 0\necho 'error connecting to api.github.com' >&2\nexit 1\n"
+    let down = try runGH("gh-prs", values: [:], answers: [""], gh: offline)
+    #expect(down.pills.last?.error?.contains("did not answer") == true)
+
+    // Fails while the answer file is empty, then answers: the error goes away with the first good answer.
+    let flaky = try runGH("gh-prs", values: [:], answers: ["", "{\"data\":{\"viewer\":{\"login\":\"me\"},\"search\":{\"nodes\":[]}}}"],
+                          gh: "#!/bin/bash\n[ \"$1\" = auth ] && exit 0\nd=$(dirname \"$0\")\n[ -s \"$d/answer.json\" ] && { cat \"$d/answer.json\"; exit 0; }\necho 'error connecting to api.github.com' >&2\nexit 1\n")
+    #expect(flaky.pills.contains { $0.error != nil })
+    #expect(flaky.pills.last?.error == nil && flaky.pills.last?.text == "")
 }
 
 @Test func ghBuildsNotifiesWhenARunEnds() throws {
@@ -187,7 +205,7 @@ private func pill(_ name: String, _ answer: String, branches: [(repo: String, re
     let b = try #require(c.script.range(of: "\nJQ\n", range: a.upperBound..<c.script.endIndex))
     let prog = String(c.script[a.upperBound..<b.lowerBound])
     let br = "[" + branches.enumerated().map { "{\"i\":\($0.offset),\"repo\":\"\($0.element.repo)\",\"ref\":\"\($0.element.ref)\"}" }.joined(separator: ",") + "]"
-    var args = ["-c", "--arg", "mode", "poll", "--arg", "err", "", "--arg", "errpill", "", "--argjson", "st", "{}", "--argjson", "snd", "{}"]
+    var args = ["-c", "--arg", "mode", "poll", "--arg", "err", "", "--argjson", "st", "{}", "--argjson", "snd", "{}"]
     if name == "gh-builds" { args += ["--argjson", "br", br, "--argjson", "bad", "[]"] }
     let p = Process(), inp = Pipe(), out = Pipe()
     p.executableURL = URL(filePath: "/usr/bin/jq")
@@ -336,4 +354,60 @@ private func ghBuildsMixes(states: [String]) throws {
     // the list has one row per target, in the order failed, running, passed, done, none
     let tags = (it.menu ?? []).filter { $0.id != nil }.compactMap(\.tag)
     #expect(tags == ["failed", "running", "passed", "done", "none"].flatMap { s in states.filter { $0 == s }.map { _ in buildTags[s]! } })
+}
+
+// MARK: star-watcher
+
+private func starAnswer(_ repos: [(n: Int, who: [String])]) -> String {
+    let rs = repos.enumerated().map { i, r in
+        "\"r\(i)\":{\"stargazerCount\":\(r.n),\"stargazers\":{\"nodes\":[\(r.who.map { "{\"login\":\"\($0)\"}" }.joined(separator: ","))]}}"
+    }
+    return "{\"data\":{\(rs.joined(separator: ","))}}"
+}
+
+private func cacheDir() throws -> URL {
+    let d = FileManager.default.temporaryDirectory.appending(path: "gzyms-stars-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: d.appending(path: "gzyms"), withIntermediateDirectories: true)
+    return d
+}
+
+/// The first answer after a start is the baseline, a later one with more stars pings with the newest names, and the cache
+/// keeps the counts: stars that came while Gzyms was off still ping on the next start.
+@Test func starWatcherPingsNewStargazersAndKeepsACache() throws {
+    let cache = try cacheDir(); defer { try? FileManager.default.removeItem(at: cache) }
+    let values: [String: TOMLValue] = ["repos": .strings(["o/a", "o/b", "not a repo"])]
+    let first = try runGH("star-watcher", values: values, answers: [starAnswer([(10, ["x"]), (3, ["y"])]), starAnswer([(12, ["carol", "bob", "x"]), (3, ["y"])])],
+                          env: ["XDG_CACHE_HOME": cache.path])
+    // No cache yet: 10 and 3 are the baseline. Then o/a got two: both named, newest first.
+    #expect(first.notes.map(\.title) == ["2 new stars"])
+    #expect(first.notes.first?.subtitle == "o/a" && first.notes.first?.body == "carol, bob starred it. 12 in total.")
+    #expect(first.notes.first?.link == "https://github.com/o/a/stargazers")
+    let pill = try #require(first.pills.last)
+    #expect(pill.text == "15" && pill.icon == "star.fill" && pill.color == "gold" && pill.error == nil && pill.expect == 1)
+    #expect(pill.menu?.compactMap(\.id) == ["o/a", "o/b"])
+    #expect(pill.menu?.first?.detail == ":star.fill@gold: 12")
+    #expect(pill.menu?.last?.text == "Skipped, not owner/name: not a repo")
+    #expect(try String(contentsOf: cache.appending(path: "gzyms/star-watcher.json"), encoding: .utf8).contains("\"o/a\":12"))
+
+    // Gzyms was off, o/b got a star: the cache from the run above makes it ping, and o/a does not.
+    let second = try runGH("star-watcher", values: values, answers: [starAnswer([(12, ["carol"]), (4, ["dave"])])], env: ["XDG_CACHE_HOME": cache.path])
+    #expect(second.notes.map(\.title) == ["New star"])
+    #expect(second.notes.first?.body == "dave starred it. 4 in total.")
+}
+
+@Test func starWatcherSaysWhenAReposIsGoneOrGhIsLoggedOut() throws {
+    let cache = try cacheDir(); defer { try? FileManager.default.removeItem(at: cache) }
+    // The second repo is not there: GitHub answers with the data it has, the row says so.
+    let r = try runGH("star-watcher", values: ["repos": .strings(["o/a", "o/gone"])], answers: ["{\"data\":{\"r0\":{\"stargazerCount\":5,\"stargazers\":{\"nodes\":[]}},\"r1\":null}}"],
+                      env: ["XDG_CACHE_HOME": cache.path])
+    #expect(r.pills.last?.text == "5" && r.pills.last?.error == nil)
+    #expect(r.pills.last?.menu?.last?.text == "Not found: o/gone")
+
+    let logout = "#!/bin/bash\n[ \"$1\" = auth ] && exit 1\nexit 4\n"
+    let out = try runGH("star-watcher", values: ["repos": .strings(["o/a"])], answers: [""], gh: logout, env: ["XDG_CACHE_HOME": cache.path])
+    #expect(out.pills.last?.error?.contains("gh auth login") == true)
+    #expect(out.notes.isEmpty)
+
+    let none = try runGH("star-watcher", values: [:], answers: [], env: ["XDG_CACHE_HOME": cache.path])
+    #expect(none.pills.map(\.text) == ["set a repo"])
 }

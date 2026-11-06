@@ -1,6 +1,6 @@
 import Foundation
 
-// The two GitHub plugins of the catalog. Both are bash 3.2 + gh + /usr/bin/jq: one `gh api graphql` call per poll,
+// The GitHub plugins of the catalog. Both are bash 3.2 + gh + /usr/bin/jq: one `gh api graphql` call per poll,
 // one jq program that turns {state, response} into the new state and the protocol lines. Nothing goes to disk.
 
 /// The part both share, after a script set PILL, ICON, ARGS (the gh call), PROG (jq), JQARGS and on_click.
@@ -8,20 +8,25 @@ import Foundation
 private let ghRun = #"""
 GH="${GH_BIN:-$(command -v gh || { [ -x /opt/homebrew/bin/gh ] && echo /opt/homebrew/bin/gh; } || echo /usr/local/bin/gh)}"
 every="${GZYMS_OPT_EVERY:-60}"; case "$every" in ''|*[!0-9]*|0) every=60;; esac
-problem() {  # pill text, sentence: a pill that says what is missing, then wait for Gzyms to go
-  echo "{\"item\":{\"id\":\"$PILL\",\"text\":\"$1\",\"icon\":\"$ICON\",\"color\":\"peach\",\"tooltip\":\"$2\",\"menu\":[{\"text\":\"$2\"}]}}"
+export GZYMS_OPT_EVERY=$every  # the jq program promises it as the pill's expect
+problem() {  # pill text, sentence: a greyed pill that says what is missing, then wait for Gzyms to go
+  echo "{\"item\":{\"id\":\"$PILL\",\"text\":\"$1\",\"icon\":\"$ICON\",\"error\":\"$2\"}}"
   exec cat >/dev/null
 }
 [ -x "$GH" ] || problem "install gh" "Install the GitHub CLI (brew install gh), then turn this plugin off and on."
 
-state='{}' last="" asked=-99 clockpid=""
-step() {  # mode [err] [errpill], stdin = GitHub's answer or null. Prints what changed, keeps the state.
+state="${STATE0:-}"; [ -n "$state" ] || state='{}'  # a script may start from what it kept on disk
+asked=-99 clockpid=""
+step() {  # mode [err], stdin = GitHub's answer or null. Prints the new state's lines, keeps the state.
   local out l
-  out=$("$JQ" -c --arg mode "$1" --arg err "${2:-}" --arg errpill "${3:-}" --argjson st "$state" "${JQARGS[@]}" "$PROG") || return
+  out=$("$JQ" -c --arg mode "$1" --arg err "${2:-}" --argjson st "$state" "${JQARGS[@]}" "$PROG") || return
+  # The pill goes out on every poll, changed or not: Gzyms hears that the plugin is alive, and greys the pill out when it stops.
   { IFS= read -r state
     while IFS= read -r l; do
-      case "$l" in '{"item"'*) [ "$l" != "$last" ] && echo "$l" && last=$l;; ?*) echo "$l";; esac
+      case "$l" in ?*) echo "$l";; esac
     done; } <<< "$out"
+  # CACHE: a file that keeps the state's .base between runs, so a change made while Gzyms was off still counts.
+  if [ "$1" = poll ] && [ -n "${CACHE:-}" ]; then "$JQ" -c '.base // {}' <<< "$state" > "$CACHE.tmp" && mv "$CACHE.tmp" "$CACHE"; fi
 }
 
 clock() {  # R <answer> after a good call, X auth|rate|net after a bad one. USR1 = ask now. Errors double the wait, up to 15 min.
@@ -72,14 +77,18 @@ open_url() { case "$1" in https://*) open "$1";; esac; }
     S) step render <<< null;;
     "P "*) clockpid=${msg#P };;
     "R "*) step poll <<< "${msg#R }";;
-    "X auth") step error "Run gh auth login in a terminal. This pill updates by itself after that." "gh auth login" <<< null;;
+    "X auth") step error "gh is logged out. Run gh auth login in a terminal. This pill updates by itself after that." <<< null;;
     "X rate") step error "GitHub's rate limit is reached. Asking less often for a while." <<< null;;
-    "X net") step error "GitHub did not answer. Trying again." <<< null;;
+    "X net") step error "GitHub did not answer. Check the network. Trying again." <<< null;;
     "E "*) on_event "${msg#E }";;
   esac
 done
 
 """#
+
+/// What every pill item of both plugins carries: how long until the plugin speaks again, and its error if it has one.
+/// jq text for the PROG heredocs, where `$st` is the state.
+private let ghStat = "def stat($st): ([$ENV.GZYMS_OPT_EVERY // \"\" | tonumber?][0]) as $e | (if $e then {expect: $e} else {} end) + (if $st.err then {error: $st.err} else {} end);"
 
 /// The checks of one commit, as both queries ask for them.
 private let checksQuery = "contexts(first:30){nodes{__typename ... on CheckRun{name status conclusion detailsUrl} ... on StatusContext{context state targetUrl}}}"
@@ -236,11 +245,11 @@ let ghPRs = CatalogPlugin(
         elif $c.outstanding > ($p.outstanding // 0) then {kind: "comment", text: ""} else empty end;
     def notify: {notify: {id: "\(.kind)-\(.key)-\(now | floor)", title: "\(short(true)) \(what)", body: .title, link: .url,
       level: "info", sound: ($snd[.kind] // kind[2])}};
+    \#(ghStat)
     def render($st):
       ($st.prs // null) as $prs | ($st.unseen // []) as $u | ($u + ($st.shown // [])) as $ev
-      | if $st.errpill then {item: {id: "prs", text: $st.errpill, icon: "arrow.triangle.branch", color: "peach", tooltip: $st.err, menu: [{text: $st.err}]}}
-        elif $prs == null then {item: {id: "prs", text: "…", icon: "arrow.triangle.branch", color: "overlay",
-          tooltip: ($st.err // "Asking GitHub…"), menu: [{text: ($st.err // "Asking GitHub…")}]}}
+      | if $prs == null then {item: ({id: "prs", text: "…", icon: "arrow.triangle.branch", color: "overlay", tooltip: "Asking GitHub…"}
+          + (if $st.err then {} else {menu: [{text: "Asking GitHub…"}]} end) + stat($st))}
         else
           ([$prs[].repo] | unique | length > 1) as $multi
           | [$prs[] | pillStates[]] as $all
@@ -248,17 +257,16 @@ let ghPRs = CatalogPlugin(
           | ($cnt | map({(.s): .n}) | add // {}) as $n
           | [$cnt[] | "\(.s | glyph) \(.n)"] as $parts
           | (if $parts == [] and $u != [] then [":bell:"] else $parts end) as $parts
-          | if $parts == [] and $ENV.GZYMS_OPT_HIDE_IDLE == "true" then {item: {id: "prs", remove: true}}
-            else {item: {id: "prs", text: ($parts | join(" ")), icon: "arrow.triangle.branch",
+          | if $parts == [] and $ENV.GZYMS_OPT_HIDE_IDLE == "true" and ($st.err | not) then {item: {id: "prs", remove: true}}
+            else {item: ({id: "prs", text: ($parts | join(" ")), icon: "arrow.triangle.branch",
               color: (if $n.fix then "red" elif $n.comments or $u != [] then "sky" elif $n.merge then "green" else "overlay" end),
-              tooltip: ($st.err // (if $cnt == [] then "\($prs | length) open pull requests" else ($cnt | map("\(.s) \(.n)") | join(", ")) end)),
-              menu: ([if $st.err then {text: $st.err} else empty end]
-                + [$ev | to_entries[] | .key as $i | .value
+              tooltip: (if $cnt == [] then "\($prs | length) open pull requests" else ($cnt | map("\(.s) \(.n)") | join(", ")) end),
+              menu: ([$ev | to_entries[] | .key as $i | .value
                    | {id: "ev\($i)", tag: kind[0], color: kind[1], text: "\(short($multi)) \(what)  \(.title)", detail: .at}]
                 + (if $ev != [] then [{separator: true}] else [] end)
                 + (if $prs == [] then [{text: "No open pull requests."}] else
                    [$prs | sort_by([(if (.draft | not) and (fixing or (.action | IN("MERGE", "resolve"))) then 0 else 1 end), -.number])[]
-                    | tag as $t | {id: "pr:\(.key)", tag: $t[0], color: $t[1], text: "\(short($multi))  \(.title)", detail: detail}] end))}}
+                    | tag as $t | {id: "pr:\(.key)", tag: $t[0], color: $t[1], text: "\(short($multi))  \(.title)", detail: detail}] end))} + stat($st))}
             end
         end;
     if $mode == "poll" then
@@ -267,11 +275,11 @@ let ghPRs = CatalogPlugin(
       # the first answer after a start is the baseline: a restart tells nothing again
       | [if $st.prs == null then empty else $prs[] as $c | ($st.prs[] | select(.key == $c.key)) as $p
          | event($p; $c) + ($c | {key, repo, branch, number, title, url}) + {at: (now | strflocaltime("%H:%M"))} end] as $new
-      | ($st + {prs: $prs, err: null, errpill: null,
+      | ($st + {prs: $prs, err: null,
           unseen: ($new + [($st.unseen // [])[] | select(.key as $k | $new | all(.key != $k))])[:10]}) as $s
       | $s, ($new[] | notify), render($s)
     elif $mode == "seen" then ($st + {unseen: [], shown: (($st.unseen // []) + ($st.shown // []))[:10]}) as $s | $s, render($s)
-    elif $mode == "error" then ($st + {err: $err, errpill: (if $errpill == "" then null else $errpill end)}) as $s | $s, render($s)
+    elif $mode == "error" then ($st + {err: $err}) as $s | $s, render($s)
     else $st, render($st) end
     JQ
 
@@ -413,11 +421,11 @@ let ghBuilds = CatalogPlugin(
         else empty end;
     def notify: {notify: {id: "\(.kind)-\(.key)-\(now | floor)", title: "\(.label) \(what)", body: .title, link: .url,
       level: kind[3], sound: ($snd[.kind] // kind[2])}};
+    \#(ghStat)
     def render($st):
       ($st.targets // null) as $ts | ($st.unseen // []) as $u | ($u + ($st.shown // [])) as $ev
-      | if $st.errpill then {item: {id: "builds", text: $st.errpill, icon: "hammer", color: "peach", tooltip: $st.err, menu: [{text: $st.err}]}}
-        elif $ts == null then {item: {id: "builds", text: "…", icon: "hammer", color: "overlay",
-          tooltip: ($st.err // "Asking GitHub…"), menu: [{text: ($st.err // "Asking GitHub…")}]}}
+      | if $ts == null then {item: ({id: "builds", text: "…", icon: "hammer", color: "overlay", tooltip: "Asking GitHub…"}
+          + (if $st.err then {} else {menu: [{text: "Asking GitHub…"}]} end) + stat($st))}
         else
           # a target counts once, by its worst state: failing while a check still runs is failing
           [$ts[] | status[3]] as $k
@@ -429,18 +437,17 @@ let ghBuilds = CatalogPlugin(
           # idle = nothing fails and nothing runs, passed runs alone do not keep the pill
           | ($fail + $run == 0) as $idle
           | (if $idle and $u != [] then [":bell:"] + $parts else $parts end) as $parts
-          | if $idle and $u == [] and $ENV.GZYMS_OPT_HIDE_IDLE == "true" then {item: {id: "builds", remove: true}}
-            else {item: {id: "builds", text: ($parts | join(" ")), icon: "hammer",
+          | if $idle and $u == [] and $ENV.GZYMS_OPT_HIDE_IDLE == "true" and ($st.err | not) then {item: {id: "builds", remove: true}}
+            else {item: ({id: "builds", text: ($parts | join(" ")), icon: "hammer",
               color: (if $fail > 0 then "red" elif $run > 0 then "gold" elif $u != [] then "sky" elif $pass > 0 then "green" else "overlay" end),
-              tooltip: ($st.err // "\($fail) failed, \($run) running, \($pass) passed"),
-              menu: ([if $st.err then {text: $st.err} else empty end]
-                + [$bad[] | {text: "Skipped, not owner/repo@branch: \(.)"}]
+              tooltip: "\($fail) failed, \($run) running, \($pass) passed",
+              menu: ([$bad[] | {text: "Skipped, not owner/repo@branch: \(.)"}]
                 + [$ev | to_entries[] | .key as $i | .value
                    | {id: "ev\($i)", tag: kind[0], color: kind[1], text: "\(.label) \(what)  \(.title)", detail: .at}]
                 + (if $ev != [] then [{separator: true}] else [] end)
                 + (if $ts == [] then [{text: "No open pull requests."}] else
                    [$ts | sort_by(status[2])[] | status as $s | {id: "t:\(.key)", tag: $s[0], color: $s[1], text: "\(.label)  \(.title)",
-                     detail: ([.failed[].name] | join(", ") | .[:40])}] end))}}
+                     detail: ([.failed[].name] | join(", ") | .[:40])}] end))} + stat($st))}
             end
         end;
     if $mode == "poll" then
@@ -455,11 +462,11 @@ let ghBuilds = CatalogPlugin(
       # the first answer after a start is the baseline: a restart tells nothing again
       | [if $st.targets == null then empty else $ts[] as $c | ($st.targets[] | select(.key == $c.key)) as $p
          | event($p; $c) | select(wanted) | . + ($c | {key, label, title}) + {at: (now | strflocaltime("%H:%M"))} end] as $new
-      | ($st + {targets: $ts, err: null, errpill: null,
+      | ($st + {targets: $ts, err: null,
           unseen: ($new + [($st.unseen // [])[] | select(.key as $k | $new | all(.key != $k))])[:10]}) as $s
       | $s, ($new[] | notify), render($s)
     elif $mode == "seen" then ($st + {unseen: [], shown: (($st.unseen // []) + ($st.shown // []))[:10]}) as $s | $s, render($s)
-    elif $mode == "error" then ($st + {err: $err, errpill: (if $errpill == "" then null else $errpill end)}) as $s | $s, render($s)
+    elif $mode == "error" then ($st + {err: $err}) as $s | $s, render($s)
     else $st, render($st) end
     JQ
 
@@ -468,6 +475,102 @@ let ghBuilds = CatalogPlugin(
       url=$("$JQ" -r --arg id "$2" '(if ($id | startswith("ev")) then (.unseen + .shown)[$id[2:] | tonumber].url
         else .targets[] | select("t:\(.key)" == $id) | (.failed[0].url // "" | select(. != "")) // .url end) // empty' <<< "$state")
       open_url "$url"
+    }
+
+    \#(ghRun)
+    """#
+)
+
+let starWatcher = CatalogPlugin(
+    name: "star-watcher",
+    summary: "GitHub stars of your repos on one pill, a notification with the name of each new stargazer.",
+    manifest: """
+    name = "Star watcher"
+    description = "GitHub stars of your repos on one pill. A notification with the name of each new stargazer, also for stars that came while Gzyms was off."
+    command = "./plugin.sh"
+    icon = "star"
+
+    [[option]]
+    key = "repos"
+    title = "Repos"
+    type = "list"
+    default = []
+    note = "owner/name, separated by commas, Return saves. A click on a repo in the list opens its stargazers."
+
+    [[option]]
+    key = "every"
+    title = "Ask every (s)"
+    type = "number"
+    default = 300
+    note = "one GitHub call each time for all repos, 1 point of the 5000 GitHub allows an hour. Opening the list asks at once."
+
+    """,
+    script: #"""
+    #!/bin/bash
+    # Gzyms star watcher. Options arrive as GZYMS_OPT_<KEY>; see plugin.toml. Bash 3.2 (macOS), gh and /usr/bin/jq.
+    # Lines go to Gzyms as JSON on stdout; clicks come back on stdin.
+    # The last counts live in a cache file: a star that came while Gzyms was off still pings on the next start.
+    PILL=stars ICON=star
+    JQ="$(command -v jq || echo /usr/bin/jq)"
+    : "${GZYMS_OPT_EVERY:=300}"
+    decl="" sel="" vars=() rp='[]' bad='[]' i=0
+    while IFS= read -r r; do
+      r="${r#"${r%%[![:space:]]*}"}"; r="${r%"${r##*[![:space:]]}"}"
+      [ -n "$r" ] || continue
+      # Names go in as GraphQL variables, never into the query text. The newest five stargazers name a burst of new stars.
+      if [[ "$r" =~ ^([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$ ]]; then
+        decl+=" \$o${i}:String! \$n${i}:String!"
+        sel+=" r${i}:repository(owner:\$o${i},name:\$n${i}){stargazerCount stargazers(first:5,orderBy:{field:STARRED_AT,direction:DESC}){nodes{login}}}"
+        vars+=(-f "o$i=${BASH_REMATCH[1]}" -f "n$i=${BASH_REMATCH[2]}")
+        rp=$("$JQ" -c --argjson i $i --arg repo "$r" '. + [{i: $i, repo: $repo}]' <<< "$rp")
+        i=$((i + 1))
+      else
+        bad=$("$JQ" -c --arg b "$r" '. + [$b]' <<< "$bad")
+      fi
+    done <<< "${GZYMS_OPT_REPOS:-}"
+    if [ -z "$sel" ]; then
+      echo '{"item":{"id":"stars","text":"set a repo","icon":"star","color":"overlay","tooltip":"Settings → Plugins → Star watcher → Repos"}}'
+      exec cat >/dev/null
+    fi
+    ARGS=(-f "query=query($decl){$sel}" "${vars[@]}")
+    CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/gzyms/star-watcher.json"
+    mkdir -p "$(dirname "$CACHE")"
+    STATE0=$("$JQ" -c '{base: (if type == "object" then . else {} end)}' "$CACHE" 2>/dev/null)
+    JQARGS=(--argjson repos "$rp" --argjson bad "$bad")
+
+    # Modes: poll (stdin = GitHub's answer), error, render. base = the counts the last answer left, counts = this run's own.
+    read -r -d '' PROG <<'JQ'
+    def names: if (.who | length) == 0 then "Someone"
+      else (.who[:.d] | join(", ")) + (if .d > (.who | length) then " and \(.d - (.who | length)) more" else "" end) end;
+    def notify: {notify: {id: "star-\(.repo)-\(now | floor)", title: (if .d > 1 then "\(.d) new stars" else "New star" end), subtitle: .repo,
+      body: "\(names) starred it. \(.n) in total.", link: "https://github.com/\(.repo)/stargazers", level: "info", sound: "success"}};
+    \#(ghStat)
+    def render($st):
+      ($st.counts // null) as $c
+      | if $c == null then {item: ({id: "stars", text: "…", icon: "star", color: "overlay", tooltip: "Asking GitHub…"}
+          + (if $st.err then {} else {menu: [{text: "Asking GitHub…"}]} end) + stat($st))}
+        else
+          ([$c[]] | add // 0) as $t
+          | {item: ({id: "stars", text: "\($t)", icon: "star.fill", color: "gold", tooltip: "\($t) GitHub stars",
+              menu: ([$repos[] | .repo as $r | if $c[$r] != null then {id: $r, text: $r, detail: ":star.fill@gold: \($c[$r])"} else {text: "Not found: \($r)"} end]
+                + [$bad[] | {text: "Skipped, not owner/name: \(.)"}])} + stat($st))}
+        end;
+    if $mode == "poll" then
+      . as $r
+      | [$repos[] | .repo as $repo | ($r.data["r\(.i)"] // null) as $o | select($o != null)
+         | {repo: $repo, n: $o.stargazerCount, who: [$o.stargazers.nodes[]? | .login]}] as $got
+      | ($st.base // {}) as $b
+      | ($got | map({(.repo): .n}) | add // {}) as $counts
+      # a repo with no count in the cache is the baseline: a first start tells nothing
+      | [$got[] | select($b[.repo] != null and .n > $b[.repo]) | . + {d: (.n - $b[.repo])}] as $new
+      | ($st + {base: ($b + $counts), counts: $counts, err: null}) as $s
+      | $s, ($new[] | notify), render($s)
+    elif $mode == "error" then ($st + {err: $err}) as $s | $s, render($s)
+    else $st, render($st) end
+    JQ
+
+    on_click() {  # event id. A repo row opens its stargazers.
+      [ "$1" = click ] && [ "$("$JQ" -r --arg id "$2" '(.counts // {}) | has($id)' <<< "$state")" = true ] && open_url "https://github.com/$2/stargazers"
     }
 
     \#(ghRun)

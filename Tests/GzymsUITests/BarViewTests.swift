@@ -231,6 +231,28 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         PluginRow(id: "t:o/r#22", text: "r#22  ci: a check waits for an action", tag: ":minus.circle: done", color: "overlay"),
         PluginRow(id: "t:o/r#21", text: "r#21  docs: the new setup", tag: ":circle.dashed: no CI", color: "overlay"),
     ]) { _, _ in }, "gh-builds-popup")
+    // A pill that cannot get its data greys out with a small warning. Its popup says what broke and since when, the old rows sit under it dimmed (#62).
+    let utc = TimeZone(identifier: "UTC")!
+    let broke = PluginFailure(message: "gh is logged out. Run gh auth login in a terminal. This pill updates by itself after that.", since: fixedNow.addingTimeInterval(-1800))
+    let oldPill = PluginItem(id: "prs", text: ":xmark.circle@red: 2 :checkmark.circle@green: 1", icon: "arrow.triangle.branch", color: "red")
+    preview(VStack(alignment: .leading, spacing: 8) {
+        PluginPillView(pill: PluginPill(plugin: "gh-prs", item: oldPill), small: false) { _, _ in }
+        PluginPillView(pill: PluginPill(plugin: "gh-prs", item: oldPill, failure: broke), small: true) { _, _ in }
+        PluginPillView(pill: PluginPill(plugin: "gh-prs", item: oldPill, failure: broke), small: false) { _, _ in }
+    }.padding(8).environment(\.timeZone, utc), "plugin-pill-failed")
+    preview(PluginMenuView(rows: [
+        PluginRow(id: "pr:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: fix", color: "red", detail: ":xmark.circle@red: failed"),
+        PluginRow(id: "pr:o/r#28", text: "r#28  chore(deps): bump the router", tag: ":checkmark.circle: merge", color: "green", detail: ":checkmark.circle@green: passed"),
+    ], failure: broke) { _, _ in }.environment(\.timeZone, utc), "plugin-popup-failed")
+    preview(PluginMenuView(rows: [], failure: PluginFailure(message: "The plugin stopped (exit 1). Starting it again in 4 s.", since: fixedNow.addingTimeInterval(-90))) { _, _ in }
+        .environment(\.timeZone, utc), "plugin-popup-failed-alone")
+    // The star watcher: a gold star with the total, a row per repo.
+    preview(pill("star-watcher", "15", "star.fill", "gold"), "star-watcher-pill")
+    preview(PluginMenuView(rows: [
+        PluginRow(id: "zalewskigrzegorz/gzyms", text: "zalewskigrzegorz/gzyms", detail: ":star.fill@gold: 12"),
+        PluginRow(id: "zalewskigrzegorz/tuios", text: "zalewskigrzegorz/tuios", detail: ":star.fill@gold: 3"),
+        PluginRow(text: "Not found: zalewskigrzegorz/gone"),
+    ]) { _, _ in }, "star-watcher-popup")
     // An agent's notification sits on the agents pill and tops its list, not in the bell (#50).
     var waits = older
     waits.id = "plugin:agents:agent-1"
