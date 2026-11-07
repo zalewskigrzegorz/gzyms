@@ -27,6 +27,8 @@ public struct Workspace: Equatable, Sendable, Decodable {
     public var monitor: String
     public var visible: Bool
     public var windows: [Window]
+    /// What the bar prints instead of the number: AeroSpace's workspace name, also what its switch command takes. Not in HyprMac's file.
+    public var label: String? = nil
 }
 
 public struct Window: Equatable, Sendable, Decodable {
@@ -75,7 +77,7 @@ extension Window {
     }
 }
 
-private struct Lenient<T: Decodable>: Decodable {
+struct Lenient<T: Decodable>: Decodable {
     let value: T?
     init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }

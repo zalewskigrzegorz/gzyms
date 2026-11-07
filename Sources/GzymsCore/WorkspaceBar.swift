@@ -25,9 +25,12 @@ public struct BarWorkspace: Equatable, Sendable {
     public var color: String
     public var isActive: Bool
     public var appBundleIDs: [String]
+    /// The number, or the source's own name for it (AeroSpace's "web").
+    public var label: String
 
-    public init(number: Int, color: String, isActive: Bool, appBundleIDs: [String]) {
+    public init(number: Int, color: String, isActive: Bool, appBundleIDs: [String], label: String? = nil) {
         self.number = number; self.color = color; self.isActive = isActive; self.appBundleIDs = appBundleIDs
+        self.label = label ?? "\(number)"
     }
 }
 
@@ -40,7 +43,7 @@ public func barWorkspaces(state: HyprMacState, styles: [WorkspaceStyle], showEmp
         var apps: [String] = []
         for w in ws?.windows ?? [] where !w.bundleID.isEmpty && !apps.contains(w.bundleID) { apps.append(w.bundleID) }
         let show = showEmpty || active || ws?.visible == true || !(ws?.windows.isEmpty ?? true)
-        return show ? BarWorkspace(number: style.number, color: style.color, isActive: active, appBundleIDs: apps) : nil
+        return show ? BarWorkspace(number: style.number, color: style.color, isActive: active, appBundleIDs: apps, label: ws?.label) : nil
     }
 }
 

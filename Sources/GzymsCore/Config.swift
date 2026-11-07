@@ -6,6 +6,8 @@ public struct GzymsConfig: Equatable, Sendable {
     public var workspaces: [WorkspaceStyle]
     public var showEmpty: Bool
     public var smallOnNotch: Bool
+    /// `[workspaces] source`: HyprMac, AeroSpace or macOS Spaces. Auto takes what runs.
+    public var workspaceSource = WorkspaceSource.auto
     public var theme: Theme
     public var cpuChart: CPUChart
     public var notificationSounds: Bool
@@ -379,6 +381,10 @@ public func loadConfig(toml: String?) -> ConfigLoad {
     }
     if let v = raw.workspaces?.show_empty { config.showEmpty = v }
     if let v = raw.workspaces?.small_on_notch { config.smallOnNotch = v }
+    if let v = raw.workspaces?.source {
+        if let s = WorkspaceSource(rawValue: v) { config.workspaceSource = s }
+        else { problems.append("workspaces.source: \"\(v)\" must be \(WorkspaceSource.allCases.map(\.rawValue).joined(separator: ", ")), kept auto") }
+    }
     for style in raw.workspaces?.style ?? [] {
         guard let n = style.number, let i = config.workspaces.firstIndex(where: { $0.number == n }) else {
             problems.append("workspaces.style: number must be 1 to 10, got \(style.number.map(String.init) ?? "nothing")")
@@ -805,15 +811,17 @@ private struct RawAudio: Decodable {
 private struct RawWorkspaces: Decodable {
     var show_empty: Bool?
     var small_on_notch: Bool?
+    var source: String?
     var style: [RawStyle]?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case show_empty, small_on_notch, style }
+    enum CodingKeys: String, CodingKey { case show_empty, small_on_notch, source, style }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         show_empty = lenient(c, .show_empty, "workspaces.show_empty", &unknown)
         small_on_notch = lenient(c, .small_on_notch, "workspaces.small_on_notch", &unknown)
+        source = lenient(c, .source, "workspaces.source", &unknown)
         style = lenient(c, .style, "workspaces.style", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["show_empty", "small_on_notch", "style"], prefix: "workspaces.")
+        unknown += try unknownKeys(in: decoder, known: ["show_empty", "small_on_notch", "source", "style"], prefix: "workspaces.")
         unknown += style?.flatMap(\.unknown) ?? []
     }
 }
