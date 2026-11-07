@@ -72,7 +72,8 @@ final class BarModel {
     }
     @ObservationIgnored var onPluginEvent: (String, PluginEvent, String) -> Void = { _, _, _ in }
     /// The settings panel is on screen and not covered by other windows (it is only ordered out when closed, never torn down).
-    var settingsVisible = false
+    var settingsVisible = false { didSet { onSettingsVisible() } }
+    @ObservationIgnored var onSettingsVisible: () -> Void = {}
     /// A grant that was on went off: a quiet ⚠ on the bar opens the wizard.
     var grantWarning = false
     /// `IsSecureEventInputEnabled()`: the keyboard mode cannot hear the leader.

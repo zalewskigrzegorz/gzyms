@@ -99,6 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appsObservers: [NSObjectProtocol] = []
     private lazy var settings = SettingsPanel(model: model, actions: settingsActions())
     private var settingsKeyObserver: NSObjectProtocol?
+    /// usernoted's Preferences folder, watched only while Settings → Apps or the step-by-step setup is open.
+    private var prefsWatch: DispatchSourceFileSystemObject?
     /// System Settings opened from Settings → Apps: read every second while it runs, and the way back when it quits.
     private var systemSettingsWatch: (timer: Timer, observer: NSObjectProtocol)?
     private lazy var setupPanel = AppSetupPanel(model: model, skip: { [weak self] in self?.nextSetupApp() },
@@ -170,7 +172,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startSettings()
         if model.config.calendarEnabled { startCalendar() }
         model.onGrantWarning = { [weak self] in self?.wizard.show(on: self?.focusedScreen()); self?.checkGrants() }
-        model.onSettingsTab = { [weak self] in if self?.model.settingsTab == .permissions { self?.checkGrants() } }
+        model.onSettingsTab = { [weak self] in
+            if self?.model.settingsTab == .permissions { self?.checkGrants() }
+            self?.updatePrefsWatch()
+        }
+        model.onSettingsVisible = { [weak self] in self?.updatePrefsWatch() }
         checkGrants()
         if model.grants.contains(where: { $0.grant.required && !$0.granted }) { wizard.show(on: focusedScreen()) }
         startMessages()
@@ -1337,6 +1343,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// While someone changes notification settings (Settings → Apps open, or the setup), each write macOS makes is read
+    /// at once. cfprefsd replaces the plist by a rename (a new inode each save, 2026-11-07), so the folder is watched,
+    /// not the file. Closed: no watch, the reads stay as before.
+    private func updatePrefsWatch() {
+        let editing = model.appSetup != nil || (settings.isVisible && model.settingsTab == .apps)
+        guard editing != (prefsWatch != nil) else { return }
+        if !editing { prefsWatch?.cancel(); prefsWatch = nil; log("nc settings: watch off"); return }
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences")
+        let fd = Darwin.open(dir.path, O_EVTONLY)
+        guard fd >= 0 else { return }  // no Full Disk Access: nothing to read anyway
+        let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .delete, .rename, .link], queue: .main)
+        src.setEventHandler { MainActor.assumeIsolated { [weak self] in self?.refreshAppWarnings() } }
+        src.setCancelHandler { close(fd) }
+        src.resume()
+        prefsWatch = src
+        log("nc settings: watch on")
+    }
+
     /// The mirror in Settings → Apps follows each click in System Settings. When System Settings quits, HyprMac
     /// moves to another app's workspace, so Settings comes back to the front (Greg, 2026-11-04).
     private func watchSystemSettings() {
@@ -1386,6 +1410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startAppSetup(_ ids: [String]) {
         guard !ids.isEmpty else { return }
         model.appSetup = (ids, 0)
+        updatePrefsWatch()
         log("app setup: \(ids.count) apps")
         setupPanel.show(on: focusedScreen())
         openAppPage(ids[0])
@@ -1421,6 +1446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupAdvance = nil
         guard model.appSetup != nil else { return }
         model.appSetup = nil
+        updatePrefsWatch()
         setupPanel.orderOut(nil)
         log("app setup: finished")
         refreshAppWarnings()
@@ -1445,6 +1471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let screen = focusedScreen() else { return }
         settings.show(on: screen)
+        updatePrefsWatch()  // show sets settingsVisible before the panel is ordered in
         if model.settingsTab == .permissions { checkGrants() }  // opened straight on it: the tab-change hook never fires
         log("settings: open \(model.settingsTab.rawValue)")
     }
