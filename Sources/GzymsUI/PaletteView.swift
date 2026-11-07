@@ -21,7 +21,7 @@ extension SettingsTab {
     /// What the tab holds, so "leader" finds Shortcuts and "battery" finds General.
     public var keywords: String {
         switch self {
-        case .general: "workspaces caffeine display awake battery config notch tiling"
+        case .general: "workspaces caffeine display awake battery config notch tiling aerospace spaces mission control"
         case .appearance: "look cpu chart device icons"
         case .animations: "motion animations reduce banner entry icon first drop notch unroll pop fade speed slow fast"
         case .themes: "theme colors colours"

@@ -355,7 +355,7 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     let actions = SettingsActions { _, _, _ in }
     for tab in SettingsTab.allCases {
         preview(SettingsView(tab: .constant(tab), config: config, problems: [], broken: false, apps: apps,
-                             devices: ["MacBook Pro Speakers", "Shure MV7"], workspaceNames: [1: "chat", 2: "term"], actions: actions).frame(width: 1000, height: 900),
+                             devices: ["MacBook Pro Speakers", "Shure MV7"], workspaceNames: [1: "chat", 2: "term"], workspacesFound: true, actions: actions).frame(width: 1000, height: 900),
                 "settings-\(tab.rawValue)")
     }
     var dupes = actions

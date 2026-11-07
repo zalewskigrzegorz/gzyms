@@ -325,7 +325,7 @@ struct WorkspaceItem: View {
         let color = theme.color(ws.color)
         let side: CGFloat = small ? 14 : 18
         HStack(spacing: small ? 3 : 5) {
-            Text("\(ws.number)")
+            Text(ws.label)
                 .font(.system(size: small ? 10 : 12, weight: .bold).monospacedDigit())
                 .foregroundStyle(color)
             ForEach(ws.appBundleIDs, id: \.self) { id in

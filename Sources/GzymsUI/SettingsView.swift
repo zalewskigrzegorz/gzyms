@@ -107,6 +107,9 @@ public struct SettingsView: View {
     let devices: [String]
     /// Workspace names come from HyprMac (Greg, 2026-10-31); Gzyms only colours them.
     let workspaceNames: [Int: String]
+    /// The source the bar reads now (auto resolved), and whether it answers.
+    let workspacesFrom: WorkspaceSource
+    let workspacesFound: Bool
     let grants: [GrantState]
     let calendars: [CalendarInfo]
     let logo: NSImage?
@@ -127,12 +130,14 @@ public struct SettingsView: View {
     @Environment(\.settingsNav) private var nav
 
     public init(tab: Binding<SettingsTab>, config: GzymsConfig, problems: [String], broken: Bool, apps: [SeenApp],
-                devices: [String], workspaceNames: [Int: String] = [:], grants: [GrantState] = [], calendars: [CalendarInfo] = [],
+                devices: [String], workspaceNames: [Int: String] = [:], workspacesFrom: WorkspaceSource = .hyprmac,
+                workspacesFound: Bool = false, grants: [GrantState] = [], calendars: [CalendarInfo] = [],
                 logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], agents: [AgentSource: AgentSourceStatus] = [:],
                 openApp: String? = nil, openPlugin: String? = nil, actions: SettingsActions) {
         self.logo = logo; self.live = live; self.plugins = plugins; self.agents = agents; self.openApp = openApp; self.openPlugin = openPlugin
         _tab = tab; self.config = config; self.problems = problems; self.broken = broken
         self.apps = apps; self.devices = devices; self.workspaceNames = workspaceNames; self.grants = grants
+        self.workspacesFrom = workspacesFrom; self.workspacesFound = workspacesFound
         self.calendars = calendars; self.actions = actions
     }
 
@@ -219,7 +224,7 @@ public struct SettingsView: View {
 
     @ViewBuilder private var content: some View {
         switch tab {
-        case .general: GeneralTab(config: config, names: workspaceNames, login: actions.loginItem(), write: actions.write,
+        case .general: GeneralTab(config: config, names: workspaceNames, from: workspacesFrom, found: workspacesFound, login: actions.loginItem(), write: actions.write,
                                   reveal: actions.revealConfig, openLoginItems: actions.openLoginItems)
         case .appearance: AppearanceTab(config: config, devices: devices, write: actions.write, openThemes: { tab = .themes })
         case .animations: AnimationsTab(config: config, write: actions.write)
@@ -333,6 +338,8 @@ private struct Switch: View {
 private struct GeneralTab: View {
     let config: GzymsConfig
     let names: [Int: String]
+    let from: WorkspaceSource
+    let found: Bool
     let login: LoginItemStatus?
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let reveal: () -> Void
@@ -354,12 +361,14 @@ private struct GeneralTab: View {
             }
         }
         Section(title: "Workspaces") {
+            Row(title: "Workspaces from", note: sourceNote) {
+                menu(config.workspaceSource, WorkspaceSource.allCases.map { ($0, $0.title) }) {
+                    write("source", $0 == .auto ? nil : .string($0.rawValue), .table(["workspaces"]))
+                }
+            }
             Row(title: "Show empty workspaces") { Switch(on: config.showEmpty) { write("show_empty", .bool($0), .table(["workspaces"])) } }
             Row(title: "Small bar on the notch screen", note: "when monitors are attached") {
                 Switch(on: config.smallOnNotch) { write("small_on_notch", .bool($0), .table(["workspaces"])) }
-            }
-            if names.isEmpty {
-                Row(title: "No tiling window manager running", note: "Gzyms reads workspaces from HyprMac. Colours below apply once it runs.") { EmptyView() }
             }
             ForEach(config.workspaces, id: \.number) { ws in WorkspaceRow(style: ws, name: names[ws.number], write: write) }
         }
@@ -378,6 +387,18 @@ private struct GeneralTab: View {
                 Button("Show in Finder", action: reveal)
             }
         }
+        }
+    }
+}
+
+extension GeneralTab {
+    /// The live state of the source in a few words. Auto says what it found.
+    var sourceNote: String? {
+        if !found { return "\(from.title) not found. The bar shows one desktop." }
+        switch from {
+        case .aerospace: return "Add gzyms workspaces refresh to exec-on-workspace-change for instant updates."
+        case .spaces: return (config.workspaceSource == .auto ? "No tiler found. " : "") + "A click uses Switch to Desktop N, else opens Mission Control."
+        default: return config.workspaceSource == .auto ? "Found \(from.title)." : nil
         }
     }
 }
