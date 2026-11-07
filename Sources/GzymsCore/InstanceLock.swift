@@ -4,11 +4,12 @@ import Foundation
 /// One HUD at a time, by a kernel lock on the pid file rather than by trusting the pid in it:
 /// the lock dies with its process, so a stale file or a reused pid can never point at the wrong process.
 public final class InstanceLock: @unchecked Sendable {
-    private var fd: Int32
+    private(set) var fd: Int32
 
     /// nil = someone else holds it.
     public init?(path: String) {
-        let fd = open(path, O_RDWR | O_CREAT, 0o644)
+        // O_CLOEXEC: a child (caffeinate, posix_spawn) that outlives Gzyms must not keep the lock with it.
+        let fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
         guard fd >= 0 else { return nil }
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { close(fd); return nil }
         ftruncate(fd, 0)

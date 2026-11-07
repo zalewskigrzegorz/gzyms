@@ -19,6 +19,14 @@ import Testing
     #expect(InstanceLock(path: path) != nil)
 }
 
+// caffeinate (posix_spawn, Caffeine.swift) outlived Gzyms holding the lock's fd, and every new Gzyms said "already running"
+// (2026-11-07). Close-on-exec keeps the fd out of any child.
+@Test func theLockStaysOutOfChildProcesses() throws {
+    let path = FileManager.default.temporaryDirectory.appendingPathComponent("lock-\(UUID().uuidString)").path
+    let lock = try #require(InstanceLock(path: path))
+    #expect(fcntl(lock.fd, F_GETFD) & FD_CLOEXEC != 0)
+}
+
 @Test func lockRecordsTheHolderPid() throws {
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("lock-\(UUID().uuidString)").path
     let lock = try #require(InstanceLock(path: path))
