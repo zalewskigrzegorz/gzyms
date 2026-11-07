@@ -43,6 +43,7 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 - Apps your organization manages say Managed in Settings → Apps. Setup skips them.
 - Settings → Apps sees a change in System Settings at once.
 - Claude Code shows Claude's icon in Settings → Agents.
+- Gzyms starts again after a crash, also with Caffeine on.
 
 """##,
 ]
