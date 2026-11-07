@@ -99,8 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appsObservers: [NSObjectProtocol] = []
     private lazy var settings = SettingsPanel(model: model, actions: settingsActions())
     private var settingsKeyObserver: NSObjectProtocol?
-    /// usernoted's Preferences folder, watched only while Settings → Apps or the step-by-step setup is open.
-    private var prefsWatch: DispatchSourceFileSystemObject?
+    /// Reads macOS's notification settings live, only while Settings → Apps or the step-by-step setup is open.
+    private var prefsTimer: Timer?
     /// System Settings opened from Settings → Apps: read every second while it runs, and the way back when it quits.
     private var systemSettingsWatch: (timer: Timer, observer: NSObjectProtocol)?
     private lazy var setupPanel = AppSetupPanel(model: model, skip: { [weak self] in self?.nextSetupApp() },
@@ -1324,10 +1324,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Marks each app whose macOS notification settings keep opening the original from working (Settings → Apps).
     /// The file opens only with Full Disk Access, so it is read off the main thread.
     private func refreshAppWarnings() {
-        let ids = model.seenApps.map(\.id), on = model.config.openOriginal || model.config.bannerAX
+        let ids = model.seenApps.map(\.id), on = model.config.openOriginal || model.config.bannerAX, live = prefsTimer != nil
         DispatchQueue.global(qos: .utility).async {
             let home = FileManager.default.homeDirectoryForCurrentUser
-            let prefs = try? Data(contentsOf: home.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences/group.com.apple.usernoted.plist"))
+            let prefs = usernotedPrefs(live: live)
             let hotkeys = try? Data(contentsOf: home.appending(path: "Library/Preferences/com.apple.symbolichotkeys.plist"))
             let managed = ncManagedApps(try? Data(contentsOf: URL(filePath: ncManagedSettingsPath)))
             let settings = on ? prefs.flatMap { ncAppSettings(prefs: $0, apps: ids, hotkeys: hotkeys, managed: managed) } ?? [:] : [:]
@@ -1343,22 +1343,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// While someone changes notification settings (Settings → Apps open, or the setup), each write macOS makes is read
-    /// at once. cfprefsd replaces the plist by a rename (a new inode each save, 2026-11-07), so the folder is watched,
-    /// not the file. Closed: no watch, the reads stay as before.
+    /// While someone changes notification settings (Settings → Apps open, or the setup), cfprefsd is read every 0.5 s:
+    /// the file lags up to 10 s and cfprefsd sends no events. Closed: no timer, the reads stay as before.
     private func updatePrefsWatch() {
         let editing = model.appSetup != nil || (settings.isVisible && model.settingsTab == .apps)
-        guard editing != (prefsWatch != nil) else { return }
-        if !editing { prefsWatch?.cancel(); prefsWatch = nil; log("nc settings: watch off"); return }
-        let dir = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences")
-        let fd = Darwin.open(dir.path, O_EVTONLY)
-        guard fd >= 0 else { return }  // no Full Disk Access: nothing to read anyway
-        let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .delete, .rename, .link], queue: .main)
-        src.setEventHandler { MainActor.assumeIsolated { [weak self] in self?.refreshAppWarnings() } }
-        src.setCancelHandler { close(fd) }
-        src.resume()
-        prefsWatch = src
-        log("nc settings: watch on")
+        guard editing != (prefsTimer != nil) else { return }
+        if !editing { prefsTimer?.invalidate(); prefsTimer = nil; busy.stop("nc settings, every 0.5 s"); return }
+        let t = Timer(timeInterval: 0.5, repeats: true) { _ in MainActor.assumeIsolated { [weak self] in self?.refreshAppWarnings() } }
+        t.tolerance = 0.1
+        RunLoop.main.add(t, forMode: .common)
+        prefsTimer = t
+        busy.start("nc settings, every 0.5 s")
     }
 
     /// The mirror in Settings → Apps follows each click in System Settings. When System Settings quits, HyprMac
