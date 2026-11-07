@@ -155,13 +155,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
             let bundleID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier ?? ""
-            MainActor.assumeIsolated { self?.appTerminated(bundleID); if bundleID == aerospaceBundleID { self?.updateSource() } }
+            MainActor.assumeIsolated { self?.appTerminated(bundleID); if isWorkspaceTiler(bundleID) { self?.updateSource() } }
         }
         appLaunch = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
             let bundleID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier ?? ""
-            MainActor.assumeIsolated { if bundleID == aerospaceBundleID { self?.updateSource() } }
+            MainActor.assumeIsolated { if isWorkspaceTiler(bundleID) { self?.updateSource() } }
         }
         model.onSelectWorkspace = { [weak self] n in self?.workspaceFeed.select(n, state: self?.model.sourceState) }
         let manager = ScreenManager { [weak self] plan, screensByID in self?.apply(plan, screensByID) }

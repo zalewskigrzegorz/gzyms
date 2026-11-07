@@ -93,11 +93,12 @@ final class WorkspaceFeed {
     }
 
     /// The CLI comes from Homebrew (or nix), never inside the app bundle. A GUI app's PATH has no /opt/homebrew/bin.
-    nonisolated static let aerospaceBinary: URL? = {
+    /// Looked up on every call (a few stats, every 3 s): AeroSpace may be installed while Gzyms already runs.
+    nonisolated static var aerospaceBinary: URL? {
         let path = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
         let dirs = ["/opt/homebrew/bin", "/usr/local/bin", "/run/current-system/sw/bin", NSHomeDirectory() + "/.nix-profile/bin"] + path
         return dirs.map { URL(fileURLWithPath: $0).appendingPathComponent("aerospace") }.first { FileManager.default.isExecutableFile(atPath: $0.path) }
-    }()
+    }
 
     nonisolated static func aerospace(_ args: [String]) -> Data? {
         guard let bin = aerospaceBinary else { return nil }

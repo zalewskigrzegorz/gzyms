@@ -71,6 +71,19 @@ private let aeroWindows = Data("""
     #expect(activeSource(.aerospace, hyprmac: true, aerospace: false) == .aerospace)
 }
 
+@Test func onlyTilerLaunchesReResolveTheSource() {
+    #expect(isWorkspaceTiler("bobko.aerospace") && isWorkspaceTiler("com.zachgray.HyprMac") && isWorkspaceTiler("com.zachgray.HyprMac.dev"))
+    #expect(!isWorkspaceTiler("com.apple.Safari"))
+}
+
+@Test func aerospaceWithOnlyLetterNames() throws {
+    let ws = Data(#"[{"workspace":"B","workspace-is-focused":true,"workspace-is-visible":true,"monitor-name":"M"},{"workspace":"web","workspace-is-focused":false,"workspace-is-visible":false,"monitor-name":"M"}]"#.utf8)
+    let win = Data(#"[{"window-id":1,"app-bundle-id":"com.apple.Safari","workspace":"web"}]"#.utf8)
+    let s = try #require(aerospaceState(workspaces: ws, windows: win))
+    #expect(s.focusedWorkspace == 1 && s.workspaces.map(\.label) == ["B", "web"])
+    #expect(barWorkspaces(state: s, styles: WorkspaceStyle.gregDefaults, showEmpty: false).map(\.label) == ["B", "web"])
+}
+
 @Test func workspaceSourceFromConfig() {
     #expect(loadConfig(toml: "[workspaces]\nsource = \"aerospace\"").config.workspaceSource == .aerospace)
     let bad = loadConfig(toml: "[workspaces]\nsource = \"yabai\"")

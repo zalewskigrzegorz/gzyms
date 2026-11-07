@@ -20,6 +20,11 @@ public func activeSource(_ setting: WorkspaceSource, hyprmac: Bool, aerospace: B
     return hyprmac ? .hyprmac : aerospace ? .aerospace : .spaces
 }
 
+/// The apps whose launch or quit can change what auto resolves to.
+public func isWorkspaceTiler(_ bundleID: String) -> Bool {
+    bundleID == "bobko.aerospace" || bundleID.hasPrefix("com.zachgray.HyprMac")
+}
+
 // MARK: - AeroSpace
 
 /// The `--format` Gzyms passes with `--json`. AeroSpace names each JSON key after its format variable.
