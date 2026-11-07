@@ -25,4 +25,24 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 - Agents that wait for you come first, idle ones fade to the bottom.
 
 """##,
+    "0.0.4": ##"""
+# 0.0.4
+
+The notes Gzyms shows once after an update to this version. Only the "- " lines are shown.
+
+- Phone push keys live in the Keychain now, not in config.toml. Set them again in Settings → Notifications.
+- Old keys left in config.toml are ignored. Gzyms tells you which lines to delete.
+- gzyms set reads a key from a pipe or a hidden prompt, so it stays out of your shell history.
+
+"""##,
+    "0.0.5": ##"""
+# 0.0.5
+
+The notes Gzyms shows once after an update to this version. Only the "- " lines are shown.
+
+- Apps your organization manages say Managed in Settings → Apps. Setup skips them.
+- Settings → Apps sees a change in System Settings at once.
+- Claude Code shows Claude's icon in Settings → Agents.
+
+"""##,
 ]
