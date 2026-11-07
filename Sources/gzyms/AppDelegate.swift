@@ -73,6 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var motionObserver: NSObjectProtocol?
     private var settingsObserver: NSObjectProtocol?
     private var tilerTimer: Timer?
+    private lazy var workspaceFeed = WorkspaceFeed { [weak self] in self?.model.sourceState = $0 }
+    private var appLaunch: NSObjectProtocol?
     private var grantTimer: Timer?
     private var calendar: CalendarSource?
     private var meetings: [Meeting] = []
@@ -138,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.stateEvents.hit(at: ProcessInfo.processInfo.systemUptime)
             self?.model.apply(read)
             self?.tilerCheck()
+            self?.updateSource()
             self?.pushTargets()  // focus may have moved to another screen
         }
         let writer = VitalsWriter { [unowned self] in
@@ -152,8 +155,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
             let bundleID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier ?? ""
-            MainActor.assumeIsolated { self?.appTerminated(bundleID) }
+            MainActor.assumeIsolated { self?.appTerminated(bundleID); if bundleID == aerospaceBundleID { self?.updateSource() } }
         }
+        appLaunch = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let bundleID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier ?? ""
+            MainActor.assumeIsolated { if bundleID == aerospaceBundleID { self?.updateSource() } }
+        }
+        model.onSelectWorkspace = { [weak self] n in self?.workspaceFeed.select(n, state: self?.model.sourceState) }
         let manager = ScreenManager { [weak self] plan, screensByID in self?.apply(plan, screensByID) }
         screens = manager
         manager.start()
@@ -1014,6 +1024,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     store: KeychainStore())
         if !load.broken { LoginItem.sync(wanted: load.config.startAtLogin) }  // before the config lands, so General draws the new state
         model.config = load.config
+        updateSource()
         applyUpdates(load.config)
         chords.micShortcut = load.config.micShortcut
         chords.configureNav(leader: load.config.leader, idleTimeout: load.config.idleTimeout, hintChars: load.config.hintChars,
@@ -1087,6 +1098,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setNoWindowManager(_ on: Bool) {
         model.noWindowManager = on
+        updateSource()
         log("tiler: \(on ? "none, one desktop" : "back")")
         appsObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         appsObservers = []
@@ -1097,6 +1109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated { [weak self] in self?.refreshRunningApps() }
             })
         }
+    }
+
+    /// Auto keeps HyprMac through its 10 s grace, so a HyprMac restart does not flip the bar to another source.
+    private func updateSource() {
+        let running = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
+        let hyprmac = !model.noWindowManager && (model.state != nil || running.contains { $0.hasPrefix("com.zachgray.HyprMac") })
+        model.source = activeSource(model.config.workspaceSource, hyprmac: hyprmac, aerospace: running.contains(aerospaceBundleID))
+        workspaceFeed.run(model.source)
     }
 
     private func refreshRunningApps() {

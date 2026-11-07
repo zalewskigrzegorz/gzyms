@@ -92,9 +92,22 @@ final class BarModel {
     var noWindowManager = false
     var runningApps: [String] = []
 
+    /// Where the workspaces come from now: `config.workspaceSource`, with auto resolved to what runs.
+    var source = WorkspaceSource.hyprmac
+    /// AeroSpace's or the Spaces' workspaces; nil = not running or not readable.
+    var sourceState: HyprMacState?
+    @ObservationIgnored var onSelectWorkspace: (Int) -> Void = { _ in }
+
+    /// The live state of the source in use; nil = none (HyprMac's last file while it is gone does not count).
+    var activeState: HyprMacState? { source == .hyprmac ? (stale ? nil : state) : sourceState }
+
     var workspaces: [BarWorkspace] {
-        if noWindowManager { return singleDesktop(styles: config.workspaces, apps: runningApps) }
-        return state.map { barWorkspaces(state: $0, styles: config.workspaces, showEmpty: config.showEmpty) } ?? []
+        if source == .hyprmac {
+            if noWindowManager { return singleDesktop(styles: config.workspaces, apps: runningApps) }
+            return state.map { barWorkspaces(state: $0, styles: config.workspaces, showEmpty: config.showEmpty) } ?? []
+        }
+        guard let sourceState else { return singleDesktop(styles: config.workspaces, apps: runningApps) }
+        return barWorkspaces(state: sourceState, styles: config.workspaces, showEmpty: config.showEmpty)
     }
 
     func apply(_ read: StateRead) {
@@ -125,13 +138,13 @@ struct PanelRoot: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             BarView(workspaces: model.workspaces, small: model.config.smallOnNotch && notch != nil, notch: notch,
-                    stale: model.stale && !model.noWindowManager, now: context.date, cpu: model.cpu, cpuSeries: model.cpuSeries,
+                    stale: model.source == .hyprmac && model.stale && !model.noWindowManager, now: context.date, cpu: model.cpu, cpuSeries: model.cpuSeries,
                     cpuChart: model.config.cpuChart, topProcesses: model.topProcesses, memory: model.memory,
                     net: model.net, netDown: model.netDown, netUp: model.netUp,
                     battery: model.battery, batteryWarning: model.batteryWarning,
                     audio: model.audio, onAudioChange: model.onAudioChange, onTestSound: { model.onTestSound() },
                     micLevel: model.micLevel, onMicMute: model.onMicMute, onMicPopup: model.onMicPopup,
-                    icon: AppIcons.icon(for:), onSelect: switchWorkspace, onCPUPopup: model.onCPUPopup,
+                    icon: AppIcons.icon(for:), onSelect: { model.source == .hyprmac ? switchWorkspace($0) : model.onSelectWorkspace($0) }, onCPUPopup: model.onCPUPopup,
                     // Read when called: the left side sits in an equatable Redraw that keeps its first closures, and a bar drawn
                     // before the app delegate set them stayed dead (the logo did nothing for a whole session).
                     inboxes: model.inboxes, onOpenNote: { model.onOpenNote($0) }, onRemoveNote: { model.onRemoveNote($0) },
