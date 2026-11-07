@@ -46,4 +46,16 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 - Gzyms starts again after a crash, also with Caffeine on.
 
 """##,
+    "0.0.6": ##"""
+# 0.0.6
+
+The notes Gzyms shows once after an update to this version. Only the "- " lines are shown.
+
+- The bar shows workspaces from AeroSpace or macOS Spaces too, not only HyprMac.
+- Settings → General → Workspaces from picks the source. Auto finds the one you run.
+- AeroSpace switches show at once with exec-on-workspace-change = ['/bin/bash', '-c', 'gzyms workspaces refresh'] in ~/.aerospace.toml.
+- AeroSpace started or installed after Gzyms shows up without a restart.
+- A picked tiler that is not running gets a link to its site.
+
+"""##,
 ]
