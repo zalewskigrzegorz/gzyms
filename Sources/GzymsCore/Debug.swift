@@ -88,6 +88,7 @@ extension NCAppSettings {
     public var debugLine: String {
         if unsupported { return "unsupported, macOS lets nothing be set for it" }
         if hidden { return "system agent, not listed in System Settings" }
+        if managed { return "managed by your organization, macOS locks its page" }
         let style = !desktop ? "off" : persistent ? "persistent" : "temporary"
         let shown = ["default", "never", "unlocked", "always"]
         let preview = (previews >= 0 && previews < shown.count ? shown[previews] : "\(previews)") + (previews == 0 && defaultHidden ? " (never)" : "")

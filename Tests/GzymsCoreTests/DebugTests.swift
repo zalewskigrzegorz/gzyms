@@ -81,3 +81,7 @@ import Testing
     g.banner(at: 10)
     #expect(g.signals == 0 && g.firstSignal == nil)
 }
+
+@Test func managedAppDebugLine() {
+    #expect(NCAppSettings(desktop: false, managed: true).debugLine == "managed by your organization, macOS locks its page")
+}

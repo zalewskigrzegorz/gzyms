@@ -104,3 +104,19 @@ private func blob(_ req: [String: Any]) throws -> Data {
     #expect(ncReadFrom(now - 10, delivered: now + 3600, now: now) == now)  // Calendar's 00:00 reminder
     #expect(ncReadFrom(now, delivered: now - 30, now: now) == now)  // never back
 }
+
+// An MDM profile locks an app's page (issue #2): no fix to ask for, setup skips it.
+@Test func managedAppsNeedNoFix() throws {
+    let url = try #require(Bundle.module.url(forResource: "managed-notificationsettings", withExtension: "plist", subdirectory: "Fixtures"))
+    let managed = ncManagedApps(try Data(contentsOf: url))
+    #expect(managed == ["com.example.mdmagent"])  // the entry without BundleIdentifier is ignored
+    #expect(ncManagedApps(nil).isEmpty && ncManagedApps(Data("nope".utf8)).isEmpty)
+    let off = try PropertyListSerialization.data(fromPropertyList: ["apps": [["bundle-id": "com.example.MDMAgent", "flags": 0x0080_2042],
+                                                                              ["bundle-id": "com.free", "flags": 0x0080_2042]]],
+                                                 format: .binary, options: 0)
+    let s = try #require(ncAppSettings(prefs: off, apps: ["com.example.MDMAgent", "com.free"], hotkeys: nil, managed: managed))
+    let mdm = try #require(s["com.example.MDMAgent"])
+    #expect(mdm.managed && mdm.problems.isEmpty && mdm.pageDone)
+    #expect(mdm.warning == "Your organization manages its notifications. Nothing to change.")
+    #expect(s["com.free"]?.managed == false && s["com.free"]?.pageDone == false)
+}

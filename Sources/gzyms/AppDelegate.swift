@@ -1323,7 +1323,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let home = FileManager.default.homeDirectoryForCurrentUser
             let prefs = try? Data(contentsOf: home.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences/group.com.apple.usernoted.plist"))
             let hotkeys = try? Data(contentsOf: home.appending(path: "Library/Preferences/com.apple.symbolichotkeys.plist"))
-            let settings = on ? prefs.flatMap { ncAppSettings(prefs: $0, apps: ids, hotkeys: hotkeys) } ?? [:] : [:]
+            let managed = ncManagedApps(try? Data(contentsOf: URL(filePath: ncManagedSettingsPath)))
+            let settings = on ? prefs.flatMap { ncAppSettings(prefs: $0, apps: ids, hotkeys: hotkeys, managed: managed) } ?? [:] : [:]
             DispatchQueue.main.async { MainActor.assumeIsolated { [weak self] in
                 guard let self else { return }
                 let apps = self.model.seenApps.map { a in var a = a; a.mac = settings[a.id]; return a }
@@ -1817,7 +1818,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let home = FileManager.default.homeDirectoryForCurrentUser
                 let prefs = try? Data(contentsOf: home.appending(path: "Library/Group Containers/group.com.apple.usernoted/Library/Preferences/group.com.apple.usernoted.plist"))
                 let hotkeys = try? Data(contentsOf: home.appending(path: "Library/Preferences/com.apple.symbolichotkeys.plist"))
-                let macOS = prefs.flatMap { ncAppSettings(prefs: $0, apps: ids, hotkeys: hotkeys) }
+                let managed = ncManagedApps(try? Data(contentsOf: URL(filePath: ncManagedSettingsPath)))
+                let macOS = prefs.flatMap { ncAppSettings(prefs: $0, apps: ids, hotkeys: hotkeys, managed: managed) }
                 DispatchQueue.main.async { MainActor.assumeIsolated {
                     guard let self else { return }
                     var r = first

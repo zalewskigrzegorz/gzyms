@@ -1792,7 +1792,9 @@ private struct AppsTab: View {
             Text(app.name).lineLimit(1)
             Spacer()
             Text(AppPreset(rule)?.title ?? "Custom").font(.system(size: 12)).foregroundStyle(theme[\.overlay])
-            if let mac = app.mac, !mac.unsupported, !mac.hidden {
+            if let mac = app.mac, mac.managed {
+                Text("Managed").font(.system(size: 12)).foregroundStyle(theme[\.overlay]).frame(width: 84, alignment: .leading)
+            } else if let mac = app.mac, !mac.unsupported, !mac.hidden {
                 let n = mac.problems.count
                 HStack(spacing: 5) {
                     Circle().fill(n == 0 ? theme[\.green] : theme[\.peach]).frame(width: 7, height: 7)
@@ -1910,7 +1912,7 @@ private struct AppDrawer: View {
             .padding(.horizontal, 12).padding(.top, 6)
             if let mac = app.mac, mac.hidden {
                 Text("macOS has no settings page for it.").font(.system(size: 11)).foregroundStyle(theme[\.overlay]).padding(12)
-            } else if let mac = app.mac, mac.unsupported {
+            } else if let mac = app.mac, mac.unsupported || mac.managed {
                 Text(mac.warning ?? "").padding(12)
             } else if let mac = app.mac {
                 MacMirror(settings: mac, animate: live).id(app.id).padding(.horizontal, 12).padding(.vertical, 10)

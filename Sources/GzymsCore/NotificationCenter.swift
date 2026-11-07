@@ -55,24 +55,29 @@ public struct NCAppSettings: Equatable, Sendable {
     public var hidden = false
     /// Its page has these rows only when the app asked for a badge or a sound (`auth`).
     public var hasBadge = true, hasSound = true
+    /// An MDM profile sets its notifications: macOS greys out its page, so nobody can change it (issue #2).
+    public var managed = false
     public init(allowed: Bool = true, desktop: Bool = true, persistent: Bool = false, center: Bool = true, sound: Bool = false, previews: Int = 0,
-                defaultHidden: Bool = false, shortcutOff: Bool = false, unsupported: Bool = false, hasBadge: Bool = true, hasSound: Bool = true, hidden: Bool = false) {
+                defaultHidden: Bool = false, shortcutOff: Bool = false, unsupported: Bool = false, hasBadge: Bool = true, hasSound: Bool = true, hidden: Bool = false,
+                managed: Bool = false) {
         self.allowed = allowed; self.desktop = desktop; self.persistent = persistent; self.center = center; self.sound = sound; self.previews = previews
         self.defaultHidden = defaultHidden; self.shortcutOff = shortcutOff; self.unsupported = unsupported
-        self.hasBadge = hasBadge; self.hasSound = hasSound; self.hidden = hidden
+        self.hasBadge = hasBadge; self.hasSound = hasSound; self.hidden = hidden; self.managed = managed
     }
 
     public var previewsHidden: Bool { previews == 1 || (previews == 0 && defaultHidden) }
     /// Everything its own page can fix is set: the step-by-step setup moves on. The 🌐 N shortcut is not on that page.
-    public var pageDone: Bool { unsupported || hidden || (allowed && desktop && center && !sound && !previewsHidden) }
+    public var pageDone: Bool { unsupported || hidden || managed || (allowed && desktop && center && !sound && !previewsHidden) }
     /// What to change in macOS, in the order of its page. Empty = set up right.
     public var problems: [String] {
-        if unsupported || hidden { return [] }
+        if unsupported || hidden || managed { return [] }
         return [(!allowed, "Notifications off"), (!desktop, "Banners off"), (!center, "Notification Center off"), (previewsHidden, "Previews off"),
                 (sound, "Sound on"), (shortcutOff, "🌐 N shortcut off")].filter(\.0).map(\.1)
     }
     public var warning: String? {
-        unsupported ? "macOS does not let you set notifications for Mail." : problems.isEmpty ? nil : problems.joined(separator: ", ")
+        if unsupported { return "macOS does not let you set notifications for Mail." }
+        if managed { return "Your organization manages its notifications. Nothing to change." }
+        return problems.isEmpty ? nil : problems.joined(separator: ", ")
     }
 }
 
@@ -86,7 +91,8 @@ public struct NCAppSettings: Equatable, Sendable {
 /// 0x02000000 = Allow notifications on (measured on Comet, then Calendar listed Off without it, 2026-11-04).
 /// 0x01000000 = a system agent System Settings does not list (BTMNotificationAgent, tccd; no listed app has it).
 /// Only `apps` (the ones Gzyms has seen) are read. nil = the settings could not be read.
-public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [String: NCAppSettings]? {
+/// `managed`: ids from `ncManagedApps`, matched whatever the case.
+public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?, managed: Set<String> = []) -> [String: NCAppSettings]? {
     guard let plist = try? PropertyListSerialization.propertyList(from: prefs, format: nil) as? [String: Any],
           let list = plist["apps"] as? [[String: Any]] else { return nil }
     // shortcut: an unset entry keeps the shortcut's default (on); an edited one says enabled = false.
@@ -104,9 +110,20 @@ public func ncAppSettings(prefs: Data, apps: [String], hotkeys: Data?) -> [Strin
         out[id] = NCAppSettings(allowed: flags & 0x0200_0000 != 0, desktop: flags & 0x18 != 0, persistent: flags & 0x10 != 0, center: flags & 0x1 == 0,
                                 sound: flags & 0x4 != 0 && hasSound, previews: a["content_visibility"] as? Int ?? 0, defaultHidden: defaultHidden,
                                 shortcutOff: shortcutOff, unsupported: ncOpenOriginalUnsupported.contains(id),
-                                hasBadge: auth.map { $0 & 0x1 != 0 } ?? true, hasSound: hasSound, hidden: flags & 0x0100_0000 != 0)
+                                hasBadge: auth.map { $0 & 0x1 != 0 } ?? true, hasSound: hasSound, hidden: flags & 0x0100_0000 != 0,
+                                managed: managed.contains(raw.lowercased()))
     }
     return out
+}
+
+/// Where an MDM profile puts the apps whose notifications it sets. World-readable, no Full Disk Access needed.
+public let ncManagedSettingsPath = "/Library/Managed Preferences/com.apple.notificationsettings.plist"
+
+/// The bundle ids an MDM profile locks (`NotificationSettings[].BundleIdentifier`), lowercased. Empty when there is no profile.
+public func ncManagedApps(_ data: Data?) -> Set<String> {
+    guard let data, let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+          let list = plist["NotificationSettings"] as? [[String: Any]] else { return [] }
+    return Set(list.compactMap { ($0["BundleIdentifier"] as? String)?.lowercased() })
 }
 
 /// The app from a `usernoted` log line `Delivering <NotificationRecord app:"…" …> … updatedExisting: false`.

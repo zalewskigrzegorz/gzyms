@@ -26,7 +26,8 @@ public struct AppSetupView: View {
                 if let icon = app.icon { Image(nsImage: icon).resizable().frame(width: 22, height: 22) }
                 Text(app.name).font(.system(size: 15, weight: .semibold))
             }
-            Text(done ? "Set up right. The next app opens in a moment." : "Click what pulses below on its page in System Settings. Gzyms moves on by itself.")
+            Text(app.mac?.managed == true ? "Your organization manages this app. Gzyms skips it."
+                 : done ? "Set up right. The next app opens in a moment." : "Click what pulses below on its page in System Settings. Gzyms moves on by itself.")
                 .font(.system(size: 12)).foregroundStyle(done ? theme[\.green] : theme[\.text])
                 .fixedSize(horizontal: false, vertical: true)
             Text("Turn off your tiling window manager, like HyprMac, while you set up.")
