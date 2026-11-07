@@ -12,6 +12,15 @@ public enum WorkspaceSource: String, CaseIterable, Sendable {
         case .spaces: "macOS Spaces"
         }
     }
+
+    /// Where to get the tiler. nil = nothing to install.
+    public var homepage: String? {
+        switch self {
+        case .hyprmac: "https://github.com/zacharytgray/HyprMac"
+        case .aerospace: "https://github.com/nikitabobko/AeroSpace"
+        case .auto, .spaces: nil
+        }
+    }
 }
 
 /// Auto takes the tiler that runs, HyprMac first. Without one, macOS Spaces: they are always there.

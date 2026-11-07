@@ -225,7 +225,7 @@ public struct SettingsView: View {
     @ViewBuilder private var content: some View {
         switch tab {
         case .general: GeneralTab(config: config, names: workspaceNames, from: workspacesFrom, found: workspacesFound, login: actions.loginItem(), write: actions.write,
-                                  reveal: actions.revealConfig, openLoginItems: actions.openLoginItems)
+                                  reveal: actions.revealConfig, openLoginItems: actions.openLoginItems, open: actions.openURL)
         case .appearance: AppearanceTab(config: config, devices: devices, write: actions.write, openThemes: { tab = .themes })
         case .animations: AnimationsTab(config: config, write: actions.write)
         case .themes: ThemesTab(config: config, write: actions.write)
@@ -344,6 +344,7 @@ private struct GeneralTab: View {
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let reveal: () -> Void
     let openLoginItems: () -> Void
+    let open: (String) -> Void
 
     var body: some View {
         Columns {
@@ -364,6 +365,13 @@ private struct GeneralTab: View {
             Row(title: "Workspaces from", note: sourceNote) {
                 menu(config.workspaceSource, WorkspaceSource.allCases.map { ($0, $0.title) }) {
                     write("source", $0 == .auto ? nil : .string($0.rawValue), .table(["workspaces"]))
+                }
+            }
+            Row(title: "Get a tiler", note: "Gzyms shows its workspaces on the bar.") {
+                HStack {
+                    ForEach(WorkspaceSource.allCases.filter { $0.homepage != nil }, id: \.self) { s in
+                        Button(s.title) { s.homepage.map(open) }
+                    }
                 }
             }
             Row(title: "Show empty workspaces") { Switch(on: config.showEmpty) { write("show_empty", .bool($0), .table(["workspaces"])) } }
