@@ -120,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         watchdog.start()
+        claudeCodeMark = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop").map { NSWorkspace.shared.icon(forFile: $0.path) }
         // After sleep macOS thaws Gzyms, fires every due timer and often moves the screens: a short stall is expected.
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [watchdog] _ in
             watchdog.settling("wake")

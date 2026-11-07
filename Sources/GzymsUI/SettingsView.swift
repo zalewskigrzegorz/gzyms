@@ -877,6 +877,8 @@ private struct AgentsTab: View {
 
 /// tuios's mark, drawn as it is and never tinted by the theme (see `tuiosMarkSVG`).
 private let tuiosMark = NSImage(data: Data(tuiosMarkSVG.utf8))
+/// Claude's app icon, set by the app when Claude is installed. nil (and in snapshots): the sparkles.
+@MainActor public var claudeCodeMark: NSImage?
 
 /// One source of agents: its name, how it is right now, its switch.
 private struct AgentSourceRow: View {
@@ -893,6 +895,8 @@ private struct AgentSourceRow: View {
         HStack(spacing: 10) {
             if source == .tuios, let tuiosMark {
                 Image(nsImage: tuiosMark).resizable().interpolation(.none).frame(width: 16, height: 16).frame(width: 18, height: 18)
+            } else if source == .claude, let claudeCodeMark {
+                Image(nsImage: claudeCodeMark).resizable().frame(width: 18, height: 18)
             } else {
                 Image(systemName: "sparkles").foregroundStyle(theme[\.overlay]).frame(width: 18, height: 18)
             }
