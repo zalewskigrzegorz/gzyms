@@ -1,6 +1,6 @@
 {
-  "count": 93,
-  "updated": "2026-11-06",
+  "count": 94,
+  "updated": "2026-11-07",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -65,6 +65,7 @@
     "Banned audio devices",
     "Custom audio device icons",
     "Workspaces pill from HyprMac",
+    "Workspaces from AeroSpace or macOS Spaces (auto-detected)",
     "Workspace names and colors",
     "Small bar on the notch screen",
     "Notch and multi-monitor placement",

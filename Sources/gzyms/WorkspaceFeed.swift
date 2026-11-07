@@ -162,3 +162,19 @@ private enum Spaces {
         return out
     }
 }
+
+/// `gzyms workspaces refresh`: AeroSpace runs it on each switch, so the bar follows at once instead of on the next poll.
+@MainActor
+enum WorkspacesCommand {
+    static func run(_ args: [String]) -> Never {
+        guard args == ["refresh"] else {
+            FileHandle.standardError.write(Data("gzyms workspaces: refresh\n".utf8))
+            exit(1)
+        }
+        // Quiet when the bar is not running: AeroSpace calls this on every switch.
+        if DNDCommand.barRunning() {
+            DistributedNotificationCenter.default().postNotificationName(workspacesRefreshName, object: nil, userInfo: nil, deliverImmediately: true)
+        }
+        exit(0)
+    }
+}

@@ -29,6 +29,7 @@ if args.first == "notify" { NotifyCommand.run(Array(args.dropFirst())) }
 if args.first == "settings" { SettingsCommand.run(args.dropFirst().first) }
 if args.first == "keys" { KeysCommand.run(args.dropFirst().first) }
 if args.first == "dnd" { DNDCommand.run(Array(args.dropFirst())) }
+if args.first == "workspaces" { WorkspacesCommand.run(Array(args.dropFirst())) }
 if args.first == "notifications" { NotificationsCommand.run(Array(args.dropFirst())) }
 if args.first == "debug" { DebugCommand.run(Array(args.dropFirst())) }
 if args.first == "report" { Report.run() }
