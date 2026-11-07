@@ -16,8 +16,8 @@ public enum WorkspaceSource: String, CaseIterable, Sendable {
     /// Where to get the tiler. nil = nothing to install.
     public var homepage: String? {
         switch self {
-        case .hyprmac: "https://github.com/zacharytgray/HyprMac"
-        case .aerospace: "https://github.com/nikitabobko/AeroSpace"
+        case .hyprmac: "https://hyprmac.app"
+        case .aerospace: "https://nikitabobko.github.io/AeroSpace/guide"
         case .auto, .spaces: nil
         }
     }

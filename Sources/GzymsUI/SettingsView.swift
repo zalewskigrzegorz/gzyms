@@ -363,14 +363,11 @@ private struct GeneralTab: View {
         }
         Section(title: "Workspaces") {
             Row(title: "Workspaces from", note: sourceNote) {
-                menu(config.workspaceSource, WorkspaceSource.allCases.map { ($0, $0.title) }) {
-                    write("source", $0 == .auto ? nil : .string($0.rawValue), .table(["workspaces"]))
-                }
-            }
-            Row(title: "Get a tiler", note: "Gzyms shows its workspaces on the bar.") {
                 HStack {
-                    ForEach(WorkspaceSource.allCases.filter { $0.homepage != nil }, id: \.self) { s in
-                        Button(s.title) { s.homepage.map(open) }
+                    // Only a picked tiler that is not running gets its link.
+                    if !found, let url = config.workspaceSource.homepage { Button("Get \(config.workspaceSource.title)") { open(url) } }
+                    menu(config.workspaceSource, WorkspaceSource.allCases.map { ($0, $0.title) }) {
+                        write("source", $0 == .auto ? nil : .string($0.rawValue), .table(["workspaces"]))
                     }
                 }
             }
