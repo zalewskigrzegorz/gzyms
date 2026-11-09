@@ -3,7 +3,8 @@ import Foundation
 /// One line of `gzyms notifications` and of the HUD's Queues tab, both read from notifications.json.
 public struct NotificationRow: Codable, Equatable, Identifiable, Sendable {
     /// `stack`: on screen (position 1) or waiting in the stack. `waiting`: no room in the stack yet, comes up in order.
-    public enum Place: String, Codable, Sendable { case stack, waiting, list, snoozed }
+    /// `missed`: came during a quiet period (locked, asleep, Do Not Disturb, sharing), never in an app's list.
+    public enum Place: String, Codable, Sendable { case stack, waiting, list, missed, snoozed }
     public var id: String
     /// The app's bundle id, `plugin:<folder>`, `meeting`, or `bell` (no app: the 🔔).
     public var source: String
@@ -29,7 +30,7 @@ extension NotificationStore.Saved {
     /// No file yet: the bar never ran.
     public static let empty = Self(inbox: [], snoozed: [])
 
-    /// The stack, then the ones waiting, the lists (newest first) and the snoozed (soonest back first).
+    /// The stack, then the ones waiting, the lists and the missed list (newest first) and the snoozed (soonest back first).
     public var rows: [NotificationRow] {
         func row(_ n: GzymsNotification, _ place: NotificationRow.Place, _ position: Int?, heard: Bool? = nil, back: Date? = nil) -> NotificationRow {
             NotificationRow(id: n.id, source: notificationSource(n), level: n.level, title: n.title, subtitle: n.subtitle, body: n.body,
@@ -41,6 +42,7 @@ extension NotificationStore.Saved {
         return stack.enumerated().map { row($1.n, .stack, $0 + 1, heard: $1.heard) }
             + waiting.enumerated().map { row($1.n, .waiting, $0 + 1, heard: $1.heard) }
             + inbox.filter { !ids.contains($0.id) }.sorted { $0.at > $1.at }.map { row($0, .list, nil) }
+            + (missed ?? []).map { row($0, .missed, nil) }
             + snoozed.sorted { $0.at < $1.at }.enumerated().map { row($1.n, .snoozed, $0 + 1, back: $1.at) }
     }
 
@@ -74,7 +76,7 @@ extension NotificationStore.Saved {
         var out = dnd.map { $0 == .distantFuture ? "Do not disturb: on\n\n" : "Do not disturb: on until \(time($0))\n\n" } ?? ""
         guard !all.isEmpty else { return out + "No notifications.\n" }
         let groups: [(NotificationRow.Place, String)] = [(.stack, "Stack, 1 is on screen"), (.waiting, "Waiting for room in the stack"),
-                                                        (.list, "In the lists"), (.snoozed, "Snoozed")]
+                                                        (.list, "In the lists"), (.missed, "Missed while you were away"), (.snoozed, "Snoozed")]
         out += groups.compactMap { place, name in
             let g = all.filter { $0.place == place }
             return g.isEmpty ? nil : "\(name) (\(g.count)):\n" + g.map(line).joined(separator: "\n") + "\n"

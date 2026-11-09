@@ -152,6 +152,7 @@ public struct HUDView: View {
         ForEach(waiting.prefix(8)) { queueRow($0) }
         if waiting.count > 8 { Text("+\(waiting.count - 8) more").foregroundStyle(theme[\.overlay]) }
         plain("in the lists", "\(queues.filter { $0.place == .list }.count)").padding(.top, 4)
+        plain("missed", "\(queues.filter { $0.place == .missed }.count)")
         plain("snoozed", "\(queues.filter { $0.place == .snoozed }.count)")
     }
 

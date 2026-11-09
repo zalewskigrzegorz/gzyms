@@ -98,7 +98,7 @@
     "Homebrew installs hear about a new version once, with brew upgrade in Settings → About",
     "Install the Claude Code plugin from Gzyms (CLI and Settings)",
     "See when Gzyms restarted a hung Notification Center: a note on the island, today's count in Settings",
-    "After an unlock, one notice says how many notifications came while you were away and opens their list",
+    "What comes while you are away (locked, asleep, Do Not Disturb, sharing) waits on its own pill, and one notice says so when you are back",
     "Quiet while sharing the screen",
     "Camera and mic pill with the apps using them",
     "Do Not Disturb synced with macOS Focus"

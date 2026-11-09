@@ -90,18 +90,16 @@ public func duplicateNotice(names: [String]) -> (title: String, body: String) {
 /// Id of that notification: clicking it opens Settings → Debug instead of a link.
 public let duplicateNoticeID = "gzyms-duplicates"
 
-/// Id of the notification after an unlock: clicking it opens a bar list instead of a link.
+/// Id of the notification when a quiet period ends: clicking it opens the missed list instead of a link.
 public let awayNoticeID = "gzyms-away"
 
-/// After an unlock: what came while the screen was locked and still waits, on screen or in a list, and the bar list
-/// with most of it ("app:<bundle id>", else "bell"). nil when nothing came.
-/// shortcut: a plugin's notes count toward the 🔔 even when its pill keeps them, add pill keys if plugins post a lot while away.
-public func awayNotice(waiting: [GzymsNotification], since: Date, onBar: Set<String>) -> (title: String, list: String)? {
-    let came = waiting.filter { !$0.compact && $0.id != awayNoticeID && $0.at >= since }
-    let lists = Dictionary(grouping: came) { n in n.app.flatMap { onBar.contains($0) ? "app:\($0)" : nil } ?? "bell" }
-    guard let top = lists.max(by: { ($0.value.count, $1.key) < ($1.value.count, $0.key) }) else { return nil }
-    return ("\(came.count) notification\(came.count == 1 ? "" : "s") while you were away", top.key)
+/// When a quiet period ends: the island's one line about the missed list. nil when it is empty.
+public func awayNotice(missed: Int) -> String? {
+    missed > 0 ? "\(missed) notification\(missed == 1 ? "" : "s") while you were away" : nil
 }
+
+/// The missed list's popup header.
+public func missedTitle(_ count: Int) -> String { "Missed while you were away · \(count)" }
 
 /// "A", "A and B", "A, B and C".
 public func joinNames(_ names: [String]) -> String {
