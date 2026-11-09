@@ -31,3 +31,13 @@ import Testing
     g.banner(at: 261)
     #expect(!g.warns)
 }
+
+@Test func guardKeepsEachCountedAppOnceUntilABanner() {
+    var g = BannerGuard()
+    g.signal(at: 0, app: "com.apple.MobileSMS")
+    g.signal(at: 60, app: "com.tinyspeck.slackmacgap")
+    g.signal(at: 130, app: "com.apple.MobileSMS")
+    #expect(g.apps == ["com.apple.MobileSMS", "com.tinyspeck.slackmacgap"])
+    g.banner(at: 131)
+    #expect(g.apps.isEmpty)
+}

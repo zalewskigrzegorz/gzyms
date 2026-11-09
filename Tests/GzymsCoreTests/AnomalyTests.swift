@@ -78,3 +78,32 @@ import Testing
     #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("anomalies.jsonl").path))
     #expect(!loadConfig(toml: "[debug]\nanomalies = false").config.anomalies)
 }
+
+@Test func ncAndStallKindsAreWrittenWithTheDetectorOff() throws {
+    // 2026-11-09: five NC restarts never reached the file because writing was off.
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let log = AnomalyLog(dir: dir)
+    log.enabled = false
+    log.write(kind: "panel_rebuild", detail: [:])
+    log.write(kind: "nc_restart", detail: [:])
+    log.write(kind: "main_thread_stall", detail: [:])
+    let text = try String(contentsOf: dir.appendingPathComponent("anomalies.jsonl"), encoding: .utf8)
+    #expect(!text.contains("panel_rebuild"))
+    #expect(text.contains("nc_restart") && text.contains("main_thread_stall"))
+}
+
+@Test func macContextDetail() {
+    var c = MacContext()
+    c.screenLocked = true
+    c.focusOn = true
+    c.screens = [MacContext.screen(builtin: true, width: 1512, height: 982, main: false),
+                 MacContext.screen(builtin: false, width: 2560, height: 1440, main: true)]
+    #expect(c.detail == ["screen_locked": "true", "display_asleep": "false", "focus": "on",
+                         "screens": "builtin 1512x982, external 2560x1440 main"])
+    c.countedApps = ["com.tinyspeck.slackmacgap", "com.apple.MobileSMS"]
+    c.sinceBanner = .some(nil)
+    #expect(c.detail["counted_apps"] == "com.tinyspeck.slackmacgap,com.apple.MobileSMS")
+    #expect(c.detail["since_banner_s"] == "none since start")
+    c.sinceBanner = 312.7
+    #expect(c.detail["since_banner_s"] == "312")
+}

@@ -27,6 +27,10 @@ final class BarModel {
     var micLevel = 0.0
     @ObservationIgnored var onMicMute: () -> Void = {}
     @ObservationIgnored var onMicPopup: (Bool) -> Void = { _ in }
+    /// The names of the cameras running in any app, and the apps using the camera and the mic; all empty = no camera pill.
+    var cameras: [String] = []
+    var cameraApps: [SeenApp] = []
+    var micApps: [SeenApp] = []
     @ObservationIgnored var onCPUPopup: (Bool) -> Void = { _ in }
     var inboxes: [String?: [GzymsNotification]] = [:]
     var dockBadges: [String: String] = [:]
@@ -47,6 +51,8 @@ final class BarModel {
     var grants: [GrantState] = []
     /// Every calendar macOS knows, for the Calendar tab (filled once the calendar plugin has read).
     var calendars: [CalendarInfo] = []
+    /// The Focuses set up on this Mac, for Settings → Notifications → Do Not Disturb.
+    var focusModes: [FocusMode] = []
     /// `[bar] logo` read once per config load, not on every redraw.
     var customLogo: NSImage?
     var nowPlaying: NowPlaying?
@@ -57,6 +63,8 @@ final class BarModel {
     var caffeine: CaffeineState?
     @ObservationIgnored var onCaffeine: (Int??) -> Void = { _ in }
     var dnd: Date?
+    /// The DND above came from a macOS Focus, so its popup says so.
+    var dndByFocus = false
     @ObservationIgnored var onDND: (Date?) -> Void = { _ in }
     var shelf: [URL] = []
     @ObservationIgnored var onShelf: (ShelfChange) -> Void = { _ in }
@@ -152,7 +160,8 @@ struct PanelRoot: View {
                     meetingPill: model.meetingPill, onMeetingPill: model.onMeetingPill, logo: model.customLogo,
                     media: mediaItems(model.nowPlaying, tabs: model.tabs, now: context.date.timeIntervalSince1970), onMusic: model.onMusic,
                     pluginPills: model.pluginPills, onPluginEvent: model.onPluginEvent,
-                    caffeine: model.caffeine, onCaffeine: model.onCaffeine, dnd: model.dnd, onDND: model.onDND, shelf: model.shelf, onShelf: model.onShelf)
+                    caffeine: model.caffeine, onCaffeine: model.onCaffeine, dnd: model.dnd, dndByFocus: model.dndByFocus, onDND: model.onDND, shelf: model.shelf, onShelf: model.onShelf,
+                    cameras: model.cameras, cameraApps: model.cameraApps, micApps: model.micApps)
         }
         .environment(\.onAltNote) { model.onAltNote($0) }
         .overlay { if let nav = model.nav, nav.panel == panel { HintOverlay(labels: nav.labels, typed: nav.typed) } }

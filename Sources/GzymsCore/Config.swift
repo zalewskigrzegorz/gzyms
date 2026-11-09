@@ -31,6 +31,8 @@ public struct GzymsConfig: Equatable, Sendable {
     public var caffeineBatteryBelow = 0
     /// `[dnd] breaks_through`: what still shows during Do Not Disturb. Turning it on and off is the pill's, not the config's.
     public var dndBreaks = DNDBreak.defaults
+    /// `[dnd] follow_focus`: the macOS Focus mode ids that turn Do Not Disturb on while they are on (`FocusFollow`).
+    public var followFocus: Set<String> = [FocusFollow.dndMode]
     /// `[notifications] priority`: what sounds at once even while it waits for room in the stack.
     public var priority = DNDBreak.priorityDefaults
     /// `[notifications] open_original` (experimental): opening another app's notification presses its original in
@@ -45,6 +47,11 @@ public struct GzymsConfig: Equatable, Sendable {
     /// `[notifications] nc_auto_restart`: restarts a hung Notification Center by itself (`killall NotificationCenter`),
     /// at most once per 10 minutes. Off: only the Restart button in Settings → Hacks does it.
     public var ncAutoRestart = false
+    /// `[notifications] keep`: rows in the lists older than this go. nil = forever.
+    public var keep: NotificationKeep?
+    /// `[notifications] quiet_sharing`: while the screen is shared, recorded or mirrored, every notification goes
+    /// quietly to its list, so nobody watching reads it. Off: banners show as usual.
+    public var quietSharing = true
     /// `[hacks] browser_media`: the loopback server for the browser userscript, so tabs with video show in the music
     /// pill. Off until turned on in Settings → Hacks: it opens a port on 127.0.0.1.
     public var browserMedia = false
@@ -141,9 +148,10 @@ public enum MenuBarKey: String, CaseIterable, Sendable {
 }
 
 public enum BarWidget: String, CaseIterable, Sendable {
-    case music, cpu, memory, network, audio, mic, shelf, dnd, caffeine, battery, clock
+    case music, cpu, memory, network, audio, mic, camera, shelf, dnd, caffeine, battery, clock
     public var title: String {
         switch self {
+        case .camera: "Camera and mic in use"
         case .dnd: "Do Not Disturb"
         case .shelf: "File shelf"
         case .music: "Music"
@@ -305,10 +313,16 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         if bad.isEmpty { config.dndBreaks = Set(names.compactMap(DNDBreak.init(rawValue:))) }
         else { problems.append("dnd.breaks_through: \(bad.joined(separator: ", ")) must be \(DNDBreak.allCases.map(\.rawValue).joined(separator: ", ")), kept armageddon and meetings") }
     }
+    if let ids = raw.dnd?.follow_focus { config.followFocus = Set(ids) }
     if let v = raw.notifications?.openOriginal { config.openOriginal = v }
     if let v = raw.notifications?.bannerAX { config.bannerAX = v }
     if let v = raw.notifications?.signal { config.signal = v }
     if let v = raw.notifications?.ncAutoRestart { config.ncAutoRestart = v }
+    if let k = raw.notifications?.keep {
+        if let v = NotificationKeep(rawValue: k) { config.keep = v }
+        else if k != "forever" { problems.append("notifications.keep: \"\(k)\" must be hour, day, week or forever, kept forever") }
+    }
+    if let v = raw.notifications?.quietSharing { config.quietSharing = v }
     if let v = raw.hacks?.browser_media { config.browserMedia = v }
     if let v = raw.updates?.automatic { config.updatesAutomatic = v }
     if let names = raw.notifications?.priority {
@@ -542,10 +556,12 @@ private struct RawNotifications: Decodable {
     var bannerAX: Bool?
     var signal: Bool?
     var ncAutoRestart: Bool?
+    var keep: String?
+    var quietSharing: Bool?
     var unknown: [String] = []
     enum CodingKeys: String, CodingKey {
-        case sounds, keys, hold, levels, apps, letters, phone, priority, signal
-        case openOriginal = "open_original", bannerAX = "banner_ax", ncAutoRestart = "nc_auto_restart"
+        case sounds, keys, hold, levels, apps, letters, phone, priority, signal, keep
+        case openOriginal = "open_original", bannerAX = "banner_ax", ncAutoRestart = "nc_auto_restart", quietSharing = "quiet_sharing"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -561,8 +577,10 @@ private struct RawNotifications: Decodable {
         bannerAX = lenient(c, .bannerAX, "notifications.banner_ax", &unknown)
         signal = lenient(c, .signal, "notifications.signal", &unknown)
         ncAutoRestart = lenient(c, .ncAutoRestart, "notifications.nc_auto_restart", &unknown)
+        keep = lenient(c, .keep, "notifications.keep", &unknown)
+        quietSharing = lenient(c, .quietSharing, "notifications.quiet_sharing", &unknown)
         unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone", "priority",
-                                                        "open_original", "banner_ax", "signal", "nc_auto_restart"], prefix: "notifications.")
+                                                        "open_original", "banner_ax", "signal", "nc_auto_restart", "keep", "quiet_sharing"], prefix: "notifications.")
         unknown += (levels?.unknown ?? []) + (apps?.unknown ?? []) + (letters?.unknown ?? []) + (phone?.unknown ?? [])
     }
 }
@@ -778,6 +796,7 @@ private struct RawCaffeine: Decodable {
 
 private struct RawDND: Decodable {
     var breaks_through: [String]?
+    var follow_focus: [String]?
 }
 
 private struct RawBar: Decodable {

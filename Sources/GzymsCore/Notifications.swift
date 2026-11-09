@@ -205,6 +205,12 @@ extension GzymsNotification {
     var lead: Int { level == .armageddon ? 1 : 0 }
 }
 
+/// `[notifications] keep`: how long a row stays in its app's list. Missing = forever.
+public enum NotificationKeep: String, CaseIterable, Sendable {
+    case hour, day, week
+    public var seconds: Double { switch self { case .hour: 3600; case .day: 86_400; case .week: 604_800 } }
+}
+
 /// One island with a stack (M3c): the banner on screen and up to three waiting under it, snoozed ones waiting to
 /// come back, and an inbox per app (newest first). Only an armageddon jumps in at once; the rest waits its turn in
 /// the order it arrived, whatever its level, and a banner on screen always runs its time out (Greg).
@@ -240,12 +246,14 @@ public struct NotificationStore: Sendable {
     public private(set) var dnd: Date?
     /// `[dnd] breaks_through`: what still comes up on screen during Do Not Disturb.
     public var breaksThrough = DNDBreak.defaults
+    /// The screen is shared, recorded or mirrored (and `quiet_sharing` is on): nothing shows, not even an armageddon.
+    public private(set) var sharing = false
 
     public init() {}
 
     /// During Do Not Disturb everything else goes quietly to its list (and to the phone, as always).
     public func quiet(_ n: GzymsNotification) -> Bool {
-        dnd != nil && !breaksThrough.covers(n)
+        sharing || (dnd != nil && !breaksThrough.covers(n))
     }
 
     /// The notifications to sound since the last call, each once.
@@ -257,7 +265,16 @@ public struct NotificationStore: Sendable {
     /// Turning it on files what is on screen and waiting; turning it off brings nothing back, the lists keep it.
     public mutating func setDND(_ until: Date?, now: Double) {
         dnd = until
-        guard until != nil else { return }
+        if until != nil { fileQuiet(now: now) }
+    }
+
+    /// Like Do Not Disturb: turning it on files what is on screen and waiting, turning it off brings nothing back.
+    public mutating func setSharing(_ on: Bool, now: Double) {
+        sharing = on
+        if on { fileQuiet(now: now) }
+    }
+
+    private mutating func fileQuiet(now: Double) {
         let shown = banner?.id
         let filed = stack.filter { quiet($0.n) }.map(\.seq)
         for e in stack where filed.contains(e.seq) { file(e.n) }
@@ -360,6 +377,25 @@ public struct NotificationStore: Sendable {
     public mutating func clearAll(_ app: String?) {
         inboxes[app]?.forEach { toPhone[$0.id] = nil }
         inboxes[app] = nil
+    }
+
+    /// `[notifications] keep`: list rows older than this go. The stack and the snoozed are never cut.
+    public var keep: NotificationKeep?
+
+    /// Drops list rows that arrived before `wall` minus `keep`. Returns how many went.
+    @discardableResult public mutating func prune(wall: Date) -> Int {
+        guard let keep else { return 0 }
+        let cutoff = wall.addingTimeInterval(-keep.seconds)
+        var gone = 0
+        for (app, list) in inboxes {
+            let old = list.filter { $0.at < cutoff }
+            guard !old.isEmpty else { continue }
+            old.forEach { toPhone[$0.id] = nil }
+            gone += old.count
+            let kept = list.filter { $0.at >= cutoff }
+            inboxes[app] = kept.isEmpty ? nil : kept
+        }
+        return gone
     }
 
     public var isPaused: Bool { pausedLeft != nil }

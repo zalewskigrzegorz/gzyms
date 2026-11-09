@@ -128,10 +128,16 @@ public struct BarView: View {
     var onCaffeine: (Int??) -> Void = { _ in }
     /// Do Not Disturb until then (`.distantFuture` = until turned off); nil = off.
     let dnd: Date?
+    let dndByFocus: Bool
     /// .some(date) turns it on until then, nil turns it off.
     var onDND: (Date?) -> Void = { _ in }
     let shelf: [URL]
     var onShelf: (ShelfChange) -> Void = { _ in }
+    /// The cameras running in any app, and the apps using the camera and the mic; all empty = no camera pill.
+    let cameras: [String]
+    let cameraApps: [SeenApp]
+    let micApps: [SeenApp]
+    private var sensorTip: String? { sensorHelp(cameraApps: cameraApps.map(\.name), micApps: micApps.map(\.name), cameras: cameras) }
     /// Files are being dragged over the bar: the shelf shows, even empty, to say it takes them.
     @State private var dropping = false
     var onPluginEvent: (String, PluginEvent, String) -> Void = { _, _, _ in }
@@ -144,14 +150,14 @@ public struct BarView: View {
     private func visible(_ s: BarSlot) -> Bool {
         switch s {
         case .widget(let w): !hidden.contains(w) && (w != .music || !media.isEmpty)
-            && (w != .shelf || dropping || !shelf.isEmpty)
+            && (w != .shelf || dropping || !shelf.isEmpty) && (w != .camera || sensorTip != nil)
         case .plugin(let f): pluginPills.contains { $0.plugin == f }
         }
     }
 
     @ViewBuilder private func slot(_ s: BarSlot) -> some View {
         switch s {
-        case .widget(let w): widget(w).hintTarget(w == .clock ? nil : "widget:\(w.rawValue)", popup: true)
+        case .widget(let w): widget(w).hintTarget(w == .clock || w == .camera ? nil : "widget:\(w.rawValue)", popup: true)
         case .plugin(let f):
             let pills = pluginPills.filter { $0.plugin == f }
             // An agent's row carries its notification, so Agents gets no pile of them on top.
@@ -184,9 +190,13 @@ public struct BarView: View {
             Redraw(audio, micLevel, small) {
                 AudioInputView(audio: audio, small: small, level: micLevel, onChange: onAudioChange, onMute: onMicMute, onPopup: onMicPopup)
             }.equatable()
+        case .camera:
+            if let help = sensorTip {
+                SensorView(camera: !cameraApps.isEmpty || !cameras.isEmpty, mic: !micApps.isEmpty, help: help, small: small)
+            }
         case .battery: Redraw(battery, batteryWarning, small) { BatteryView(battery: battery, warning: batteryWarning, small: small) }.equatable()
         case .clock: Redraw(now, small) { ClockView(now: now, small: small) }.equatable()
-        case .dnd: Redraw(dnd, now, small) { DNDView(until: dnd, now: now, small: small, onCommand: onDND) }.equatable()
+        case .dnd: Redraw(dnd, dndByFocus, now, small) { DNDView(until: dnd, byFocus: dndByFocus, now: now, small: small, onCommand: onDND) }.equatable()
         case .caffeine: Redraw(caffeine, now, small) { CaffeineView(state: caffeine, now: now, small: small, onCommand: onCaffeine) }.equatable()
         case .shelf: Redraw(shelf, dropping, small) { ShelfView(files: shelf, small: small, dropping: dropping, onChange: onShelf) }.equatable()
         }
@@ -207,10 +217,11 @@ public struct BarView: View {
                 media: [MediaItem] = [], onMusic: @escaping (MusicAction) -> Void = { _ in },
                 pluginPills: [PluginPill] = [], onPluginEvent: @escaping (String, PluginEvent, String) -> Void = { _, _, _ in },
                 caffeine: CaffeineState? = nil, onCaffeine: @escaping (Int??) -> Void = { _ in },
-                dnd: Date? = nil, onDND: @escaping (Date?) -> Void = { _ in },
-                shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }) {
-        self.shelf = shelf; self.onShelf = onShelf
-        self.dnd = dnd; self.onDND = onDND
+                dnd: Date? = nil, dndByFocus: Bool = false, onDND: @escaping (Date?) -> Void = { _ in },
+                shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }, cameras: [String] = [],
+                cameraApps: [SeenApp] = [], micApps: [SeenApp] = []) {
+        self.shelf = shelf; self.onShelf = onShelf; self.cameras = cameras; self.cameraApps = cameraApps; self.micApps = micApps
+        self.dnd = dnd; self.dndByFocus = dndByFocus; self.onDND = onDND
         self.logo = logo; self.media = media; self.onMusic = onMusic
         self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent
         self.caffeine = caffeine; self.onCaffeine = onCaffeine
@@ -764,13 +775,14 @@ public struct CaffeinePopup: View {
 /// 🌙 grey while off; mauve with the time left during Do Not Disturb. The popup picks how long.
 public struct DNDView: View {
     let until: Date?
+    var byFocus = false
     let now: Date
     let small: Bool
     let onCommand: (Date?) -> Void
     @Environment(\.popups) private var popups
     @Environment(\.theme) private var theme
-    public init(until: Date?, now: Date, small: Bool, onCommand: @escaping (Date?) -> Void) {
-        self.until = until; self.now = now; self.small = small; self.onCommand = onCommand
+    public init(until: Date?, byFocus: Bool = false, now: Date, small: Bool, onCommand: @escaping (Date?) -> Void) {
+        self.until = until; self.byFocus = byFocus; self.now = now; self.small = small; self.onCommand = onCommand
     }
 
     public var body: some View {
@@ -787,22 +799,54 @@ public struct DNDView: View {
         .onTapGesture { popups.binding("widget:dnd").wrappedValue.toggle() }
         .help(until == nil ? "Do Not Disturb" : "Do Not Disturb is on")
         .popover(isPresented: popups.binding("widget:dnd"), arrowEdge: .bottom) {
-            DNDPopup(until: until, now: now) { popups.open = nil; onCommand($0) }.environment(\.theme, theme).environment(\.popups, popups)
+            DNDPopup(until: until, byFocus: byFocus, now: now) { popups.open = nil; onCommand($0) }.environment(\.theme, theme).environment(\.popups, popups)
+        }
+    }
+}
+
+/// Green and orange like macOS' own camera and mic dots. The bar has little room, so the apps using them
+/// are named in the popup a click opens, not drawn on the bar.
+struct SensorView: View {
+    let camera: Bool
+    let mic: Bool
+    let help: String
+    let small: Bool
+    @Environment(\.popups) private var popups
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if camera { Image(systemName: "video.fill").foregroundStyle(theme[\.green]) }
+            if mic { Image(systemName: "mic.fill").foregroundStyle(theme[\.peach]) }
+        }
+        .font(.system(size: small ? 10 : 12))
+        .contentShape(Rectangle())
+        .onTapGesture { popups.binding("widget:camera").wrappedValue.toggle() }
+        .help(help)
+        .popover(isPresented: popups.binding("widget:camera"), arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(help.split(separator: "\n").map(String.init), id: \.self) { Text($0).foregroundStyle(theme[\.text]) }
+            }
+            .popupStyle(theme, width: 300)
+            .environment(\.theme, theme)
         }
     }
 }
 
 public struct DNDPopup: View {
     let until: Date?
+    var byFocus = false
     let now: Date
     let onCommand: (Date?) -> Void
     @Environment(\.theme) private var theme
-    public init(until: Date?, now: Date, onCommand: @escaping (Date?) -> Void) { self.until = until; self.now = now; self.onCommand = onCommand }
+    public init(until: Date?, byFocus: Bool = false, now: Date, onCommand: @escaping (Date?) -> Void) {
+        self.until = until; self.byFocus = byFocus; self.now = now; self.onCommand = onCommand
+    }
 
     public var body: some View {
         let choices: [(String, Date)] = [("1 h", now + 3600), ("Until tomorrow", dndUntilMorning(now: now)), ("∞", .distantFuture)]
         VStack(alignment: .leading, spacing: 8) {
-            Text(until.map { $0 == .distantFuture ? "Quiet until you turn it off" : "Quiet, \(CaffeineState(until: $0).label(now: now)) left" }
+            Text(until.map { byFocus ? "Quiet while your macOS Focus is on" : $0 == .distantFuture ? "Quiet until you turn it off" : "Quiet, \(CaffeineState(until: $0).label(now: now)) left" }
                  ?? "Do Not Disturb")
                 .foregroundStyle(until == nil ? theme[\.text] : theme[\.mauve])
             Text("Banners wait in their lists, the phone still gets them.").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
