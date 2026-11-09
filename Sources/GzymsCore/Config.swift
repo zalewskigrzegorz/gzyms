@@ -31,6 +31,8 @@ public struct GzymsConfig: Equatable, Sendable {
     public var caffeineBatteryBelow = 0
     /// `[dnd] breaks_through`: what still shows during Do Not Disturb. Turning it on and off is the pill's, not the config's.
     public var dndBreaks = DNDBreak.defaults
+    /// `[dnd] follow_focus`: the macOS Focus mode ids that turn Do Not Disturb on while they are on (`FocusFollow`).
+    public var followFocus: Set<String> = [FocusFollow.dndMode]
     /// `[notifications] priority`: what sounds at once even while it waits for room in the stack.
     public var priority = DNDBreak.priorityDefaults
     /// `[notifications] open_original` (experimental): opening another app's notification presses its original in
@@ -311,6 +313,7 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         if bad.isEmpty { config.dndBreaks = Set(names.compactMap(DNDBreak.init(rawValue:))) }
         else { problems.append("dnd.breaks_through: \(bad.joined(separator: ", ")) must be \(DNDBreak.allCases.map(\.rawValue).joined(separator: ", ")), kept armageddon and meetings") }
     }
+    if let ids = raw.dnd?.follow_focus { config.followFocus = Set(ids) }
     if let v = raw.notifications?.openOriginal { config.openOriginal = v }
     if let v = raw.notifications?.bannerAX { config.bannerAX = v }
     if let v = raw.notifications?.signal { config.signal = v }
@@ -793,6 +796,7 @@ private struct RawCaffeine: Decodable {
 
 private struct RawDND: Decodable {
     var breaks_through: [String]?
+    var follow_focus: [String]?
 }
 
 private struct RawBar: Decodable {

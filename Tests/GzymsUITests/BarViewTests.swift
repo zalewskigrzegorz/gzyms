@@ -353,9 +353,10 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
                 SeenApp(id: "com.readdle.SparkDesktop", name: "Spark", icon: nil),
                 SeenApp(id: "com.apple.MobileSMS", name: "Messages", icon: nil, mac: NCAppSettings())]
     let actions = SettingsActions { _, _, _ in }
+    let focus = [FocusMode(id: FocusFollow.dndMode, name: "Do Not Disturb"), FocusMode(id: "com.apple.focus.work", name: "Work")]
     for tab in SettingsTab.allCases {
         preview(SettingsView(tab: .constant(tab), config: config, problems: [], broken: false, apps: apps,
-                             devices: ["MacBook Pro Speakers", "Shure MV7"], workspaceNames: [1: "chat", 2: "term"], workspacesFound: true, actions: actions).frame(width: 1000, height: 900),
+                             devices: ["MacBook Pro Speakers", "Shure MV7"], workspaceNames: [1: "chat", 2: "term"], workspacesFound: true, focusModes: focus, actions: actions).frame(width: 1000, height: 900),
                 "settings-\(tab.rawValue)")
     }
     var dupes = actions
@@ -390,14 +391,14 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     preview(SettingsView(tab: .constant(.about), config: config, problems: [], broken: false, apps: apps,
                          devices: [], live: false, actions: updating).frame(width: 1000, height: 900), "settings-about-new-version")
     preview(SettingsView(tab: .constant(.notifications), config: config, problems: [], broken: false, apps: apps,
-                         devices: [], actions: actions).frame(width: 1800, height: 700), "settings-notifications-wide")
+                         devices: [], focusModes: focus, actions: actions).frame(width: 1800, height: 700), "settings-notifications-wide")
     // Pushover with one key in the Keychain: its state and Change, Remove, never the value.
     var pushover = config
     pushover.phone.format = .pushover
     pushover.phone.pushoverUser = "u-secret"
     pushover.phone.saved = [.pushover_user]
     preview(SettingsView(tab: .constant(.notifications), config: pushover, problems: [], broken: false, apps: apps,
-                         devices: [], actions: actions).frame(width: 1000, height: 900), "settings-notifications-pushover")
+                         devices: [], focusModes: focus, actions: actions).frame(width: 1000, height: 900), "settings-notifications-pushover")
     preview(SettingsView(tab: .constant(.apps), config: config, problems: [], broken: false, apps: apps,
                          devices: [], actions: actions).frame(width: 1800, height: 700), "settings-apps-wide")
     // The app open on the side: preset, More folded, its macOS page with what to change ringed.

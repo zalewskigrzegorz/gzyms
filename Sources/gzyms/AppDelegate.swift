@@ -370,10 +370,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notesCLIObserver: NSObjectProtocol?
     private var dndTimer: Timer?
 
-    /// From the moon pill or `gzyms dnd`; nil turns it off.
-    private func setDND(_ until: Date?) {
+    /// From the moon pill, `gzyms dnd` or a macOS Focus (`byFocus`); nil turns it off.
+    private func setDND(_ until: Date?, byFocus: Bool = false) {
+        if !byFocus { focusFollow.handSet() }
         notes.setDND(until, now: ProcessInfo.processInfo.systemUptime)
-        log(until.map { $0 == .distantFuture ? "dnd: on until turned off" : "dnd: on until \(ISO8601DateFormatter().string(from: $0))" } ?? "dnd: off")
+        log((until.map { $0 == .distantFuture ? "dnd: on until turned off" : "dnd: on until \(ISO8601DateFormatter().string(from: $0))" } ?? "dnd: off")
+            + (byFocus ? ", macOS Focus \(until == nil ? "ended" : "started")" : ""))
         armDNDTimer()
         notesChanged()
     }
@@ -407,6 +409,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notesChanged()
     }
 
+    private static let focusAssertions = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/DoNotDisturb/DB/Assertions.json")
+    private var focusFollow = FocusFollow()
+    private var focusWatcher: ConfigWatcher?
+
+    /// A macOS Focus picked in Settings (`[dnd] follow_focus`) turns Gzyms DND on and, when it ends, off again.
+    private func startFocusFollow() {
+        checkFocus()
+        let w = ConfigWatcher(file: Self.focusAssertions) { [weak self] in self?.checkFocus() }
+        w.start()
+        focusWatcher = w
+    }
+
+    /// On a Focus change and on a config reload (a Focus switched off in Settings while it is on ends its DND).
+    private func checkFocus() {
+        let modes = (try? Data(contentsOf: Self.focusAssertions.deletingLastPathComponent().appending(path: "ModeConfigurations.json")))
+            .map(focusModes(modeConfigurations:)) ?? []
+        if model.focusModes != modes { model.focusModes = modes }
+        let active = (try? Data(contentsOf: Self.focusAssertions)).map(activeFocusModes(assertions:)) ?? []
+        switch focusFollow.focus(!active.isDisjoint(with: model.config.followFocus), dndOn: notes.dnd != nil) {
+        case .turnOn: setDND(.distantFuture, byFocus: true)
+        case .turnOff: setDND(nil, byFocus: true)
+        case nil: break
+        }
+    }
+
     private func startNotifications() {
         if let s = NotificationStore.load(Self.notesFile, log: { log($0) }) {
             notes.restore(s, now: ProcessInfo.processInfo.systemUptime, wall: Date())
@@ -418,6 +445,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notesChanged()
         let prune = Timer(timeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.pruneNotes() } }
         RunLoop.main.add(prune, forMode: .common)
+        startFocusFollow()
         model.onDND = { [weak self] in self?.setDND($0) }
         dndObserver = DistributedNotificationCenter.default().addObserver(forName: dndName, object: nil, queue: .main) { note in
             let arg = note.object as? String
@@ -555,8 +583,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard model.config.signal, notes.dnd == nil, screenShared != true, banners.attached,
               model.seenApps.first(where: { $0.id == app })?.mac?.desktop != false else { return }
         // A Focus holds banners back on purpose: not a hung Notification Center.
-        let assertions = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/DoNotDisturb/DB/Assertions.json")
-        if let data = try? Data(contentsOf: assertions), focusIsOn(assertions: data) { return }
+        if let data = try? Data(contentsOf: Self.focusAssertions), focusIsOn(assertions: data) { return }
         bannerGuard.signal(at: ProcessInfo.processInfo.systemUptime, app: app)
         if bannerGuard.warns, !noBanners {
             noBanners = true
@@ -1137,6 +1164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     store: KeychainStore())
         if !load.broken { LoginItem.sync(wanted: load.config.startAtLogin) }  // before the config lands, so General draws the new state
         model.config = load.config
+        if focusWatcher != nil { checkFocus() }  // not before startNotifications restored the saved DND
         updateSource()
         applyUpdates(load.config)
         chords.micShortcut = load.config.micShortcut

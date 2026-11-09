@@ -152,6 +152,7 @@ private struct SettingsRoot: View {
                      workspacesFrom: model.source, workspacesFound: model.activeState != nil,
                      grants: model.grants,
                      calendars: model.calendars,
+                     focusModes: model.focusModes,
                      logo: model.customLogo,
                      live: model.settingsVisible,
                      plugins: model.plugins,

@@ -49,6 +49,8 @@ final class BarModel {
     var grants: [GrantState] = []
     /// Every calendar macOS knows, for the Calendar tab (filled once the calendar plugin has read).
     var calendars: [CalendarInfo] = []
+    /// The Focuses set up on this Mac, for Settings → Notifications → Do Not Disturb.
+    var focusModes: [FocusMode] = []
     /// `[bar] logo` read once per config load, not on every redraw.
     var customLogo: NSImage?
     var nowPlaying: NowPlaying?
