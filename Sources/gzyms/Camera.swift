@@ -1,11 +1,16 @@
 import CoreMediaIO
+import GzymsCore
 
-/// The names of the cameras running in any process, from CoreMediaIO. Gzyms' own meeting preview counts too.
+/// The apps using the camera and the mic, from Control Center's log (the same names as macOS' own dots), and
+/// the names of the cameras running in any process, from CoreMediaIO, for when the log has said nothing yet.
+/// Gzyms' own meeting preview counts too.
 /// shortcut: a wired iPhone's screen capture device counts as a camera while QuickTime records it; filter by
 /// AVCaptureDevice ids if that shows up.
 @MainActor
 final class CameraWatcher {
     private let onChange: ([String]) -> Void
+    private let onApps: (SensorApps) -> Void
+    private var sensors: LogStream?
     private var watched: [CMIOObjectID] = []
     private var on = false
     private var last: [String] = []
@@ -15,7 +20,7 @@ final class CameraWatcher {
         MainActor.assumeIsolated { self?.refresh() }
     }
 
-    init(onChange: @escaping ([String]) -> Void) { self.onChange = onChange }
+    init(onChange: @escaping ([String]) -> Void, onApps: @escaping (SensorApps) -> Void) { self.onChange = onChange; self.onApps = onApps }
 
     func start() {
         guard !on else { return }
@@ -23,6 +28,13 @@ final class CameraWatcher {
         var addr = Self.address(kCMIOHardwarePropertyDevices)
         CMIOObjectAddPropertyListenerBlock(CMIOObjectID(kCMIOObjectSystemObject), &addr, .main, listener)
         refresh()
+        let filter = #"--predicate 'subsystem == "com.apple.controlcenter" AND category == "sensor-indicators" AND eventMessage BEGINSWITH "Active activity attributions"'"#
+        sensors = LogStream(name: "sensors", filter: filter) { [weak self] message in
+            guard let apps = sensorApps(message) else { return }
+            log("sensors: camera \(apps.camera), mic \(apps.mic)")
+            self?.onApps(apps)
+        }
+        sensors?.start()
     }
 
     func stop() {
@@ -32,6 +44,9 @@ final class CameraWatcher {
         CMIOObjectRemovePropertyListenerBlock(CMIOObjectID(kCMIOObjectSystemObject), &addr, .main, listener)
         unwatch()
         report([])
+        sensors?.stop()
+        sensors = nil
+        onApps(SensorApps())
     }
 
     private func refresh() {

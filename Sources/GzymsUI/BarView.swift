@@ -133,8 +133,11 @@ public struct BarView: View {
     var onDND: (Date?) -> Void = { _ in }
     let shelf: [URL]
     var onShelf: (ShelfChange) -> Void = { _ in }
-    /// The cameras running in any app; empty = no camera pill.
+    /// The cameras running in any app, and the apps using the camera and the mic; all empty = no camera pill.
     let cameras: [String]
+    let cameraApps: [SeenApp]
+    let micApps: [SeenApp]
+    private var sensorTip: String? { sensorHelp(cameraApps: cameraApps.map(\.name), micApps: micApps.map(\.name), cameras: cameras) }
     /// Files are being dragged over the bar: the shelf shows, even empty, to say it takes them.
     @State private var dropping = false
     var onPluginEvent: (String, PluginEvent, String) -> Void = { _, _, _ in }
@@ -147,7 +150,7 @@ public struct BarView: View {
     private func visible(_ s: BarSlot) -> Bool {
         switch s {
         case .widget(let w): !hidden.contains(w) && (w != .music || !media.isEmpty)
-            && (w != .shelf || dropping || !shelf.isEmpty) && (w != .camera || !cameras.isEmpty)
+            && (w != .shelf || dropping || !shelf.isEmpty) && (w != .camera || sensorTip != nil)
         case .plugin(let f): pluginPills.contains { $0.plugin == f }
         }
     }
@@ -188,18 +191,28 @@ public struct BarView: View {
                 AudioInputView(audio: audio, small: small, level: micLevel, onChange: onAudioChange, onMute: onMicMute, onPopup: onMicPopup)
             }.equatable()
         case .camera:
-            if let help = cameraHelp(cameras) {
-                // Green like macOS' own camera dot.
-                Image(systemName: "video.fill")
-                    .font(.system(size: small ? 10 : 12))
-                    .foregroundStyle(theme[\.green])
-                    .help(help)
+            if let help = sensorTip {
+                // Green and orange like macOS' own camera and mic dots, each followed by the icons of the apps using it.
+                HStack(spacing: 6) {
+                    if !cameraApps.isEmpty || !cameras.isEmpty { sensorGroup("video.fill", theme[\.green], cameraApps) }
+                    if !micApps.isEmpty { sensorGroup("mic.fill", theme[\.peach], micApps) }
+                }
+                .help(help)
             }
         case .battery: Redraw(battery, batteryWarning, small) { BatteryView(battery: battery, warning: batteryWarning, small: small) }.equatable()
         case .clock: Redraw(now, small) { ClockView(now: now, small: small) }.equatable()
         case .dnd: Redraw(dnd, dndByFocus, now, small) { DNDView(until: dnd, byFocus: dndByFocus, now: now, small: small, onCommand: onDND) }.equatable()
         case .caffeine: Redraw(caffeine, now, small) { CaffeineView(state: caffeine, now: now, small: small, onCommand: onCaffeine) }.equatable()
         case .shelf: Redraw(shelf, dropping, small) { ShelfView(files: shelf, small: small, dropping: dropping, onChange: onShelf) }.equatable()
+        }
+    }
+
+    private func sensorGroup(_ glyph: String, _ color: Color, _ apps: [SeenApp]) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: glyph).font(.system(size: small ? 10 : 12)).foregroundStyle(color)
+            ForEach(apps, id: \.id) { app in
+                if let icon = app.icon { Image(nsImage: icon).resizable().frame(width: small ? 12 : 14, height: small ? 12 : 14) }
+            }
         }
     }
 
@@ -219,8 +232,9 @@ public struct BarView: View {
                 pluginPills: [PluginPill] = [], onPluginEvent: @escaping (String, PluginEvent, String) -> Void = { _, _, _ in },
                 caffeine: CaffeineState? = nil, onCaffeine: @escaping (Int??) -> Void = { _ in },
                 dnd: Date? = nil, dndByFocus: Bool = false, onDND: @escaping (Date?) -> Void = { _ in },
-                shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }, cameras: [String] = []) {
-        self.shelf = shelf; self.onShelf = onShelf; self.cameras = cameras
+                shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }, cameras: [String] = [],
+                cameraApps: [SeenApp] = [], micApps: [SeenApp] = []) {
+        self.shelf = shelf; self.onShelf = onShelf; self.cameras = cameras; self.cameraApps = cameraApps; self.micApps = micApps
         self.dnd = dnd; self.dndByFocus = dndByFocus; self.onDND = onDND
         self.logo = logo; self.media = media; self.onMusic = onMusic
         self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent
