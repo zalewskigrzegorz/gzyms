@@ -508,8 +508,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb or a macOS Focus, not for apps whose
-    /// macOS style is None (they never show a banner), not while the observer is off.
+    /// macOS style is None (they never show a banner), not while the observer is off, not on a locked or sleeping screen.
     private func countSignal(_ app: String) {
+        // Locked or asleep, macOS keeps banners for the lock screen: 7 needless NC restarts in one day away from the Mac.
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        if session?["CGSSessionScreenIsLocked"] as? Bool == true || CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return }
         // The per-app warnings say which apps never show a banner; read once a minute, not only when Settings opens.
         if warningsRead.map({ Date().timeIntervalSince($0) > 60 }) ?? true { warningsRead = Date(); refreshAppWarnings() }
         guard model.config.signal, notes.dnd == nil, banners.attached,
