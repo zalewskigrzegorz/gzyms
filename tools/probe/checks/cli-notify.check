@@ -1,0 +1,5 @@
+# Gzyms' own path, no macOS in it: gzyms notify → the island.
+> gzyms notify --title probe-check --level info --id probe-check
+notify: info bell probe-check posted
+island: show probe-check
+cpu <= 1000%

@@ -1,0 +1,6 @@
+# Probe badges its own Dock icon, Gzyms reads the Dock through Accessibility.
+> badge 3
+dock: badges on <*>dev.gzyms.probe<*>
+cpu <= 1000%
+> badge
+dock: badges on <*>

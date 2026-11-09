@@ -1,0 +1,3 @@
+# Notification Center itself puts up a banner for Probe, with or without Gzyms parking it. Fails when NC is stuck.
+> notify probe-nc
+> nc-banner

@@ -1,0 +1,9 @@
+# A macOS notification from Probe: Gzyms shows it from the delivery signal first, then finds it in
+# Notification Center, parks the banner and swaps the island over to the Notification Center entry.
+> notify probe-check
+notify: info dev.gzyms.probe pending-dev.gzyms.probe posted
+island: show pending-dev.gzyms.probe
+banners: <id> from dev.gzyms.probe, parked
+notify: info dev.gzyms.probe nc-<id> posted
+island: show nc-<id>
+cpu <= 1000%

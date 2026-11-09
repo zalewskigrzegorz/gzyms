@@ -1,0 +1,3 @@
+# Gzyms at rest: nothing happens for 10 s and its busiest second stays low.
+> idle 10
+cpu <= 1000%

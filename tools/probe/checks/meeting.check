@@ -1,0 +1,5 @@
+# A pretend meeting in 3 min, fed straight to Gzyms and never written to a calendar. 3 min is too far off for the camera preview.
+> gzyms meeting-test 3
+calendar: pretend meeting in 3.0 min
+calendar: test@<n> at 3 min
+cpu <= 1000%

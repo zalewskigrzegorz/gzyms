@@ -3,9 +3,17 @@ import Network
 import SwiftUI
 import UserNotifications
 
+/// `probe check <file…>` runs the log checks without a window; anything else opens the window.
+@main
+enum ProbeMain {
+    static func main() {
+        let args = CommandLine.arguments.dropFirst()
+        if args.first == "check" { Check.main(Array(args.dropFirst())) } else { ProbeApp.main() }
+    }
+}
+
 /// Sends real macOS notifications, sets its own Dock badge, runs every `gzyms` CLI command,
 /// spawns pretend meetings, and shows what Gzyms logged about it all.
-@main
 struct ProbeApp: App {
     init() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
@@ -845,6 +853,229 @@ struct HacksTab: View {
             now = l.map { Now(app: $0.app, appName: $0.appName, title: $0.title, playing: $0.playing) }
             others = l?.others ?? []
         }
+    }
+}
+
+// MARK: - Check
+
+/// Log checks against the running Gzyms, so a macOS update that breaks something shows up here and not in Gzyms.
+/// A `> action` line does something; the lines after it must appear in gzyms.log in that order, within 10 s,
+/// with no other line of the same prefixes in between. `<id>`, `<n>` and `<*>` stand for what changes per run.
+/// `cpu <= N%` in a step caps Gzyms' busiest second from the action until 2 s after its last line.
+enum Check {
+    struct Step { var action: String; var expect: [String] = []; var cpuMax: Double? }
+
+    static func main(_ files: [String]) {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)  // a Dock icon, so the badge check has something to badge
+        Task { @MainActor in exit(await run(files)) }
+        app.run()
+    }
+
+    @MainActor static func run(_ files: [String]) async -> Int32 {
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        var failed = 0
+        for f in files {
+            let name = URL(fileURLWithPath: f).deletingPathExtension().lastPathComponent
+            guard let text = try? String(contentsOfFile: f, encoding: .utf8) else { print("✗ \(name): cannot read \(f)"); failed += 1; continue }
+            let (problem, peak) = await runOne(parse(text))
+            let cpu = peak.map { String(format: "  cpu peak %.0f%%", $0) } ?? ""
+            if let problem { print("✗ \(name)\(cpu)\n\(problem)"); failed += 1 } else { print("✓ \(name)\(cpu)") }
+        }
+        NSApp.dockTile.badgeLabel = nil
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        return failed == 0 ? 0 : 1
+    }
+
+    static func parse(_ text: String) -> [Step] {
+        var steps: [Step] = []
+        for raw in text.split(separator: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            if line.hasPrefix(">") { steps.append(Step(action: line.dropFirst().trimmingCharacters(in: .whitespaces))) }
+            else if steps.isEmpty { steps.append(Step(action: "", expect: [line])) }  // runOne reports it
+            else if let m = line.wholeMatch(of: #/cpu <= ([0-9.]+)%/#) { steps[steps.count - 1].cpuMax = Double(m.1) }
+            else { steps[steps.count - 1].expect.append(line) }
+        }
+        return steps
+    }
+
+    /// The problem, if any, and Gzyms' busiest second across the steps that cap it.
+    @MainActor static func runOne(_ steps: [Step]) async -> (String?, Double?) {
+        await settle()
+        var peak: Double?
+        for step in steps {
+            guard !step.action.isEmpty else { return ("  an expected line before the first > action", peak) }
+            guard let pid = gzymsPid() else { return ("  Gzyms is not running", peak) }
+            let start = logSize(), began = Date()
+            if let e = await act(step.action) { return ("  > \(step.action): \(e)", peak) }
+            let prefixes = Set(step.expect.map(prefix))
+            let deadline = began.addingTimeInterval(10)
+            let hold = step.action.hasPrefix("idle") ? Double(step.action.split(separator: " ").last ?? "") ?? 0 : 0
+            var samples: [(at: Date, cpu: Double)] = [], stepPeak = 0.0, linesAt: Date?
+            while true {
+                if let c = cpuSeconds(pid) {
+                    let now = Date()
+                    samples.append((now, c))
+                    if let old = samples.last(where: { now.timeIntervalSince($0.at) >= 1 }) {
+                        stepPeak = max(stepPeak, (c - old.cpu) / now.timeIntervalSince(old.at) * 100)
+                    }
+                }
+                let seen = newLines(from: start).filter { prefixes.contains(prefix($0)) }
+                let bad = zip(seen, step.expect).contains { !matches($0, $1) }
+                if bad || (seen.count < step.expect.count && Date() > deadline) {
+                    return ("  > \(step.action)\n  expected:\n" + step.expect.map { "    \($0)" }.joined(separator: "\n")
+                        + "\n  got:\n" + (seen.isEmpty ? "    (nothing)" : seen.map { "    \($0)" }.joined(separator: "\n")), peak)
+                }
+                if seen.count >= step.expect.count {
+                    linesAt = linesAt ?? Date()
+                    let tail = step.cpuMax == nil ? 0 : 2.0
+                    if Date().timeIntervalSince(linesAt!) >= tail, Date().timeIntervalSince(began) >= hold { break }
+                }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            if let limit = step.cpuMax {
+                peak = max(peak ?? 0, stepPeak)
+                if stepPeak > limit { return (String(format: "  > \(step.action)\n  cpu peak %.0f%% over a second, expected <= %.0f%%", stepPeak, limit), peak) }
+            }
+        }
+        return (nil, peak)
+    }
+
+    /// Waits until the log has been quiet for 3 s (20 s at most), so one check's leftovers (an expiring banner) miss the next.
+    @MainActor static func settle() async {
+        let stop = Date().addingTimeInterval(20)
+        var size = logSize(), quietSince = Date()
+        while Date() < stop, Date().timeIntervalSince(quietSince) < 3 {
+            try? await Task.sleep(for: .milliseconds(250))
+            let s = logSize()
+            if s != size { size = s; quietSince = Date() }
+        }
+    }
+
+    /// The bar process, not `gzyms hud` or a CLI call.
+    static func gzymsPid() -> Int32? {
+        let p = Process(), pipe = Pipe()
+        p.executableURL = URL(fileURLWithPath: "/bin/ps")
+        p.arguments = ["-axo", "pid=,args="]
+        p.standardOutput = pipe
+        guard (try? p.run()) != nil else { return nil }
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        p.waitUntilExit()
+        let line = out.split(separator: "\n").first { $0.hasSuffix("/Gzyms.app/Contents/MacOS/gzyms") }
+        return line.flatMap { Int32($0.trimmingCharacters(in: .whitespaces).split(separator: " ").first ?? "") }
+    }
+
+    /// Same as GzymsCore's ProcessUsage: Probe builds from this one file, so it cannot import it.
+    static func cpuSeconds(_ pid: Int32) -> Double? {
+        var info = rusage_info_v4()
+        let rc = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
+        }
+        guard rc == 0 else { return nil }
+        var tb = mach_timebase_info_data_t()
+        mach_timebase_info(&tb)
+        return Double(info.ri_user_time + info.ri_system_time) * Double(tb.numer) / Double(tb.denom) / 1e9
+    }
+
+    @MainActor static func act(_ action: String) async -> String? {
+        let words = action.split(separator: " ").map(String.init)
+        switch words.first {
+        case "notify":
+            let c = UNMutableNotificationContent()
+            c.title = words.dropFirst().joined(separator: " ")
+            c.body = "probe check"
+            do { try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil)) }
+            catch { return "\(error)" }
+        case "badge":
+            NSApp.dockTile.badgeLabel = words.count > 1 ? words[1] : nil
+        case "gzyms":
+            // shortcut: args split on spaces, no quoting; a check that needs a spaced value gets quoting then.
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: Gzyms.path)
+            p.arguments = Array(words.dropFirst())
+            p.standardOutput = FileHandle.nullDevice
+            do { try p.run() } catch { return "\(error)" }
+            while p.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
+            if p.terminationStatus != 0 { return "exit \(p.terminationStatus)" }
+        case "idle":
+            break  // runOne holds the step for the seconds given
+        case "nc-banner":
+            // Notification Center itself, no Gzyms in it: did it put up a banner from Probe within 5 s?
+            // The prompt puts Gzyms Probe on the Accessibility list, so the grant is one switch.
+            guard AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
+            else { return "no Accessibility grant for Gzyms Probe (System Settings → Privacy & Security → Accessibility)" }
+            var others = Set<String>()
+            for _ in 0..<25 {
+                let descs = ncBanners()
+                if let hit = descs.first(where: { $0.hasPrefix("Gzyms Probe") }) {
+                    print("  \(hit)")
+                    try? await Task.sleep(for: .seconds(2))  // past the slide-in: where it rests
+                    if let rest = ncBanners().first(where: { $0.hasPrefix("Gzyms Probe") }) { print("  after 2 s: \(rest)") }
+                    return nil
+                }
+                others.formUnion(descs)
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            return "Notification Center showed no banner from Gzyms Probe" + (others.isEmpty ? "" : ", only: \(others.sorted())")
+        default:
+            return "unknown action (notify <title>, badge [label], gzyms <args>, idle <seconds>, nc-banner)"
+        }
+        return nil
+    }
+
+    /// The description of every banner or alert under NC's windows, parked or not ("Gzyms Probe, probe-nc, …").
+    /// Same walk as Gzyms' NCAX.banners: subroles and depth 7 from there.
+    static func ncBanners() -> [String] {
+        guard let nc = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui").first else { return [] }
+        let subroles: Set<String> = ["AXNotificationCenterBanner", "AXNotificationCenterBannerStack",
+                                     "AXNotificationCenterAlert", "AXNotificationCenterAlertStack"]
+        func attr(_ el: AXUIElement, _ name: String) -> AnyObject? {
+            var v: AnyObject?
+            return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
+        }
+        func point(_ el: AXUIElement) -> String {
+            var p = CGPoint.zero
+            guard let v = attr(el, kAXPositionAttribute), CFGetTypeID(v) == AXValueGetTypeID(), AXValueGetValue(v as! AXValue, .cgPoint, &p) else { return "?" }
+            return "\(Int(p.x)),\(Int(p.y))"
+        }
+        var window: AXUIElement = AXUIElementCreateSystemWide()
+        func found(_ el: AXUIElement, _ depth: Int) -> [String] {
+            guard depth < 7 else { return [] }
+            if depth == 0 { window = el }
+            if let sr = attr(el, kAXSubroleAttribute) as? String, subroles.contains(sr) {
+                let desc = (attr(el, "AXAttributedDescription") as? NSAttributedString)?.string ?? attr(el, kAXDescriptionAttribute) as? String ?? sr
+                return ["\(desc) @ \(point(el)), window @ \(point(window))"]
+            }
+            return (attr(el, kAXChildrenAttribute) as? [AXUIElement] ?? []).flatMap { found($0, depth + 1) }
+        }
+        let app = AXUIElementCreateApplication(nc.processIdentifier)
+        return (attr(app, kAXWindowsAttribute) as? [AXUIElement] ?? []).flatMap { found($0, 0) }
+    }
+
+    static func logSize() -> UInt64 {
+        ((try? FileManager.default.attributesOfItem(atPath: LogTail.url.path))?[.size] as? NSNumber)?.uint64Value ?? 0
+    }
+
+    /// Whole lines written after `offset`, timestamp cut off. shortcut: a log rotated mid-check reads as nothing, rerun then.
+    static func newLines(from offset: UInt64) -> [String] {
+        guard let h = try? FileHandle(forReadingFrom: LogTail.url) else { return [] }
+        defer { try? h.close() }
+        guard (try? h.seek(toOffset: offset)) != nil, let data = try? h.readToEnd() else { return [] }
+        let text = String(decoding: data, as: UTF8.self)
+        return text.split(separator: "\n", omittingEmptySubsequences: false).dropLast().filter { !$0.isEmpty }.map { l in
+            l.firstIndex(of: " ").map { String(l[l.index(after: $0)...]) } ?? String(l)
+        }
+    }
+
+    static func prefix(_ line: String) -> String { line.firstIndex(of: ":").map { String(line[...$0]) } ?? line }
+
+    static func matches(_ line: String, _ pattern: String) -> Bool {
+        let re = "^" + NSRegularExpression.escapedPattern(for: pattern)
+            .replacingOccurrences(of: "<\\*>", with: ".*")
+            .replacingOccurrences(of: "<id>", with: "[A-Za-z0-9._-]+")
+            .replacingOccurrences(of: "<n>", with: "-?[0-9]+") + "$"
+        return line.range(of: re, options: .regularExpression) != nil
     }
 }
 
