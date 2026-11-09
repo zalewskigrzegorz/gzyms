@@ -27,6 +27,7 @@
     "A pill that cannot get its data greys out with a warning and says what broke",
     "Five notification levels",
     "Banner stack with a waiting queue",
+    "Notification lists keep only the last hour, day or week",
     "Armageddon full-screen alert",
     "Snooze that comes back as a reminder",
     "Per-app notification lists with a bell",

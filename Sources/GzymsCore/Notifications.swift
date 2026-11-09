@@ -205,6 +205,12 @@ extension GzymsNotification {
     var lead: Int { level == .armageddon ? 1 : 0 }
 }
 
+/// `[notifications] keep`: how long a row stays in its app's list. Missing = forever.
+public enum NotificationKeep: String, CaseIterable, Sendable {
+    case hour, day, week
+    public var seconds: Double { switch self { case .hour: 3600; case .day: 86_400; case .week: 604_800 } }
+}
+
 /// One island with a stack (M3c): the banner on screen and up to three waiting under it, snoozed ones waiting to
 /// come back, and an inbox per app (newest first). Only an armageddon jumps in at once; the rest waits its turn in
 /// the order it arrived, whatever its level, and a banner on screen always runs its time out (Greg).
@@ -360,6 +366,25 @@ public struct NotificationStore: Sendable {
     public mutating func clearAll(_ app: String?) {
         inboxes[app]?.forEach { toPhone[$0.id] = nil }
         inboxes[app] = nil
+    }
+
+    /// `[notifications] keep`: list rows older than this go. The stack and the snoozed are never cut.
+    public var keep: NotificationKeep?
+
+    /// Drops list rows that arrived before `wall` minus `keep`. Returns how many went.
+    @discardableResult public mutating func prune(wall: Date) -> Int {
+        guard let keep else { return 0 }
+        let cutoff = wall.addingTimeInterval(-keep.seconds)
+        var gone = 0
+        for (app, list) in inboxes {
+            let old = list.filter { $0.at < cutoff }
+            guard !old.isEmpty else { continue }
+            old.forEach { toPhone[$0.id] = nil }
+            gone += old.count
+            let kept = list.filter { $0.at >= cutoff }
+            inboxes[app] = kept.isEmpty ? nil : kept
+        }
+        return gone
     }
 
     public var isPaused: Bool { pausedLeft != nil }

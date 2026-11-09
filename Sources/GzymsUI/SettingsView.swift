@@ -1645,6 +1645,7 @@ private struct NotificationsTab: View {
     private static let phoneTable = ConfigTable.table(["notifications", "phone"])
     private static let afters: [(Int, String)] = [(0, "at once"), (1, "after 1 min"), (2, "after 2 min"), (5, "after 5 min"),
                                                   (10, "after 10 min"), (15, "after 15 min"), (30, "after 30 min")]
+    private static let keeps: [(NotificationKeep?, String)] = [(nil, "forever"), (.hour, "1 hour"), (.day, "1 day"), (.week, "1 week")]
     private static let times: [(Double, String)] = [(4, "4 s"), (6, "6 s"), (8, "8 s"), (12, "12 s"), (30, "30 s"), (0, "until clicked")]
 
     var body: some View {
@@ -1672,6 +1673,11 @@ private struct NotificationsTab: View {
         Section(title: "Do Not Disturb") {
             Row(title: "Still shows", note: "Turn it on with the moon on the bar. The rest waits in its list.") {
                 HStack(spacing: 4) { ForEach(DNDBreak.allCases, id: \.self) { b in breakChip(b, config.dndBreaks, DNDBreak.defaults, key: "breaks_through", table: "dnd") } }
+            }
+        }
+        Section(title: "Lists") {
+            Row(title: "Keep in the lists", note: "Older ones go. Snoozed ones stay until they come back.") {
+                menu(config.keep, Self.keeps, width: 130) { write("keep", $0.map { .string($0.rawValue) }, .table(["notifications"])) }
             }
         }
         Section(title: "Not answered on the Mac") {

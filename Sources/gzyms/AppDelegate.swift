@@ -354,6 +354,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { try data.write(to: Self.notesFile, options: .atomic); notesSaved = data } catch { log("notifications: could not save (\(error))") }
     }
 
+    /// `[notifications] keep`: list rows past their age go. Once a minute, after a restart and after a config change.
+    private func pruneNotes() {
+        let gone = notes.prune(wall: Date())
+        guard gone > 0, let keep = notes.keep else { return }
+        log("notifications: \(gone) older than 1 \(keep.rawValue) left the lists")
+        syncInboxes()
+        saveNotes()
+    }
+
     private var dndObserver: NSObjectProtocol?
     private var notesCLIObserver: NSObjectProtocol?
     private var dndTimer: Timer?
@@ -381,7 +390,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 + (notes.dnd != nil ? ", do not disturb still on" : ""))
         }
         armDNDTimer()
+        pruneNotes()
         notesChanged()
+        let prune = Timer(timeInterval: 60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.pruneNotes() } }
+        RunLoop.main.add(prune, forMode: .common)
         model.onDND = { [weak self] in self?.setDND($0) }
         dndObserver = DistributedNotificationCenter.default().addObserver(forName: dndName, object: nil, queue: .main) { note in
             let arg = note.object as? String
@@ -1072,6 +1084,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notes.phone = load.config.phone
         notes.breaksThrough = load.config.dndBreaks
         notes.priority = load.config.priority
+        notes.keep = load.config.keep
+        pruneNotes()
         applyNotificationSources()
         sounds = [:]  // a file may have changed under the same path
         applyMotion()
