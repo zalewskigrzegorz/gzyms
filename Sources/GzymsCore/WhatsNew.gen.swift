@@ -74,4 +74,15 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 - Choices in Settings line up on the right.
 
 """##,
+    "0.1.1": ##"""
+# 0.1.1
+
+The notes Gzyms shows once after an update to this version. Only the "- " lines are shown.
+
+- What comes while the Mac is locked, asleep, in Do Not Disturb or sharing the screen now waits in its own list. Look for the crossed-out eye next to the bell.
+- When you are back, the island says how many you missed. Click it to see them.
+- The missed list never counts on an app's icon, and Keep in the lists never clears it.
+- The usage HUD shows CPU in red only after three busy seconds in a row, not for one short spike.
+
+"""##,
 ]
