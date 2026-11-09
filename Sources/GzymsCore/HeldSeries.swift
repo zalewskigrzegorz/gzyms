@@ -64,3 +64,15 @@ public enum ProcessUsage {
         wall > 0 ? (now - prev) / wall * 100 : 0
     }
 }
+
+/// Which samples sit in a run of at least `run` in a row above `limit`. The HUD paints only those red,
+/// so one busy second (drawing, a timer) stays green and a real spell of load still shows.
+public func sustainedHot(_ values: [Double], above limit: Double, run: Int) -> [Bool] {
+    var out = Array(repeating: false, count: values.count), start = 0
+    for i in 0...values.count {
+        if i < values.count, values[i] > limit { continue }
+        if i - start >= run { for j in start..<i { out[j] = true } }
+        start = i + 1
+    }
+    return out
+}

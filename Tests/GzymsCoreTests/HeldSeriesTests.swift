@@ -36,3 +36,12 @@ import Testing
 @Test func sampleDeadPidIsNil() {
     #expect(ProcessUsage.sample(pid: 999_999) == nil)
 }
+
+@Test func sustainedHotRedsOnlyARunAboveTheLimit() {
+    // One busy second stays calm, three in a row turn red, the run at the end counts too.
+    #expect(sustainedHot([1, 9, 1, 4, 5, 6, 1, 8, 8, 8], above: 3, run: 3)
+        == [false, false, false, true, true, true, false, true, true, true])
+    #expect(sustainedHot([9, 9], above: 3, run: 3) == [false, false])
+    #expect(sustainedHot([9], above: 3, run: 1) == [true])
+    #expect(sustainedHot([], above: 3, run: 3).isEmpty)
+}
