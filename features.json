@@ -1,6 +1,6 @@
 {
-  "count": 94,
-  "updated": "2026-11-07",
+  "count": 95,
+  "updated": "2026-11-09",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -62,6 +62,7 @@
     "Command palette (leader, then space)",
     "Sound output pill with device switching",
     "Mic pill with input level",
+    "Camera pill while any app has a camera on",
     "Banned audio devices",
     "Custom audio device icons",
     "Workspaces pill from HyprMac",
