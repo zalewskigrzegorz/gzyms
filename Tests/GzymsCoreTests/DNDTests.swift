@@ -120,3 +120,18 @@ private func meeting(_ id: String) -> GzymsNotification {
     #expect(bad.problems.contains { $0.hasPrefix("dnd.breaks_through") })
     #expect(GzymsConfig.defaults.dndBreaks == [.armageddon, .meetings])
 }
+
+@Test func sharingFilesEverythingQuietly() {
+    var s = NotificationStore()
+    s.post(note("a"), now: 0)
+    s.post(meeting("meeting-1"), now: 1)
+    s.setSharing(true, now: 2)
+    #expect(s.banner == nil)
+    s.post(note("boom", level: .armageddon), now: 3)
+    #expect(s.banner == nil && s.takeSounds().map(\.id) == ["a", "meeting-1"])
+    #expect(Set(s.inbox("com.app").map(\.id)) == ["a", "boom"])
+    s.setSharing(false, now: 4)
+    #expect(s.banner == nil)
+    s.post(note("b"), now: 5)
+    #expect(s.banner?.id == "b")
+}

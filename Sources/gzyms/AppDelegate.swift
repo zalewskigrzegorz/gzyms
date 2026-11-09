@@ -170,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tilerCheck()  // no state.json at all: the watcher may never call
         startCPU()
         startNotifications()
+        startSharingWatch()
 
         // `gzyms theme` writes the config and sends SIGHUP: reload it in place.
         Darwin.signal(SIGHUP, SIG_IGN)
@@ -374,6 +375,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dndTimer = t
     }
 
+    /// What `ScreenSharing` said last; nil = macOS no longer answers.
+    private var screenShared: Bool?
+
+    /// Once a second: macOS sends no event when capture starts.
+    private func startSharingWatch() {
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.checkSharing() } }
+        RunLoop.main.add(t, forMode: .common)
+        checkSharing()
+    }
+
+    private func checkSharing() {
+        let watched = ScreenSharing.now()
+        if watched == nil, screenShared != nil { log("sharing: macOS no longer says whether the screen is shared, banners show as usual") }
+        screenShared = watched
+        let on = watched == true && model.config.quietSharing
+        guard on != notes.sharing else { return }
+        notes.setSharing(on, now: ProcessInfo.processInfo.systemUptime)
+        log(on ? "sharing: the screen is shared, notifications go quietly to their lists" : "sharing: off, banners show again")
+        notesChanged()
+    }
+
     private func startNotifications() {
         if let s = NotificationStore.load(Self.notesFile, log: { log($0) }) {
             notes.restore(s, now: ProcessInfo.processInfo.systemUptime, wall: Date())
@@ -508,14 +530,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb or a macOS Focus, not for apps whose
-    /// macOS style is None (they never show a banner), not while the observer is off, not on a locked or sleeping screen.
+    /// macOS style is None (they never show a banner), not while the observer is off, not on a locked or sleeping screen,
+    /// not while the screen is shared (macOS holds its banners back then).
     private func countSignal(_ app: String) {
         // Locked or asleep, macOS keeps banners for the lock screen: 7 needless NC restarts in one day away from the Mac.
         let session = CGSessionCopyCurrentDictionary() as? [String: Any]
         if session?["CGSSessionScreenIsLocked"] as? Bool == true || CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return }
         // The per-app warnings say which apps never show a banner; read once a minute, not only when Settings opens.
         if warningsRead.map({ Date().timeIntervalSince($0) > 60 }) ?? true { warningsRead = Date(); refreshAppWarnings() }
-        guard model.config.signal, notes.dnd == nil, banners.attached,
+        guard model.config.signal, notes.dnd == nil, screenShared != true, banners.attached,
               model.seenApps.first(where: { $0.id == app })?.mac?.desktop != false else { return }
         // A Focus holds banners back on purpose: not a hung Notification Center.
         let assertions = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/DoNotDisturb/DB/Assertions.json")
@@ -850,7 +873,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         saveNotes()
         if model.dnd != notes.dnd { model.dnd = notes.dnd }
         // Opened or dismissed some other way (a chord, a list): the red screen goes too.
-        if let a = armageddon.shown, notes.banner?.id != a.id, !notes.inbox(a.app).contains(where: { $0.id == a.id }) { armageddon.hide() }
+        if let a = armageddon.shown, notes.sharing || notes.banner?.id != a.id && !notes.inbox(a.app).contains(where: { $0.id == a.id }) { armageddon.hide() }
         if let b = notes.banner, let screen = bannerScreen(b) {
             // A meeting counts down to its start from the first point; after the start the line stays full.
             let toStart = b.meetingStart.map { $0 - Date().timeIntervalSince1970 }
@@ -1884,6 +1907,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         r.add("config.open_original", c.openOriginal)
         r.add("config.signal", c.signal)
         r.add("config.nc_auto_restart", c.ncAutoRestart)
+        r.add("config.quiet_sharing", c.quietSharing)
         r.add("grant.accessibility", AXIsProcessTrusted())
         r.add("grant.full_disk_access", NotificationCenterSource.hasAccess())
         r.add("observer.running", b.running)
@@ -1910,6 +1934,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         r.add("nc_restart.awaiting_banner", ncRestart.stillHung)
         r.add("nc_restart.gave_up", ncRestart.stillHung && noBanners)
         r.add("dnd", notes.dnd != nil)
+        r.add("screen_shared", screenShared.map { $0 ? "yes" : "no" } ?? "unknown, macOS no longer answers")
         r.add("notificationnanny.running", !NSRunningApplication.runningApplications(withBundleIdentifier: "com.notificationnanny.app").isEmpty)
         r.add("macos.globe_n_shortcut", macOS?.values.contains { $0.shortcutOff } == true ? "off" : "on")
         guard let macOS else { r.add("apps", "macOS notification settings could not be read"); return r }

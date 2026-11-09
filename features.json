@@ -1,6 +1,6 @@
 {
-  "count": 94,
-  "updated": "2026-11-07",
+  "count": 95,
+  "updated": "2026-11-09",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -31,6 +31,7 @@
     "Snooze that comes back as a reminder",
     "Per-app notification lists with a bell",
     "Do Not Disturb with a moon pill",
+    "Quiet while sharing the screen",
     "Compact app-icon island",
     "Notifications from other apps",
     "Banner text within half a second",

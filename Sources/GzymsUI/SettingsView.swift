@@ -1670,6 +1670,9 @@ private struct NotificationsTab: View {
             Row(title: "Still shows", note: "Turn it on with the moon on the bar. The rest waits in its list.") {
                 HStack(spacing: 4) { ForEach(DNDBreak.allCases, id: \.self) { b in breakChip(b, config.dndBreaks, DNDBreak.defaults, key: "breaks_through", table: "dnd") } }
             }
+            Row(title: "Quiet while sharing the screen", note: "Nothing shows while you share or record. It waits in its list.") {
+                Switch(on: config.quietSharing) { write("quiet_sharing", $0 ? nil : .bool(false), .table(["notifications"])) }
+            }
         }
         Section(title: "Not answered on the Mac") {
             Row(title: "Send through", note: Self.formatNotes[config.phone.format]) {

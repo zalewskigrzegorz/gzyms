@@ -312,3 +312,10 @@ import Testing
     #expect(on.config.ncAutoRestart)
     #expect(on.problems.isEmpty)
 }
+
+@Test func quietSharingDefaultsOnAndParses() {
+    #expect(loadConfig(toml: nil).config.quietSharing)
+    let off = loadConfig(toml: "[notifications]\nquiet_sharing = false\n")
+    #expect(!off.config.quietSharing)
+    #expect(off.problems.isEmpty)
+}
