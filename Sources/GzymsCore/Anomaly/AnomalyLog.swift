@@ -9,7 +9,11 @@ public final class AnomalyLog: @unchecked Sendable {
     private let lock = NSLock()
     private var on = true
 
-    /// `[debug] anomalies = false` stops the writing; the watchdog keeps measuring lag for the HUD.
+    /// Written even with the detector off: a few lines a day, and the ones a report cannot do without
+    /// (2026-11-09: five NC restarts never reached the file).
+    public static let alwaysKinds: Set<String> = ["nc_stuck", "nc_restart", "nc_restart_failed", "main_thread_stall"]
+
+    /// `[debug] anomalies = false` stops the writing except `alwaysKinds`; the watchdog keeps measuring lag for the HUD.
     public var enabled: Bool {
         get { lock.lock(); defer { lock.unlock() }; return on }
         set { lock.lock(); on = newValue; lock.unlock() }
@@ -26,7 +30,7 @@ public final class AnomalyLog: @unchecked Sendable {
         guard var line = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else { return }
         line.append(0x0A)
         lock.lock(); defer { lock.unlock() }
-        guard on else { return }
+        guard on || Self.alwaysKinds.contains(kind) else { return }
         let fm = FileManager.default
         if let size = (try? fm.attributesOfItem(atPath: file.path))?[.size] as? Int, size > Self.maxBytes {
             try? fm.removeItem(at: rotated)

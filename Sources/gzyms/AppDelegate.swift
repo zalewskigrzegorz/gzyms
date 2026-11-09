@@ -520,14 +520,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A Focus holds banners back on purpose: not a hung Notification Center.
         let assertions = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/DoNotDisturb/DB/Assertions.json")
         if let data = try? Data(contentsOf: assertions), focusIsOn(assertions: data) { return }
-        bannerGuard.signal(at: ProcessInfo.processInfo.systemUptime)
+        bannerGuard.signal(at: ProcessInfo.processInfo.systemUptime, app: app)
         if bannerGuard.warns, !noBanners {
             noBanners = true
             log("banners: apps send notifications but Notification Center shows no banner. A Focus, or NC stuck: killall NotificationCenter")
             let now = ProcessInfo.processInfo.systemUptime
+            ncAnomaly("nc_stuck", ["signals": String(bannerGuard.signals), "over_s": String(Int(now - (bannerGuard.firstSignal ?? now)))])
             if ncRestart.stillHung {
                 log("banners: still no banner after the Notification Center restart, not restarting again")
-                anomalies.write(kind: "nc_restart_failed", detail: ["restarts": String(ncRestart.count)])
+                ncAnomaly("nc_restart_failed", ["restarts": String(ncRestart.count)])
             } else if ncRestart.mayAutoRestart(enabled: model.config.ncAutoRestart, at: now) {
                 restartNC(reason: "\(bannerGuard.signals) deliveries without a banner over \(Int(now - (bannerGuard.firstSignal ?? now))) s", auto: true)
             }
@@ -538,11 +539,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// observer attaches to the new process at once. The automatic caller is limited by `NCRestartPolicy`; the button is not.
     private func restartNC(reason: String, auto: Bool) {
         ncRestart.restarted(at: ProcessInfo.processInfo.systemUptime)
+        ncAnomaly("nc_restart", ["by": auto ? "auto" : "button", "reason": reason, "count": String(ncRestart.count)])  // before the guard resets
         ncRestartedAt = Date()
         bannerGuard = BannerGuard()
         noBanners = false
         log("banners: restarting Notification Center (\(auto ? "automatic" : "button"): \(reason))")
-        anomalies.write(kind: "nc_restart", detail: ["by": auto ? "auto" : "button", "reason": reason, "count": String(ncRestart.count)])
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
         p.arguments = ["NotificationCenter"]
@@ -552,6 +553,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if p.terminationStatus != 0 { log("banners: killall NotificationCenter exited \(p.terminationStatus)") }
             banners.ncRestarted()
         }
+    }
+
+    /// An NC anomaly with the state of the Mac and of the banner guard (`MacContext`).
+    private func ncAnomaly(_ kind: String, _ detail: [String: String]) {
+        var c = MacContext.read()
+        c.countedApps = bannerGuard.apps
+        c.sinceBanner = .some(lastShown.map { Date().timeIntervalSince($0.at) })
+        anomalies.write(kind: kind, detail: detail.merging(c.detail) { own, _ in own })
     }
 
     private func markHandled(_ id: String) {
