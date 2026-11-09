@@ -45,6 +45,8 @@ public struct GzymsConfig: Equatable, Sendable {
     /// `[notifications] nc_auto_restart`: restarts a hung Notification Center by itself (`killall NotificationCenter`),
     /// at most once per 10 minutes. Off: only the Restart button in Settings → Hacks does it.
     public var ncAutoRestart = false
+    /// `[notifications] keep`: rows in the lists older than this go. nil = forever.
+    public var keep: NotificationKeep?
     /// `[hacks] browser_media`: the loopback server for the browser userscript, so tabs with video show in the music
     /// pill. Off until turned on in Settings → Hacks: it opens a port on 127.0.0.1.
     public var browserMedia = false
@@ -309,6 +311,10 @@ public func loadConfig(toml: String?) -> ConfigLoad {
     if let v = raw.notifications?.bannerAX { config.bannerAX = v }
     if let v = raw.notifications?.signal { config.signal = v }
     if let v = raw.notifications?.ncAutoRestart { config.ncAutoRestart = v }
+    if let k = raw.notifications?.keep {
+        if let v = NotificationKeep(rawValue: k) { config.keep = v }
+        else if k != "forever" { problems.append("notifications.keep: \"\(k)\" must be hour, day, week or forever, kept forever") }
+    }
     if let v = raw.hacks?.browser_media { config.browserMedia = v }
     if let v = raw.updates?.automatic { config.updatesAutomatic = v }
     if let names = raw.notifications?.priority {
@@ -542,9 +548,10 @@ private struct RawNotifications: Decodable {
     var bannerAX: Bool?
     var signal: Bool?
     var ncAutoRestart: Bool?
+    var keep: String?
     var unknown: [String] = []
     enum CodingKeys: String, CodingKey {
-        case sounds, keys, hold, levels, apps, letters, phone, priority, signal
+        case sounds, keys, hold, levels, apps, letters, phone, priority, signal, keep
         case openOriginal = "open_original", bannerAX = "banner_ax", ncAutoRestart = "nc_auto_restart"
     }
     init(from decoder: Decoder) throws {
@@ -561,8 +568,9 @@ private struct RawNotifications: Decodable {
         bannerAX = lenient(c, .bannerAX, "notifications.banner_ax", &unknown)
         signal = lenient(c, .signal, "notifications.signal", &unknown)
         ncAutoRestart = lenient(c, .ncAutoRestart, "notifications.nc_auto_restart", &unknown)
+        keep = lenient(c, .keep, "notifications.keep", &unknown)
         unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone", "priority",
-                                                        "open_original", "banner_ax", "signal", "nc_auto_restart"], prefix: "notifications.")
+                                                        "open_original", "banner_ax", "signal", "nc_auto_restart", "keep"], prefix: "notifications.")
         unknown += (levels?.unknown ?? []) + (apps?.unknown ?? []) + (letters?.unknown ?? []) + (phone?.unknown ?? [])
     }
 }

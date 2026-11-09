@@ -115,6 +115,22 @@ private func ignoreAll(_ s: inout NotificationStore) {
     #expect(s.count("com.app") == 1)
 }
 
+@Test func keepDropsOldListRowsButNotSnoozedOrStack() {
+    func at(_ id: String, _ t: Double) -> GzymsNotification { var n = note(id); n.at = Date(timeIntervalSince1970: t); return n }
+    var s = NotificationStore()
+    s.post(at("old", 0), now: 0); ignoreAll(&s)
+    s.post(at("new", 3000), now: 1); ignoreAll(&s)
+    s.post(at("nap", 0), now: 2); s.snooze(minutes: 600, now: 2)
+    s.post(at("shown", 0), now: 3)
+    let wall = Date(timeIntervalSince1970: 3700)
+    #expect(s.prune(wall: wall) == 0)  // forever by default
+    s.keep = .hour
+    #expect(s.prune(wall: wall) == 1)
+    #expect(s.inbox("com.app").map(\.id) == ["new"])
+    #expect(s.banner?.id == "shown")
+    #expect(s.saved(now: 3, wall: wall).snoozed.map(\.n.id) == ["nap"])
+}
+
 @Test func snoozeComesBackAsReminder() {
     var s = NotificationStore()
     s.post(note("a"), now: 0)
