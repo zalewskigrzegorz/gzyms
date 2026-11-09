@@ -4,9 +4,9 @@ import Testing
 @Test func sensorAppsReadsControlCentersLogLine() {
     // Lines as macOS 27.2's Control Center logs them, Photo Booth open while Spotifast holds the mic.
     #expect(sensorApps(#"Active activity attributions changed to ["aud:rocks.spotifast.Spotifast", "cam:com.apple.PhotoBooth"]"#)
-        == SensorApps(camera: ["com.apple.PhotoBooth"], mic: ["rocks.spotifast.Spotifast"]))
-    #expect(sensorApps(#"Active activity attributions changed to ["loc:com.apple.findmy", "aud:rocks.spotifast.Spotifast"]"#)
-        == SensorApps(mic: ["rocks.spotifast.Spotifast"]))
+        == SensorApps(camera: ["com.apple.PhotoBooth"]))
+    #expect(sensorApps(#"Active activity attributions changed to ["mic:com.apple.VoiceMemos", "loc:com.apple.VoiceMemos", "scr:com.getcleanshot.app-setapp"]"#)
+        == SensorApps(mic: ["com.apple.VoiceMemos"]))  // seen on 27.2 while Voice Memos recorded
     #expect(sensorApps("Active activity attributions changed to []") == SensorApps())
     #expect(sensorApps(#"Recent activity attributions changed to ["cam:com.apple.PhotoBooth"]"#) == nil)
     #expect(sensorApps("Sorted active attributions from SystemStatus update: [[aud] Spotifast (rocks.spotifast.Spotifast), [cam] Photo Booth (com.apple.PhotoBooth)]") == nil)

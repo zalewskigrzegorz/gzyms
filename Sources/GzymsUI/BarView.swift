@@ -192,27 +192,13 @@ public struct BarView: View {
             }.equatable()
         case .camera:
             if let help = sensorTip {
-                // Green and orange like macOS' own camera and mic dots, each followed by the icons of the apps using it.
-                HStack(spacing: 6) {
-                    if !cameraApps.isEmpty || !cameras.isEmpty { sensorGroup("video.fill", theme[\.green], cameraApps) }
-                    if !micApps.isEmpty { sensorGroup("mic.fill", theme[\.peach], micApps) }
-                }
-                .help(help)
+                SensorView(camera: !cameraApps.isEmpty || !cameras.isEmpty, mic: !micApps.isEmpty, help: help, small: small)
             }
         case .battery: Redraw(battery, batteryWarning, small) { BatteryView(battery: battery, warning: batteryWarning, small: small) }.equatable()
         case .clock: Redraw(now, small) { ClockView(now: now, small: small) }.equatable()
         case .dnd: Redraw(dnd, dndByFocus, now, small) { DNDView(until: dnd, byFocus: dndByFocus, now: now, small: small, onCommand: onDND) }.equatable()
         case .caffeine: Redraw(caffeine, now, small) { CaffeineView(state: caffeine, now: now, small: small, onCommand: onCaffeine) }.equatable()
         case .shelf: Redraw(shelf, dropping, small) { ShelfView(files: shelf, small: small, dropping: dropping, onChange: onShelf) }.equatable()
-        }
-    }
-
-    private func sensorGroup(_ glyph: String, _ color: Color, _ apps: [SeenApp]) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: glyph).font(.system(size: small ? 10 : 12)).foregroundStyle(color)
-            ForEach(apps, id: \.id) { app in
-                if let icon = app.icon { Image(nsImage: icon).resizable().frame(width: small ? 12 : 14, height: small ? 12 : 14) }
-            }
         }
     }
 
@@ -814,6 +800,35 @@ public struct DNDView: View {
         .help(until == nil ? "Do Not Disturb" : "Do Not Disturb is on")
         .popover(isPresented: popups.binding("widget:dnd"), arrowEdge: .bottom) {
             DNDPopup(until: until, byFocus: byFocus, now: now) { popups.open = nil; onCommand($0) }.environment(\.theme, theme).environment(\.popups, popups)
+        }
+    }
+}
+
+/// Green and orange like macOS' own camera and mic dots. The bar has little room, so the apps using them
+/// are named in the popup a click opens, not drawn on the bar.
+struct SensorView: View {
+    let camera: Bool
+    let mic: Bool
+    let help: String
+    let small: Bool
+    @Environment(\.popups) private var popups
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if camera { Image(systemName: "video.fill").foregroundStyle(theme[\.green]) }
+            if mic { Image(systemName: "mic.fill").foregroundStyle(theme[\.peach]) }
+        }
+        .font(.system(size: small ? 10 : 12))
+        .contentShape(Rectangle())
+        .onTapGesture { popups.binding("widget:camera").wrappedValue.toggle() }
+        .help(help)
+        .popover(isPresented: popups.binding("widget:camera"), arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(help.split(separator: "\n").map(String.init), id: \.self) { Text($0).foregroundStyle(theme[\.text]) }
+            }
+            .popupStyle(theme, width: 300)
+            .environment(\.theme, theme)
         }
     }
 }

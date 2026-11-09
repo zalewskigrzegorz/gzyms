@@ -6,8 +6,8 @@ public struct SensorApps: Equatable, Sendable {
     public init(camera: [String] = [], mic: [String] = []) { self.camera = camera; self.mic = mic }
 }
 
-/// Control Center's `sensor-indicators` log line `Active activity attributions changed to ["aud:<id>", "cam:<id>"]`;
-/// nil = some other line. `loc:` (location) and the rest are dropped.
+/// Control Center's `sensor-indicators` log line `Active activity attributions changed to ["mic:<id>", "cam:<id>"]`;
+/// nil = some other line. `aud:` (an app recording the Mac's sound, not the mic), `loc:`, `scr:` and the rest are dropped.
 public func sensorApps(_ message: String) -> SensorApps? {
     let prefix = "Active activity attributions changed to "
     guard message.hasPrefix(prefix),
@@ -15,7 +15,7 @@ public func sensorApps(_ message: String) -> SensorApps? {
     var s = SensorApps()
     for item in list {
         if item.hasPrefix("cam:") { s.camera.append(String(item.dropFirst(4))) }
-        if item.hasPrefix("aud:") { s.mic.append(String(item.dropFirst(4))) }
+        if item.hasPrefix("mic:") { s.mic.append(String(item.dropFirst(4))) }
     }
     return s
 }
