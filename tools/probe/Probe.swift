@@ -1000,6 +1000,12 @@ enum Check {
             if p.terminationStatus != 0 { return "exit \(p.terminationStatus)" }
         case "idle":
             break  // runOne holds the step for the seconds given
+        case "open":
+            guard words.count > 1, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: words[1]) else { return "no app \(words.dropFirst().first ?? "")" }
+            do { _ = try await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) } catch { return "\(error)" }
+        case "quit":
+            guard words.count > 1 else { return "quit <bundle id>" }
+            NSRunningApplication.runningApplications(withBundleIdentifier: words[1]).forEach { $0.terminate() }
         case "nc-banner":
             // Notification Center itself, no Gzyms in it: did it put up a banner from Probe within 5 s?
             // The prompt puts Gzyms Probe on the Accessibility list, so the grant is one switch.
@@ -1019,7 +1025,7 @@ enum Check {
             }
             return "Notification Center showed no banner from Gzyms Probe" + (others.isEmpty ? "" : ", only: \(others.sorted())")
         default:
-            return "unknown action (notify <title>, badge [label], gzyms <args>, idle <seconds>, nc-banner)"
+            return "unknown action (notify <title>, badge [label], gzyms <args>, idle <seconds>, nc-banner, open|quit <bundle id>)"
         }
         return nil
     }

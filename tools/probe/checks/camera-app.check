@@ -1,0 +1,9 @@
+# Photo Booth takes the camera: Gzyms names it from Control Center's line in the system log.
+# That line is not a promise from Apple, so a macOS update can change it or hide the app as <private>.
+# Control Center logs a change ~4 s late, hence the wait after the first quit. Other apps may hold the camera or mic too, so only Photo Booth's own id must be in the list.
+> quit com.apple.PhotoBooth
+> idle 8
+> open com.apple.PhotoBooth
+sensors: camera [<*>"com.apple.PhotoBooth"<*>], mic <*>
+> quit com.apple.PhotoBooth
+sensors: camera <*>, mic <*>
