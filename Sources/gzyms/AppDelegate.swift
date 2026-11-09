@@ -552,6 +552,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if p.terminationStatus != 0 { log("banners: killall NotificationCenter exited \(p.terminationStatus)") }
             banners.ncRestarted()
         }
+        if auto { tellAutoRestart() }
+    }
+
+    private static var ncRestartsFile: URL { VitalsWriter.url.deletingLastPathComponent().appendingPathComponent("nc-restarts.json") }
+
+    /// Today's automatic restarts, from a file so a Gzyms restart keeps them.
+    private func ncAutoRestarts() -> [Date] {
+        let saved = (try? Data(contentsOf: Self.ncRestartsFile)).flatMap { try? JSONDecoder().decode([Date].self, from: $0) } ?? []
+        return restartsToday(saved, now: Date())
+    }
+
+    /// An automatic restart flickers the screen with no cause the user can see: say so on the island and count it.
+    private func tellAutoRestart() {
+        try? JSONEncoder().encode(ncAutoRestarts() + [Date()]).write(to: Self.ncRestartsFile, options: .atomic)
+        post(GzymsNotification(id: "gzyms-nc-restart", app: nil, level: .info, title: "Notification Center restarted", subtitle: nil,
+                               body: "Banners were stuck. Gzyms restarted it.", link: nil, altLink: nil, sound: nil, at: Date()))
     }
 
     private func markHandled(_ id: String) {
@@ -1973,8 +1989,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         h.lastBanner = banners.lastBanner
         h.nannyRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.notificationnanny.app").isEmpty
         h.noBanners = noBanners
-        h.ncRestarts = ncRestart.count
-        h.ncLastRestart = ncRestartedAt
+        h.ncRestartsToday = ncAutoRestarts()
         h.ncStillHung = ncRestart.stillHung && noBanners
         return h
     }

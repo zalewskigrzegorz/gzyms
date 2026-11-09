@@ -1513,8 +1513,8 @@ public struct HacksState: Equatable {
     /// Apps send notifications but Notification Center shows no banner (`BannerGuard`).
     public var noBanners = false
     /// Notification Center restarts by Gzyms since it started, the last one, and no banner has shown since it.
-    public var ncRestarts = 0
-    public var ncLastRestart: Date?
+    /// Automatic restarts of today.
+    public var ncRestartsToday: [Date] = []
     public var ncStillHung = false
     public init() {}
 }
@@ -1621,7 +1621,10 @@ private struct HacksTab: View {
 
     private func restartState(_ h: HacksState) -> String {
         var s = config.ncAutoRestart ? "Automatic restart on." : "Automatic restart off."
-        if let at = h.ncLastRestart { s += " Restarted \(h.ncRestarts) time(s), last at \(at.formatted(date: .omitted, time: .shortened))." }
+        if let at = h.ncRestartsToday.last {
+            let n = h.ncRestartsToday.count
+            s += " Restarted \(n) time\(n == 1 ? "" : "s") today, last at \(at.formatted(date: .omitted, time: .shortened))."
+        }
         if h.ncStillHung { s += " No banner since, so it will not restart again by itself." }
         return s
     }

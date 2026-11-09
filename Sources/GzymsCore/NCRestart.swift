@@ -26,6 +26,12 @@ public struct NCRestartPolicy {
     public mutating func bannerShown() { stillHung = false }
 }
 
+/// The automatic restarts of today, for "Restarted 2 times today" in Settings. Kept in a file, so a Gzyms restart
+/// does not zero it; older days drop out.
+public func restartsToday(_ times: [Date], now: Date, calendar: Calendar = .current) -> [Date] {
+    times.filter { calendar.isDate($0, inSameDayAs: now) }
+}
+
 /// A macOS Focus (Sleep, Work, Do Not Disturb) holds banners back while `~/Library/DoNotDisturb/DB/Assertions.json`
 /// has an assertion record. Then no banner is not a hung Notification Center.
 public func focusIsOn(assertions: Data) -> Bool {
