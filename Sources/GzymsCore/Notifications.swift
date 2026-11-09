@@ -246,12 +246,14 @@ public struct NotificationStore: Sendable {
     public private(set) var dnd: Date?
     /// `[dnd] breaks_through`: what still comes up on screen during Do Not Disturb.
     public var breaksThrough = DNDBreak.defaults
+    /// The screen is shared, recorded or mirrored (and `quiet_sharing` is on): nothing shows, not even an armageddon.
+    public private(set) var sharing = false
 
     public init() {}
 
     /// During Do Not Disturb everything else goes quietly to its list (and to the phone, as always).
     public func quiet(_ n: GzymsNotification) -> Bool {
-        dnd != nil && !breaksThrough.covers(n)
+        sharing || (dnd != nil && !breaksThrough.covers(n))
     }
 
     /// The notifications to sound since the last call, each once.
@@ -263,7 +265,16 @@ public struct NotificationStore: Sendable {
     /// Turning it on files what is on screen and waiting; turning it off brings nothing back, the lists keep it.
     public mutating func setDND(_ until: Date?, now: Double) {
         dnd = until
-        guard until != nil else { return }
+        if until != nil { fileQuiet(now: now) }
+    }
+
+    /// Like Do Not Disturb: turning it on files what is on screen and waiting, turning it off brings nothing back.
+    public mutating func setSharing(_ on: Bool, now: Double) {
+        sharing = on
+        if on { fileQuiet(now: now) }
+    }
+
+    private mutating func fileQuiet(now: Double) {
         let shown = banner?.id
         let filed = stack.filter { quiet($0.n) }.map(\.seq)
         for e in stack where filed.contains(e.seq) { file(e.n) }

@@ -321,3 +321,10 @@ import Testing
     let bad = loadConfig(toml: "[notifications]\nkeep = \"month\"\n")
     #expect(bad.config.keep == nil && bad.problems.count == 1)
 }
+
+@Test func quietSharingDefaultsOnAndParses() {
+    #expect(loadConfig(toml: nil).config.quietSharing)
+    let off = loadConfig(toml: "[notifications]\nquiet_sharing = false\n")
+    #expect(!off.config.quietSharing)
+    #expect(off.problems.isEmpty)
+}

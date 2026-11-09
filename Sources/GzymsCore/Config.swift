@@ -47,6 +47,9 @@ public struct GzymsConfig: Equatable, Sendable {
     public var ncAutoRestart = false
     /// `[notifications] keep`: rows in the lists older than this go. nil = forever.
     public var keep: NotificationKeep?
+    /// `[notifications] quiet_sharing`: while the screen is shared, recorded or mirrored, every notification goes
+    /// quietly to its list, so nobody watching reads it. Off: banners show as usual.
+    public var quietSharing = true
     /// `[hacks] browser_media`: the loopback server for the browser userscript, so tabs with video show in the music
     /// pill. Off until turned on in Settings → Hacks: it opens a port on 127.0.0.1.
     public var browserMedia = false
@@ -315,6 +318,7 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         if let v = NotificationKeep(rawValue: k) { config.keep = v }
         else if k != "forever" { problems.append("notifications.keep: \"\(k)\" must be hour, day, week or forever, kept forever") }
     }
+    if let v = raw.notifications?.quietSharing { config.quietSharing = v }
     if let v = raw.hacks?.browser_media { config.browserMedia = v }
     if let v = raw.updates?.automatic { config.updatesAutomatic = v }
     if let names = raw.notifications?.priority {
@@ -549,10 +553,11 @@ private struct RawNotifications: Decodable {
     var signal: Bool?
     var ncAutoRestart: Bool?
     var keep: String?
+    var quietSharing: Bool?
     var unknown: [String] = []
     enum CodingKeys: String, CodingKey {
         case sounds, keys, hold, levels, apps, letters, phone, priority, signal, keep
-        case openOriginal = "open_original", bannerAX = "banner_ax", ncAutoRestart = "nc_auto_restart"
+        case openOriginal = "open_original", bannerAX = "banner_ax", ncAutoRestart = "nc_auto_restart", quietSharing = "quiet_sharing"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -569,8 +574,9 @@ private struct RawNotifications: Decodable {
         signal = lenient(c, .signal, "notifications.signal", &unknown)
         ncAutoRestart = lenient(c, .ncAutoRestart, "notifications.nc_auto_restart", &unknown)
         keep = lenient(c, .keep, "notifications.keep", &unknown)
+        quietSharing = lenient(c, .quietSharing, "notifications.quiet_sharing", &unknown)
         unknown += try unknownKeys(in: decoder, known: ["sounds", "keys", "hold", "levels", "apps", "letters", "phone", "priority",
-                                                        "open_original", "banner_ax", "signal", "nc_auto_restart", "keep"], prefix: "notifications.")
+                                                        "open_original", "banner_ax", "signal", "nc_auto_restart", "keep", "quiet_sharing"], prefix: "notifications.")
         unknown += (levels?.unknown ?? []) + (apps?.unknown ?? []) + (letters?.unknown ?? []) + (phone?.unknown ?? [])
     }
 }
