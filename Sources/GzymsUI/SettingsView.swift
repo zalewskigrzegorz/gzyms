@@ -112,6 +112,7 @@ public struct SettingsView: View {
     let workspacesFound: Bool
     let grants: [GrantState]
     let calendars: [CalendarInfo]
+    let focusModes: [FocusMode]
     let logo: NSImage?
     /// false while the panel is put away: it stays alive, and About's animation must not tick unseen.
     let live: Bool
@@ -132,13 +133,14 @@ public struct SettingsView: View {
     public init(tab: Binding<SettingsTab>, config: GzymsConfig, problems: [String], broken: Bool, apps: [SeenApp],
                 devices: [String], workspaceNames: [Int: String] = [:], workspacesFrom: WorkspaceSource = .hyprmac,
                 workspacesFound: Bool = false, grants: [GrantState] = [], calendars: [CalendarInfo] = [],
+                focusModes: [FocusMode] = [],
                 logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], agents: [AgentSource: AgentSourceStatus] = [:],
                 openApp: String? = nil, openPlugin: String? = nil, actions: SettingsActions) {
         self.logo = logo; self.live = live; self.plugins = plugins; self.agents = agents; self.openApp = openApp; self.openPlugin = openPlugin
         _tab = tab; self.config = config; self.problems = problems; self.broken = broken
         self.apps = apps; self.devices = devices; self.workspaceNames = workspaceNames; self.grants = grants
         self.workspacesFrom = workspacesFrom; self.workspacesFound = workspacesFound
-        self.calendars = calendars; self.actions = actions
+        self.calendars = calendars; self.focusModes = focusModes; self.actions = actions
     }
 
     public var body: some View {
@@ -229,7 +231,7 @@ public struct SettingsView: View {
         case .appearance: AppearanceTab(config: config, devices: devices, write: actions.write, openThemes: { tab = .themes })
         case .animations: AnimationsTab(config: config, write: actions.write)
         case .themes: ThemesTab(config: config, write: actions.write)
-        case .notifications: NotificationsTab(config: config, actions: actions)
+        case .notifications: NotificationsTab(config: config, actions: actions, focusModes: focusModes)
         case .apps: AppsTab(config: config, apps: apps, plugins: plugins, actions: actions, live: live, selected: openApp)
         case .modules: ModulesTab(config: config, write: actions.write, plugins: plugins)
         case .plugins: PluginsTab(config: config, write: actions.write, plugins: plugins, actions: actions, selected: openPlugin)
@@ -1636,6 +1638,7 @@ private struct HacksTab: View {
 private struct NotificationsTab: View {
     let config: GzymsConfig
     let actions: SettingsActions
+    let focusModes: [FocusMode]
     @State private var tested: String?
     @Environment(\.theme) private var theme
     private var write: (String, TOMLValue?, ConfigTable) -> Void { actions.write }
@@ -1669,6 +1672,11 @@ private struct NotificationsTab: View {
         Section(title: "Do Not Disturb") {
             Row(title: "Still shows", note: "Turn it on with the moon on the bar. The rest waits in its list.") {
                 HStack(spacing: 4) { ForEach(DNDBreak.allCases, id: \.self) { b in breakChip(b, config.dndBreaks, DNDBreak.defaults, key: "breaks_through", table: "dnd") } }
+            }
+            Row(title: "Synced with macOS Focus", note: focusModes.isEmpty ? "No Focus found. Set one up in System Settings, Focus."
+                    : "Turns on with the Focuses switched on below. Turns off when they end.") { EmptyView() }
+            ForEach(focusModes, id: \.id) { m in
+                Row(title: m.name) { Switch(on: config.followFocus.contains(m.id)) { followFocus(m.id, $0) } }
             }
         }
         Section(title: "Not answered on the Mac") {
@@ -1715,6 +1723,12 @@ private struct NotificationsTab: View {
             if set.contains(b) { set.remove(b) } else { set.insert(b) }
             write(key, set == defaults ? nil : .strings(DNDBreak.allCases.filter(set.contains).map(\.rawValue)), .table([table]))
         }
+    }
+
+    private func followFocus(_ id: String, _ on: Bool) {
+        var set = config.followFocus
+        if on { set.insert(id) } else { set.remove(id) }
+        write("follow_focus", set == GzymsConfig.defaults.followFocus ? nil : .strings(set.sorted()), .table(["dnd"]))
     }
 
     private func levelChip(_ l: NotifyLevel) -> some View {
