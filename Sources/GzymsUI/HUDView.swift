@@ -42,6 +42,8 @@ public enum LogFilter: String, CaseIterable, Sendable {
 
 enum HUDLimits {
     static let cpuHot = 3.0, lagHot = 100.0, memHot = 300.0
+    /// Seconds in a row above `cpuHot` before the CPU chart turns red.
+    static let cpuRun = 3
 }
 
 public struct HUDView: View {
@@ -96,24 +98,26 @@ public struct HUDView: View {
 
     @ViewBuilder private var statsBody: some View {
         row("main-thread lag", stats.lag, unit: " ms", hot: HUDLimits.lagHot, digits: 0)
-        row("CPU", stats.cpu, unit: "%", hot: HUDLimits.cpuHot, digits: 1)
+        let cpuHot = sustainedHot(stats.cpuSeries, above: HUDLimits.cpuHot, run: HUDLimits.cpuRun)
+        row("CPU", stats.cpu, unit: "%", hot: HUDLimits.cpuHot, digits: 1, nowHot: cpuHot.last ?? false, maxHot: cpuHot.contains(true))
         row("memory", stats.memMB, unit: " MB", hot: HUDLimits.memHot, digits: 1)
         plain("panels", stats.panels.map(String.init))
         plain("rebuilds", stats.rebuilds.map(String.init))
         plain("events/s", stats.eventsPerSec.map { String(format: "%.1f", $0) })
         Text("CPU").foregroundStyle(theme[\.overlay]).padding(.top, 4)
-        BarChart(values: stats.cpuSeries, threshold: HUDLimits.cpuHot, floor: 10, unit: "%")
+        BarChart(values: stats.cpuSeries, threshold: HUDLimits.cpuHot, floor: 10, unit: "%", run: HUDLimits.cpuRun)
         Text("main-thread lag").foregroundStyle(theme[\.overlay])
         BarChart(values: stats.lagSeries, threshold: HUDLimits.lagHot, floor: 250, unit: " ms")
     }
 
-    private func row(_ label: String, _ m: Metric?, unit: String, hot: Double, digits: Int) -> some View {
+    /// `nowHot` / `maxHot` override the plain "above `hot`" test (the CPU row reds only a sustained spell).
+    private func row(_ label: String, _ m: Metric?, unit: String, hot: Double, digits: Int, nowHot: Bool? = nil, maxHot: Bool? = nil) -> some View {
         HStack {
             Text(label)
             Spacer()
             if let m {
-                Text(String(format: "%.\(digits)f", m.now) + unit).foregroundStyle(m.now > hot ? theme[\.red] : theme[\.text])
-                Text(String(format: "max %.\(digits)f", m.max)).foregroundStyle(m.max > hot ? theme[\.red] : theme[\.overlay])
+                Text(String(format: "%.\(digits)f", m.now) + unit).foregroundStyle(nowHot ?? (m.now > hot) ? theme[\.red] : theme[\.text])
+                Text(String(format: "max %.\(digits)f", m.max)).foregroundStyle(maxHot ?? (m.max > hot) ? theme[\.red] : theme[\.overlay])
                     .frame(width: 72, alignment: .trailing)
             } else {
                 Text("–").foregroundStyle(theme[\.overlay])
@@ -203,14 +207,17 @@ struct BarChart: View {
     let threshold: Double
     let floor: Double
     let unit: String
+    /// Samples in a row above `threshold` before a bar turns red; 1 = every bar above it.
+    var run = 1
     @Environment(\.theme) private var theme
 
     var body: some View {
         let top = max(floor, (values.max() ?? 0) * 1.1)
-        let hot = threshold
+        let red = sustainedHot(values, above: threshold, run: run)
+        let hotValues = zip(values, red).map { $1 ? $0 : 0 }, calmValues = zip(values, red).map { $1 ? 0 : $0 }
         ZStack {
-            BarsShape(values: values, top: top, only: { $0 <= hot }).fill(theme[\.green].opacity(0.8))
-            BarsShape(values: values, top: top, only: { $0 > hot }).fill(theme[\.red])
+            BarsShape(values: calmValues, top: top, only: { $0 > 0 }).fill(theme[\.green].opacity(0.8))
+            BarsShape(values: hotValues, top: top, only: { $0 > 0 }).fill(theme[\.red])
             ThresholdLine(at: 1 - threshold / top).stroke(theme[\.overlay], style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
         }
         .clipped()  // a threshold above the top stays out of sight, as it did in the Canvas
