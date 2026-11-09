@@ -7,12 +7,15 @@ public struct BannerGuard {
     public private(set) var firstSignal: Double?
     public private(set) var signals = 0
     public private(set) var warns = false
+    /// The apps behind the counted signals, each once, for the anomaly log.
+    public private(set) var apps: [String] = []
 
     public init() {}
 
-    public mutating func signal(at t: Double) {
+    public mutating func signal(at t: Double, app: String? = nil) {
         if firstSignal == nil { firstSignal = t }
         signals += 1
+        if let app, !apps.contains(app) { apps.append(app) }
         if let first = firstSignal, signals >= 3, t - first >= 120 { warns = true }
     }
 
@@ -20,5 +23,6 @@ public struct BannerGuard {
         firstSignal = nil
         signals = 0
         warns = false
+        apps = []
     }
 }

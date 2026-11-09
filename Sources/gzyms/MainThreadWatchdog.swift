@@ -51,6 +51,7 @@ final class MainThreadWatchdog: @unchecked Sendable {
             let kind = StallTracker.kind(blocked: blocked, asleep: isAsleep, settling: now < settlingUntil)
             var detail = ["blocked_ms": String(Int(blocked * 1000))]
             if kind == "settling_stall" { detail["after"] = settlingWhy }
+            if kind == "main_thread_stall" { detail.merge(MacContext.read().detail) { own, _ in own } }
             anomalies.write(kind: kind, detail: detail)
         }
     }
