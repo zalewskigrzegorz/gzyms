@@ -33,6 +33,7 @@ final class BarModel {
     var micApps: [SeenApp] = []
     @ObservationIgnored var onCPUPopup: (Bool) -> Void = { _ in }
     var inboxes: [String?: [GzymsNotification]] = [:]
+    var missed: [GzymsNotification] = []
     var dockBadges: [String: String] = [:]
     @ObservationIgnored var onOpenNote: (String) -> Void = { _ in }
     @ObservationIgnored var onRemoveNote: (String) -> Void = { _ in }
@@ -155,7 +156,7 @@ struct PanelRoot: View {
                     icon: AppIcons.icon(for:), onSelect: { model.source == .hyprmac ? switchWorkspace($0) : model.onSelectWorkspace($0) }, onCPUPopup: model.onCPUPopup,
                     // Read when called: the left side sits in an equatable Redraw that keeps its first closures, and a bar drawn
                     // before the app delegate set them stayed dead (the logo did nothing for a whole session).
-                    inboxes: model.inboxes, onOpenNote: { model.onOpenNote($0) }, onRemoveNote: { model.onRemoveNote($0) },
+                    inboxes: model.inboxes, missed: model.missed, onOpenNote: { model.onOpenNote($0) }, onRemoveNote: { model.onRemoveNote($0) },
                     onLogo: { model.onLogo() }, grantWarning: model.grantWarning, onGrantWarning: model.onGrantWarning, secureInput: model.secureInput,
                     meetingPill: model.meetingPill, onMeetingPill: model.onMeetingPill, logo: model.customLogo,
                     media: mediaItems(model.nowPlaying, tabs: model.tabs, now: context.date.timeIntervalSince1970), onMusic: model.onMusic,

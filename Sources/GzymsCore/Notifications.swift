@@ -248,12 +248,19 @@ public struct NotificationStore: Sendable {
     public var breaksThrough = DNDBreak.defaults
     /// The screen is shared, recorded or mirrored (and `quiet_sharing` is on): nothing shows, not even an armageddon.
     public private(set) var sharing = false
+    /// The screen is locked or asleep: nobody sees the island. Quiet like Do Not Disturb.
+    public private(set) var away = false
+    /// What came during a quiet period, newest first. Never in an app's list or count, and opened or cleared it is gone.
+    public private(set) var missed: [GzymsNotification] = []
 
     public init() {}
 
-    /// During Do Not Disturb everything else goes quietly to its list (and to the phone, as always).
+    /// Locked, asleep, Do Not Disturb or sharing: what comes now goes to `missed`.
+    public var quietPeriod: Bool { away || dnd != nil || sharing }
+
+    /// During a quiet period everything else goes quietly to the missed list (and to the phone, as always).
     public func quiet(_ n: GzymsNotification) -> Bool {
-        sharing || (dnd != nil && !breaksThrough.covers(n))
+        sharing || ((dnd != nil || away) && !breaksThrough.covers(n))
     }
 
     /// The notifications to sound since the last call, each once.
@@ -271,6 +278,12 @@ public struct NotificationStore: Sendable {
     /// Like Do Not Disturb: turning it on files what is on screen and waiting, turning it off brings nothing back.
     public mutating func setSharing(_ on: Bool, now: Double) {
         sharing = on
+        if on { fileQuiet(now: now) }
+    }
+
+    /// Like Do Not Disturb, for a locked or sleeping screen.
+    public mutating func setAway(_ on: Bool, now: Double) {
+        away = on
         if on { fileQuiet(now: now) }
     }
 
@@ -301,13 +314,14 @@ public struct NotificationStore: Sendable {
         let rule = appRules.rule(for: n)
         if rule.skip { return }
         n.level = rule.raise(n.level)
+        if let i = missed.firstIndex(where: { $0.id == n.id }) { missed[i] = n; return }
         // Banner off: straight into the count, unless it is loud enough that it must be seen.
         if !rule.banner, n.level != .critical, n.level != .armageddon, !contains(n.id) {
             if n.compact { return }
-            if let i = inboxes[n.app]?.firstIndex(where: { $0.id == n.id }) { inboxes[n.app]?[i] = n } else { file(n); arm(n, now: now) }
+            if let i = inboxes[n.app]?.firstIndex(where: { $0.id == n.id }) { inboxes[n.app]?[i] = n } else { fileNew(n); arm(n, now: now) }
             return
         }
-        if !n.compact, let app = n.app, let until = quiet.removeValue(forKey: app), now < until { file(n); return }
+        if !n.compact, let app = n.app, let until = quiet.removeValue(forKey: app), now < until { fileNew(n); return }
         if banner?.id == n.id { stack[cursor].n = n; stack[cursor].left = nil; arm(n, now: now); start(now: now); return }
         if let i = stack.firstIndex(where: { $0.n.id == n.id }) { stack[i].n = n; arm(n, now: now); return }
         if let i = inboxes[n.app]?.firstIndex(where: { $0.id == n.id }) { inboxes[n.app]?[i] = n; return }
@@ -352,6 +366,7 @@ public struct NotificationStore: Sendable {
         for (app, list) in inboxes {
             if let i = list.firstIndex(where: { $0.id == id }) { return inboxes[app]?.remove(at: i) }
         }
+        if let i = missed.firstIndex(where: { $0.id == id }) { return missed.remove(at: i) }
         return nil
     }
 
@@ -378,8 +393,12 @@ public struct NotificationStore: Sendable {
         inboxes[app]?.forEach { toPhone[$0.id] = nil }
         inboxes[app] = nil
     }
+    public mutating func clearMissed() {
+        missed.forEach { toPhone[$0.id] = nil }
+        missed = []
+    }
 
-    /// `[notifications] keep`: list rows older than this go. The stack and the snoozed are never cut.
+    /// `[notifications] keep`: list rows older than this go. The stack, the snoozed and the missed list are never cut.
     public var keep: NotificationKeep?
 
     /// Drops list rows that arrived before `wall` minus `keep`. Returns how many went.
@@ -395,7 +414,7 @@ public struct NotificationStore: Sendable {
             let kept = list.filter { $0.at >= cutoff }
             inboxes[app] = kept.isEmpty ? nil : kept
         }
-        return gone
+        return gone  // the missed list waits until read, whatever its age (Greg)
     }
 
     public var isPaused: Bool { pausedLeft != nil }
@@ -419,6 +438,8 @@ public struct NotificationStore: Sendable {
         /// What `gzyms notifications` and the HUD show: the stack (on screen first, meetings too) and the ones waiting
         /// for room, in order. Never read back by `restore`.
         public var live: [Live]? = nil
+        /// The missed list, newest first; nil in files from before it.
+        public var missed: [GzymsNotification]? = nil
         public struct Live: Codable, Equatable, Sendable { public var n: GzymsNotification; public var waiting: Bool; public var heard: Bool }
 
         /// For readers other than the bar: nil when there is none yet. A broken file throws and stays where it is.
@@ -442,13 +463,15 @@ public struct NotificationStore: Sendable {
         return Saved(inbox: copy.inboxes.sorted { ($0.key ?? "") < ($1.key ?? "") }.flatMap(\.value),
                      snoozed: snoozed.map { .init(n: $0.n, at: wall + ($0.at - now)) }, dnd: dnd,
                      queued: line.map { .init(id: $0.n.id, heard: $0.heard, reminder: $0.n.reminder) },
-                     live: shown.map { .init(n: $0.n, waiting: false, heard: $0.heard) } + waiting)
+                     live: shown.map { .init(n: $0.n, waiting: false, heard: $0.heard) } + waiting,
+                     missed: missed.isEmpty ? nil : missed)
     }
 
     /// A snooze whose time passed while the bar was off comes back on the next tick. The ones in line come up in
     /// the same order, the first on screen with its full time.
     public mutating func restore(_ s: Saved, now: Double, wall: Date) {
         for n in s.inbox { inboxes[n.app, default: []].append(n) }
+        missed = s.missed ?? []
         snoozed = s.snoozed.map { ($0.n, now + max(0, $0.at.timeIntervalSince(wall))) }
         dnd = s.dnd.flatMap { $0 > wall ? $0 : nil }  // its time ran out while the bar was off
         for q in s.queued ?? [] {
@@ -472,7 +495,7 @@ public struct NotificationStore: Sendable {
     }
 
     private mutating func insert(_ n: GzymsNotification, now: Double) {
-        if quiet(n) { file(n); arm(n, now: now); return }  // a pending icon is not filed: it just never shows
+        if quiet(n) { fileNew(n); arm(n, now: now); return }  // a pending icon is not filed: it just never shows
         // A pending icon shows only on an empty stack, and a full banner takes its place without filing it.
         if n.compact { guard banner?.compact ?? true else { return }; stack = [] }
         let replacesIcon = !n.compact && banner?.compact == true && banner?.app == n.app
@@ -560,6 +583,14 @@ public struct NotificationStore: Sendable {
         var n = n
         n.reminder = false
         inboxes[n.app, default: []].insert(n, at: 0)
+    }
+
+    /// One that just came: during a quiet period it goes to the missed list, else to its app's list.
+    private mutating func fileNew(_ n: GzymsNotification) {
+        guard quietPeriod, !n.compact else { return file(n) }
+        var n = n
+        n.reminder = false
+        missed.insert(n, at: 0)
     }
 }
 

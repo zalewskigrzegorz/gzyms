@@ -377,7 +377,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// From the moon pill, `gzyms dnd` or a macOS Focus (`byFocus`); nil turns it off.
     private func setDND(_ until: Date?, byFocus: Bool = false) {
         if !byFocus { focusFollow.handSet() }
-        notes.setDND(until, now: ProcessInfo.processInfo.systemUptime)
+        quietChange { notes.setDND(until, now: ProcessInfo.processInfo.systemUptime) }
         log((until.map { $0 == .distantFuture ? "dnd: on until turned off" : "dnd: on until \(ISO8601DateFormatter().string(from: $0))" } ?? "dnd: off")
             + (byFocus ? ", macOS Focus \(until == nil ? "ended" : "started")" : ""))
         armDNDTimer()
@@ -408,7 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         screenShared = watched
         let on = watched == true && model.config.quietSharing
         guard on != notes.sharing else { return }
-        notes.setSharing(on, now: ProcessInfo.processInfo.systemUptime)
+        quietChange { notes.setSharing(on, now: ProcessInfo.processInfo.systemUptime) }
         log(on ? "sharing: the screen is shared, notifications go quietly to their lists" : "sharing: off, banners show again")
         notesChanged()
     }
@@ -465,6 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let arg else { return }
                 if arg == "clear" {
                     for app in Array(notes.inboxes.keys) { notes.clearAll(app) }
+                    notes.clearMissed()
                 } else if arg.hasPrefix("dismiss:") {
                     notes.remove(String(arg.dropFirst("dismiss:".count)), now: ProcessInfo.processInfo.systemUptime)
                 } else { return }
@@ -733,44 +734,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - While you were away
 
-    /// When the screen locked; nil while it is unlocked.
-    private var lockedAt: Date?
-    /// The lock the notice on screen is about: a click finds that lock's notifications again.
-    private var awaySince: Date?
+    /// From the lock and sleep events: together they make `notes.away`.
+    private var screenLocked = false, screensAsleep = false
 
     private func startAway() {
-        // Started on a locked screen (an update at night): that lock counts from now.
-        if (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool == true { lockedAt = Date() }
+        // Started on a locked screen (an update at night).
+        screenLocked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool == true
         let center = DistributedNotificationCenter.default()
-        center.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { [weak self] in if self?.lockedAt == nil { self?.lockedAt = Date() } }
+        for (name, on) in [("com.apple.screenIsLocked", true), ("com.apple.screenIsUnlocked", false)] {
+            center.addObserver(forName: .init(name), object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { [weak self] in self?.screenLocked = on; self?.checkAway() }
+            }
         }
-        center.addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { [weak self] in self?.unlocked() }
+        let ws = NSWorkspace.shared.notificationCenter
+        for (name, asleep) in [(NSWorkspace.willSleepNotification, true), (NSWorkspace.screensDidSleepNotification, true),
+                               (NSWorkspace.didWakeNotification, false), (NSWorkspace.screensDidWakeNotification, false)] {
+            ws.addObserver(forName: name, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { [weak self] in self?.screensAsleep = asleep; self?.checkAway() }
+            }
         }
+        checkAway()
     }
 
-    /// One notice for what came while locked and still waits. Not under Do Not Disturb: that asked for quiet.
-    private func unlocked() {
-        guard let since = lockedAt else { return }
-        lockedAt = nil
-        guard notes.dnd == nil, let a = awayNoticeNow(since: since) else { return }
-        awaySince = since
-        log("away: \(a.title)")
-        post(GzymsNotification(id: awayNoticeID, app: nil, level: .info, title: a.title, subtitle: nil, body: nil,
+    private func checkAway() {
+        let on = screenLocked || screensAsleep
+        guard on != notes.away else { return }
+        log(on ? "away: locked or asleep, notifications go to the missed list" : "away: back")
+        quietChange { notes.setAway(on, now: ProcessInfo.processInfo.systemUptime) }
+        notesChanged()
+    }
+
+    /// Runs a change of away, Do Not Disturb or sharing. When it ends the quiet period with something missed, the
+    /// island says so once.
+    private func quietChange(_ change: () -> Void) {
+        let was = notes.quietPeriod
+        change()
+        guard was, !notes.quietPeriod, let title = awayNotice(missed: notes.missed.count) else { return }
+        log("away: \(title)")
+        post(GzymsNotification(id: awayNoticeID, app: nil, level: .info, title: title, subtitle: nil, body: nil,
                                link: nil, altLink: nil, sound: nil, at: Date()))
     }
 
-    private func awayNoticeNow(since: Date) -> (title: String, list: String)? {
-        awayNotice(waiting: notes.inboxes.values.flatMap { $0 } + notes.stacked, since: since,
-                   onBar: Set(model.workspaces.flatMap(\.appBundleIDs)))
-    }
-
-    /// The list with most of what came while locked, on the focused screen's bar, as if its icon was clicked.
-    private func openAwayList() {
-        guard let since = awaySince, let list = awayNoticeNow(since: since)?.list else { return }
+    /// The missed list on the focused screen's bar, as if its pill was clicked.
+    private func openMissedList() {
+        guard !notes.missed.isEmpty else { return }
         let screen = focusedScreen(), visible = panels.values.filter(\.isVisible)
-        (visible.first { $0.screenFrame == screen?.frame } ?? visible.first)?.popups.open = list
+        (visible.first { $0.screenFrame == screen?.frame } ?? visible.first)?.popups.open = "missed"
     }
 
     // MARK: - Keyboard mode (leader, hints, popups by keys)
@@ -929,7 +938,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if b.id == duplicateNoticeID {
             toggleSettings(.debug)
         } else if b.id == awayNoticeID {
-            openAwayList()
+            openMissedList()
         } else if let target = alt ? b.altLink : b.link {
             // Any process in the session can post, sandboxed ones too: a file: link would launch whatever it points at.
             let opened = URL(string: target).map { $0.scheme != nil && !$0.isFileURL && NSWorkspace.shared.open($0) } ?? false
@@ -1029,6 +1038,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func syncInboxes() {
         if flying == 0, model.inboxes != notes.inboxes { model.inboxes = notes.inboxes }
+        if model.missed != notes.missed { model.missed = notes.missed }
     }
 
     /// From the banner's icon to the app's icon on the bar of the same screen (the 🔔 for apps not on the bar).

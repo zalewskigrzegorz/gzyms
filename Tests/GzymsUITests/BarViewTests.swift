@@ -151,6 +151,8 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     preview(BannerView(n: .pending(app: "com.app", at: fixedNow), icon: nil, remaining: nil, total: nil), "banner-pending")
     preview(InboxList(notes: [reminder, older]), "inbox-list")
     preview(BellView(notes: [older], small: false), "bell")
+    preview(BellView(notes: [reminder, older], small: false, missed: true), "missed")
+    preview(InboxList(notes: [older], title: missedTitle(1)), "missed-list")
     // Whose count: the app's own Dock badge, Gzyms's list, both.
     for theme in Theme.builtIn + ["catppuccin_latte"].compactMap(Theme.named) {
         let apps = BarWorkspace(number: 1, color: "green", isActive: true, appBundleIDs: ["app", "gzyms", "both", "many"])

@@ -10,14 +10,15 @@ private func meeting(_ id: String) -> GzymsNotification {
     return m
 }
 
-@Test func dndFilesInsteadOfStacking() {
+@Test func dndSendsToTheMissedListInsteadOfStacking() {
     var s = NotificationStore()
     s.setDND(.distantFuture, now: 0)
     s.post(note("a"), now: 0)
     s.post(note("c", level: .critical), now: 1)
     s.post(.pending(app: "com.app", at: wall), now: 2)
     #expect(s.banner == nil)
-    #expect(s.inbox("com.app").map(\.id) == ["c", "a"])
+    #expect(s.missed.map(\.id) == ["c", "a"])
+    #expect(s.count("com.app") == 0)
 }
 
 @Test func armageddonAndMeetingBreakDNDByDefault() {
@@ -54,19 +55,20 @@ private func meeting(_ id: String) -> GzymsNotification {
     s.setDND(.distantFuture, now: 0)
     s.post(note("a"), now: 0)
     s.setDND(nil, now: 1)
-    #expect(s.banner == nil && s.count("com.app") == 1)
+    #expect(s.banner == nil && s.missed.count == 1)
     s.post(note("b"), now: 2)
     #expect(s.banner?.id == "b")
 }
 
-@Test func snoozeBackInDNDGoesToList() {
+@Test func snoozeBackInDNDGoesToTheMissedList() {
     var s = NotificationStore()
     s.post(note("a"), now: 0)
     s.snooze(minutes: 1, now: 0)
     s.setDND(.distantFuture, now: 1)
     s.tick(now: 60)
     #expect(s.banner == nil)
-    #expect(s.inbox("com.app").map(\.id) == ["a"])
+    #expect(s.missed.map(\.id) == ["a"])
+    #expect(s.missed.first?.reminder == false)
 }
 
 @Test func dndStillArmsThePhone() {
@@ -129,7 +131,8 @@ private func meeting(_ id: String) -> GzymsNotification {
     #expect(s.banner == nil)
     s.post(note("boom", level: .armageddon), now: 3)
     #expect(s.banner == nil && s.takeSounds().map(\.id) == ["a", "meeting-1"])
-    #expect(Set(s.inbox("com.app").map(\.id)) == ["a", "boom"])
+    #expect(s.inbox("com.app").map(\.id) == ["a"])  // on screen when sharing began
+    #expect(s.missed.map(\.id) == ["boom"])
     s.setSharing(false, now: 4)
     #expect(s.banner == nil)
     s.post(note("b"), now: 5)

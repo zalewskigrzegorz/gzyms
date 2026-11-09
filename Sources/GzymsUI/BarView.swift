@@ -108,6 +108,8 @@ public struct BarView: View {
     var onSelect: (Int) -> Void = { _ in }
     var onCPUPopup: (Bool) -> Void = { _ in }
     let inboxes: [String?: [GzymsNotification]]
+    /// What came during a quiet period, newest first: its own pill next to the bell.
+    let missed: [GzymsNotification]
     var onOpenNote: (String) -> Void = { _ in }
     var onRemoveNote: (String) -> Void = { _ in }
     var onLogo: () -> Void = {}
@@ -210,7 +212,7 @@ public struct BarView: View {
                 micLevel: Double = 0, onMicMute: @escaping () -> Void = {}, onMicPopup: @escaping (Bool) -> Void = { _ in },
                 icon: @escaping (String) -> NSImage?, onSelect: @escaping (Int) -> Void = { _ in },
                 onCPUPopup: @escaping (Bool) -> Void = { _ in },
-                inboxes: [String?: [GzymsNotification]] = [:], onOpenNote: @escaping (String) -> Void = { _ in },
+                inboxes: [String?: [GzymsNotification]] = [:], missed: [GzymsNotification] = [], onOpenNote: @escaping (String) -> Void = { _ in },
                 onRemoveNote: @escaping (String) -> Void = { _ in }, onLogo: @escaping () -> Void = {},
                 grantWarning: Bool = false, onGrantWarning: @escaping () -> Void = {}, secureInput: Bool = false,
                 meetingPill: String? = nil, onMeetingPill: @escaping () -> Void = {}, logo: NSImage? = nil,
@@ -231,7 +233,7 @@ public struct BarView: View {
         self.battery = battery; self.batteryWarning = batteryWarning; self.audio = audio; self.onAudioChange = onAudioChange; self.onTestSound = onTestSound
         self.micLevel = micLevel; self.onMicMute = onMicMute; self.onMicPopup = onMicPopup
         self.icon = icon; self.onSelect = onSelect; self.onCPUPopup = onCPUPopup
-        self.inboxes = inboxes; self.onOpenNote = onOpenNote; self.onRemoveNote = onRemoveNote; self.onLogo = onLogo
+        self.inboxes = inboxes; self.missed = missed; self.onOpenNote = onOpenNote; self.onRemoveNote = onRemoveNote; self.onLogo = onLogo
         self.grantWarning = grantWarning; self.onGrantWarning = onGrantWarning; self.secureInput = secureInput
         self.meetingPill = meetingPill; self.onMeetingPill = onMeetingPill
     }
@@ -242,7 +244,7 @@ public struct BarView: View {
                 HStack(spacing: small ? 4 : 6) {
                 // Workspaces, their app icons and the bell change seldom; the 2 s ticks on the right leave them alone.
                 let pillPlugins = Set(pluginPills.map(\.plugin))
-                Redraw(logo, workspaces, inboxes, pillPlugins, small) {
+                Redraw(logo, workspaces, inboxes, missed, pillPlugins, small) {
                 HStack(spacing: small ? 4 : 6) {
                     // Gzyms' own menu (Settings, Quit), behind the logo.
                     LogoButton(logo: logo, small: small, onLogo: onLogo).hintTarget("logo", popup: false, action: onLogo)
@@ -253,6 +255,7 @@ public struct BarView: View {
                     }
                     BellView(notes: bellInbox(inboxes, onBar: Set(workspaces.flatMap(\.appBundleIDs)), pills: pillPlugins), small: small,
                              onOpen: onOpenNote, onRemove: onRemoveNote)
+                    BellView(notes: missed, small: small, missed: true, onOpen: onOpenNote, onRemove: onRemoveNote)
                 }
                 }
                 .equatable()
@@ -457,9 +460,11 @@ struct CountBadge: View {
 }
 
 /// Notifications from apps without an icon on the bar and from no app at all. Hidden at zero.
+/// With `missed`: the same pill for what came while the Mac was locked, asleep, in Do Not Disturb or shared.
 public struct BellView: View {
     let notes: [GzymsNotification]
     let small: Bool
+    let missed: Bool
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
     @Environment(\.theme) private var theme
@@ -467,26 +472,27 @@ public struct BellView: View {
     @Environment(\.hiddenCounts) private var hiddenCounts
     /// Plugins with Count off still file here, they just do not add to the number.
     private var counted: Int { notes.filter { ruleKey($0).map { !hiddenCounts.contains($0) } ?? true }.count }
-    public init(notes: [GzymsNotification], small: Bool, onOpen: @escaping (String) -> Void = { _ in },
+    private var id: String { missed ? "missed" : "bell" }
+    public init(notes: [GzymsNotification], small: Bool, missed: Bool = false, onOpen: @escaping (String) -> Void = { _ in },
                 onRemove: @escaping (String) -> Void = { _ in }) {
-        self.notes = notes; self.small = small; self.onOpen = onOpen; self.onRemove = onRemove
+        self.notes = notes; self.small = small; self.missed = missed; self.onOpen = onOpen; self.onRemove = onRemove
     }
     public var body: some View {
         if !notes.isEmpty {
             HStack(spacing: 3) {
-                Image(systemName: "bell.fill").font(.system(size: small ? 10 : 12))
+                Image(systemName: missed ? "eye.slash.fill" : "bell.fill").font(.system(size: small ? 10 : 12))
                 Text(counted > 0 ? badgeText(counted) : "").font(.system(size: small ? 10 : 12, weight: .bold).monospacedDigit())
                     .frame(width: small ? 14 : 17, alignment: .leading)
             }
             .foregroundStyle(theme[\.gold])
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { report("bell", $0) }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { report(id, $0) }
             .padding(.horizontal, small ? 5 : 7)
             .padding(.vertical, small ? 2 : 4)
             .background(RoundedRectangle(cornerRadius: 7).fill(theme[\.surface].opacity(0.6)))
             .bump(on: notes.count, to: 1.25)
-            .modifier(InboxPopover(id: "bell", notes: notes, onOpen: onOpen, onRemove: onRemove))
-            .hintTarget("bell", popup: true)
-        } else {
+            .modifier(InboxPopover(id: id, notes: notes, title: missed ? missedTitle(notes.count) : nil, onOpen: onOpen, onRemove: onRemove))
+            .hintTarget(id, popup: true)
+        } else if !missed {
             // Still reports its place, so the first notification for the 🔔 has somewhere to fly.
             Color.clear.frame(width: 1, height: 1)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { report("bell", $0) }
@@ -498,6 +504,8 @@ public struct BellView: View {
 struct InboxPopover: ViewModifier {
     let id: String
     let notes: [GzymsNotification]
+    /// Replaces "3 unread" in the header.
+    var title: String? = nil
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
     @Environment(\.popups) private var popups
@@ -513,7 +521,7 @@ struct InboxPopover: ViewModifier {
             .onChange(of: notes.map(\.id), initial: true) { popups.clears[id] = { [notes, onRemove] in notes.forEach { onRemove($0.id) } } }
             .onDisappear { popups.clears[id] = nil }
             .popover(isPresented: popups.binding(id), arrowEdge: .bottom) {
-                InboxList(notes: notes, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove)
+                InboxList(notes: notes, title: title, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove)
                     .environment(\.theme, theme).environment(\.popups, popups)
             }
     }
@@ -522,28 +530,31 @@ struct InboxPopover: ViewModifier {
 /// One app's (or the bell's) notifications, newest first.
 public struct InboxList: View {
     let notes: [GzymsNotification]
+    let title: String?
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
     @Environment(\.theme) private var theme
-    public init(notes: [GzymsNotification], onOpen: @escaping (String) -> Void = { _ in }, onRemove: @escaping (String) -> Void = { _ in }) {
-        self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove
+    public init(notes: [GzymsNotification], title: String? = nil, onOpen: @escaping (String) -> Void = { _ in },
+                onRemove: @escaping (String) -> Void = { _ in }) {
+        self.notes = notes; self.title = title; self.onOpen = onOpen; self.onRemove = onRemove
     }
     public var body: some View {
         // Outside the scroll: Clear all stays reachable however long the list is.
         VStack(alignment: .leading, spacing: 2) { InboxRows(notes: notes, onOpen: onOpen, onRemove: onRemove) }
-            .popupStyle(theme, width: 320) { InboxHeader(notes: notes, onRemove: onRemove) }
+            .popupStyle(theme, width: 320) { InboxHeader(notes: notes, title: title, onRemove: onRemove) }
     }
 }
 
-/// "3 unread" and Clear all, above a list of notifications.
+/// "3 unread" (or `title`) and Clear all, above a list of notifications.
 struct InboxHeader: View {
     let notes: [GzymsNotification]
+    var title: String? = nil
     let onRemove: (String) -> Void
     @Environment(\.clearVerb) private var clearVerb
     @Environment(\.theme) private var theme
     var body: some View {
         HStack {
-            Text("\(notes.count) unread").foregroundStyle(theme[\.overlay])
+            Text(title ?? "\(notes.count) unread").foregroundStyle(theme[\.overlay]).lineLimit(1)
             Spacer()
             PopupRow(action: { notes.forEach { onRemove($0.id) } }) {
                 Text("Clear all").foregroundStyle(theme[\.red])
