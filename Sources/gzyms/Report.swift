@@ -1,7 +1,7 @@
 import AppKit
 import GzymsCore
 
-let gzymsVersion = "0.0.6"
+let gzymsVersion = "0.1.0"
 
 /// `gzyms report` and Debug → Report a problem…: one zip on the Desktop with what an agent or Greg needs to look
 /// into a problem. The log never holds notification titles or bodies. The config loses its secrets and personal names,
