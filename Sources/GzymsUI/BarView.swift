@@ -132,6 +132,8 @@ public struct BarView: View {
     var onDND: (Date?) -> Void = { _ in }
     let shelf: [URL]
     var onShelf: (ShelfChange) -> Void = { _ in }
+    /// The cameras running in any app; empty = no camera pill.
+    let cameras: [String]
     /// Files are being dragged over the bar: the shelf shows, even empty, to say it takes them.
     @State private var dropping = false
     var onPluginEvent: (String, PluginEvent, String) -> Void = { _, _, _ in }
@@ -144,14 +146,14 @@ public struct BarView: View {
     private func visible(_ s: BarSlot) -> Bool {
         switch s {
         case .widget(let w): !hidden.contains(w) && (w != .music || !media.isEmpty)
-            && (w != .shelf || dropping || !shelf.isEmpty)
+            && (w != .shelf || dropping || !shelf.isEmpty) && (w != .camera || !cameras.isEmpty)
         case .plugin(let f): pluginPills.contains { $0.plugin == f }
         }
     }
 
     @ViewBuilder private func slot(_ s: BarSlot) -> some View {
         switch s {
-        case .widget(let w): widget(w).hintTarget(w == .clock ? nil : "widget:\(w.rawValue)", popup: true)
+        case .widget(let w): widget(w).hintTarget(w == .clock || w == .camera ? nil : "widget:\(w.rawValue)", popup: true)
         case .plugin(let f):
             let pills = pluginPills.filter { $0.plugin == f }
             // An agent's row carries its notification, so Agents gets no pile of them on top.
@@ -184,6 +186,14 @@ public struct BarView: View {
             Redraw(audio, micLevel, small) {
                 AudioInputView(audio: audio, small: small, level: micLevel, onChange: onAudioChange, onMute: onMicMute, onPopup: onMicPopup)
             }.equatable()
+        case .camera:
+            if let help = cameraHelp(cameras) {
+                // Green like macOS' own camera dot.
+                Image(systemName: "video.fill")
+                    .font(.system(size: small ? 10 : 12))
+                    .foregroundStyle(theme[\.green])
+                    .help(help)
+            }
         case .battery: Redraw(battery, batteryWarning, small) { BatteryView(battery: battery, warning: batteryWarning, small: small) }.equatable()
         case .clock: Redraw(now, small) { ClockView(now: now, small: small) }.equatable()
         case .dnd: Redraw(dnd, now, small) { DNDView(until: dnd, now: now, small: small, onCommand: onDND) }.equatable()
@@ -208,8 +218,8 @@ public struct BarView: View {
                 pluginPills: [PluginPill] = [], onPluginEvent: @escaping (String, PluginEvent, String) -> Void = { _, _, _ in },
                 caffeine: CaffeineState? = nil, onCaffeine: @escaping (Int??) -> Void = { _ in },
                 dnd: Date? = nil, onDND: @escaping (Date?) -> Void = { _ in },
-                shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }) {
-        self.shelf = shelf; self.onShelf = onShelf
+                shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }, cameras: [String] = []) {
+        self.shelf = shelf; self.onShelf = onShelf; self.cameras = cameras
         self.dnd = dnd; self.onDND = onDND
         self.logo = logo; self.media = media; self.onMusic = onMusic
         self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent

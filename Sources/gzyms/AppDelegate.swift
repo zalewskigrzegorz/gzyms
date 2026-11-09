@@ -80,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var meetings: [Meeting] = []
     private var meetingClock = MeetingClock()
     private lazy var music = MusicSource { [weak self] line in self?.musicChanged(line) }
+    private lazy var camera = CameraWatcher { [weak self] names in self?.model.cameras = names }
     private lazy var mediaServer = MediaServer { [weak self] tabs in if self?.model.tabs != tabs { self?.model.tabs = tabs } }
     private let pluginHost = PluginHost(dir: Paths.configDir(env: ProcessInfo.processInfo.environment).appendingPathComponent("plugins"))
     private var pluginsStarted = false
@@ -1144,6 +1145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         meetingClock.points = load.config.meetingPoints
         calendar?.setSkip(load.config.calendarSkip)
         if load.config.hiddenWidgets.contains(.music) { music.stop() } else { music.start() }
+        if load.config.hiddenWidgets.contains(.camera) { camera.stop() } else { camera.start() }
         if load.config.browserMedia && !load.config.hiddenWidgets.contains(.music) { mediaServer.start() } else { mediaServer.stop() }
         if pluginsStarted {
             pluginHost.setOptions(load.config.pluginOptions)
