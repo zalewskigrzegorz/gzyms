@@ -61,6 +61,8 @@ final class BarModel {
     var caffeine: CaffeineState?
     @ObservationIgnored var onCaffeine: (Int??) -> Void = { _ in }
     var dnd: Date?
+    /// The DND above came from a macOS Focus, so its popup says so.
+    var dndByFocus = false
     @ObservationIgnored var onDND: (Date?) -> Void = { _ in }
     var shelf: [URL] = []
     @ObservationIgnored var onShelf: (ShelfChange) -> Void = { _ in }
@@ -156,7 +158,7 @@ struct PanelRoot: View {
                     meetingPill: model.meetingPill, onMeetingPill: model.onMeetingPill, logo: model.customLogo,
                     media: mediaItems(model.nowPlaying, tabs: model.tabs, now: context.date.timeIntervalSince1970), onMusic: model.onMusic,
                     pluginPills: model.pluginPills, onPluginEvent: model.onPluginEvent,
-                    caffeine: model.caffeine, onCaffeine: model.onCaffeine, dnd: model.dnd, onDND: model.onDND, shelf: model.shelf, onShelf: model.onShelf,
+                    caffeine: model.caffeine, onCaffeine: model.onCaffeine, dnd: model.dnd, dndByFocus: model.dndByFocus, onDND: model.onDND, shelf: model.shelf, onShelf: model.onShelf,
                     cameras: model.cameras)
         }
         .environment(\.onAltNote) { model.onAltNote($0) }

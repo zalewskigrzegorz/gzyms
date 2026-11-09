@@ -128,6 +128,7 @@ public struct BarView: View {
     var onCaffeine: (Int??) -> Void = { _ in }
     /// Do Not Disturb until then (`.distantFuture` = until turned off); nil = off.
     let dnd: Date?
+    let dndByFocus: Bool
     /// .some(date) turns it on until then, nil turns it off.
     var onDND: (Date?) -> Void = { _ in }
     let shelf: [URL]
@@ -196,7 +197,7 @@ public struct BarView: View {
             }
         case .battery: Redraw(battery, batteryWarning, small) { BatteryView(battery: battery, warning: batteryWarning, small: small) }.equatable()
         case .clock: Redraw(now, small) { ClockView(now: now, small: small) }.equatable()
-        case .dnd: Redraw(dnd, now, small) { DNDView(until: dnd, now: now, small: small, onCommand: onDND) }.equatable()
+        case .dnd: Redraw(dnd, dndByFocus, now, small) { DNDView(until: dnd, byFocus: dndByFocus, now: now, small: small, onCommand: onDND) }.equatable()
         case .caffeine: Redraw(caffeine, now, small) { CaffeineView(state: caffeine, now: now, small: small, onCommand: onCaffeine) }.equatable()
         case .shelf: Redraw(shelf, dropping, small) { ShelfView(files: shelf, small: small, dropping: dropping, onChange: onShelf) }.equatable()
         }
@@ -217,10 +218,10 @@ public struct BarView: View {
                 media: [MediaItem] = [], onMusic: @escaping (MusicAction) -> Void = { _ in },
                 pluginPills: [PluginPill] = [], onPluginEvent: @escaping (String, PluginEvent, String) -> Void = { _, _, _ in },
                 caffeine: CaffeineState? = nil, onCaffeine: @escaping (Int??) -> Void = { _ in },
-                dnd: Date? = nil, onDND: @escaping (Date?) -> Void = { _ in },
+                dnd: Date? = nil, dndByFocus: Bool = false, onDND: @escaping (Date?) -> Void = { _ in },
                 shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }, cameras: [String] = []) {
         self.shelf = shelf; self.onShelf = onShelf; self.cameras = cameras
-        self.dnd = dnd; self.onDND = onDND
+        self.dnd = dnd; self.dndByFocus = dndByFocus; self.onDND = onDND
         self.logo = logo; self.media = media; self.onMusic = onMusic
         self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent
         self.caffeine = caffeine; self.onCaffeine = onCaffeine
@@ -774,13 +775,14 @@ public struct CaffeinePopup: View {
 /// 🌙 grey while off; mauve with the time left during Do Not Disturb. The popup picks how long.
 public struct DNDView: View {
     let until: Date?
+    var byFocus = false
     let now: Date
     let small: Bool
     let onCommand: (Date?) -> Void
     @Environment(\.popups) private var popups
     @Environment(\.theme) private var theme
-    public init(until: Date?, now: Date, small: Bool, onCommand: @escaping (Date?) -> Void) {
-        self.until = until; self.now = now; self.small = small; self.onCommand = onCommand
+    public init(until: Date?, byFocus: Bool = false, now: Date, small: Bool, onCommand: @escaping (Date?) -> Void) {
+        self.until = until; self.byFocus = byFocus; self.now = now; self.small = small; self.onCommand = onCommand
     }
 
     public var body: some View {
@@ -797,22 +799,25 @@ public struct DNDView: View {
         .onTapGesture { popups.binding("widget:dnd").wrappedValue.toggle() }
         .help(until == nil ? "Do Not Disturb" : "Do Not Disturb is on")
         .popover(isPresented: popups.binding("widget:dnd"), arrowEdge: .bottom) {
-            DNDPopup(until: until, now: now) { popups.open = nil; onCommand($0) }.environment(\.theme, theme).environment(\.popups, popups)
+            DNDPopup(until: until, byFocus: byFocus, now: now) { popups.open = nil; onCommand($0) }.environment(\.theme, theme).environment(\.popups, popups)
         }
     }
 }
 
 public struct DNDPopup: View {
     let until: Date?
+    var byFocus = false
     let now: Date
     let onCommand: (Date?) -> Void
     @Environment(\.theme) private var theme
-    public init(until: Date?, now: Date, onCommand: @escaping (Date?) -> Void) { self.until = until; self.now = now; self.onCommand = onCommand }
+    public init(until: Date?, byFocus: Bool = false, now: Date, onCommand: @escaping (Date?) -> Void) {
+        self.until = until; self.byFocus = byFocus; self.now = now; self.onCommand = onCommand
+    }
 
     public var body: some View {
         let choices: [(String, Date)] = [("1 h", now + 3600), ("Until tomorrow", dndUntilMorning(now: now)), ("∞", .distantFuture)]
         VStack(alignment: .leading, spacing: 8) {
-            Text(until.map { $0 == .distantFuture ? "Quiet until you turn it off" : "Quiet, \(CaffeineState(until: $0).label(now: now)) left" }
+            Text(until.map { byFocus ? "Quiet while your macOS Focus is on" : $0 == .distantFuture ? "Quiet until you turn it off" : "Quiet, \(CaffeineState(until: $0).label(now: now)) left" }
                  ?? "Do Not Disturb")
                 .foregroundStyle(until == nil ? theme[\.text] : theme[\.mauve])
             Text("Banners wait in their lists, the phone still gets them.").font(.system(size: 11)).foregroundStyle(theme[\.overlay])

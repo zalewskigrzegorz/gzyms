@@ -327,7 +327,7 @@ private struct Switch: View {
     Picker("", selection: Binding(get: { value }, set: set)) {
         ForEach(options, id: \.0) { Text($0.1).tag($0.0) }
     }
-    .labelsHidden().pickerStyle(.menu).frame(width: width)
+    .labelsHidden().pickerStyle(.menu).frame(width: width, alignment: .trailing)  // a short choice keeps the right edge of the row
     .settingsSlot {
         guard !options.isEmpty else { return }
         let i = options.firstIndex { $0.0 == value } ?? -1

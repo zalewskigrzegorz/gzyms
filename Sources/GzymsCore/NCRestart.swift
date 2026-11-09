@@ -26,7 +26,7 @@ public struct NCRestartPolicy {
     public mutating func bannerShown() { stillHung = false }
 }
 
-/// The automatic restarts of today, for "Restarted 2 times today" in Settings. Kept in a file, so a Gzyms restart
+/// The restarts of today (automatic and from the button), for "Restarted 2 times today" in Settings. Kept in a file, so a Gzyms restart
 /// does not zero it; older days drop out.
 public func restartsToday(_ times: [Date], now: Date, calendar: Calendar = .current) -> [Date] {
     times.filter { calendar.isDate($0, inSameDayAs: now) }

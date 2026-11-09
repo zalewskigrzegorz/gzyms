@@ -605,6 +605,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ncRestart.restarted(at: ProcessInfo.processInfo.systemUptime)
         ncAnomaly("nc_restart", ["by": auto ? "auto" : "button", "reason": reason, "count": String(ncRestart.count)])  // before the guard resets
         ncRestartedAt = Date()
+        try? JSONEncoder().encode(ncRestartsToday() + [Date()]).write(to: Self.ncRestartsFile, options: .atomic)
         bannerGuard = BannerGuard()
         noBanners = false
         log("banners: restarting Notification Center (\(auto ? "automatic" : "button"): \(reason))")
@@ -622,15 +623,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private static var ncRestartsFile: URL { VitalsWriter.url.deletingLastPathComponent().appendingPathComponent("nc-restarts.json") }
 
-    /// Today's automatic restarts, from a file so a Gzyms restart keeps them.
-    private func ncAutoRestarts() -> [Date] {
+    /// Today's restarts, automatic and from the button, from a file so a Gzyms restart keeps them.
+    private func ncRestartsToday() -> [Date] {
         let saved = (try? Data(contentsOf: Self.ncRestartsFile)).flatMap { try? JSONDecoder().decode([Date].self, from: $0) } ?? []
         return restartsToday(saved, now: Date())
     }
 
-    /// An automatic restart flickers the screen with no cause the user can see: say so on the island and count it.
+    /// An automatic restart flickers the screen with no cause the user can see: say so on the island.
     private func tellAutoRestart() {
-        try? JSONEncoder().encode(ncAutoRestarts() + [Date()]).write(to: Self.ncRestartsFile, options: .atomic)
         post(GzymsNotification(id: "gzyms-nc-restart", app: nil, level: .info, title: "Notification Center restarted", subtitle: nil,
                                body: "Banners were stuck. Gzyms restarted it.", link: nil, altLink: nil, sound: nil, at: Date()))
     }
@@ -982,6 +982,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         syncInboxes()
         saveNotes()
         if model.dnd != notes.dnd { model.dnd = notes.dnd }
+        if model.dndByFocus != focusFollow.ownsDND { model.dndByFocus = focusFollow.ownsDND }
         // Opened or dismissed some other way (a chord, a list): the red screen goes too.
         if let a = armageddon.shown, notes.sharing || notes.banner?.id != a.id && !notes.inbox(a.app).contains(where: { $0.id == a.id }) { armageddon.hide() }
         if let b = notes.banner, let screen = bannerScreen(b) {
@@ -2116,7 +2117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         h.lastBanner = banners.lastBanner
         h.nannyRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.notificationnanny.app").isEmpty
         h.noBanners = noBanners
-        h.ncRestartsToday = ncAutoRestarts()
+        h.ncRestartsToday = ncRestartsToday()
         h.ncStillHung = ncRestart.stillHung && noBanners
         return h
     }
