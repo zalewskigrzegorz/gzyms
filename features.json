@@ -1,5 +1,5 @@
 {
-  "count": 95,
+  "count": 97,
   "updated": "2026-11-09",
   "features": [
     "gzyms notify command",
@@ -97,6 +97,7 @@
     "Automatic updates switch, off by default for Homebrew installs",
     "Homebrew installs hear about a new version once, with brew upgrade in Settings → About",
     "Install the Claude Code plugin from Gzyms (CLI and Settings)",
-    "See when Gzyms restarted a hung Notification Center: a note on the island, today's count in Settings"
+    "See when Gzyms restarted a hung Notification Center: a note on the island, today's count in Settings",
+    "After an unlock, one notice says how many notifications came while you were away and opens their list"
   ]
 }

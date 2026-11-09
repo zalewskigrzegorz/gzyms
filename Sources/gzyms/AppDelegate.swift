@@ -170,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tilerCheck()  // no state.json at all: the watcher may never call
         startCPU()
         startNotifications()
+        startAway()
 
         // `gzyms theme` writes the config and sends SIGHUP: reload it in place.
         Darwin.signal(SIGHUP, SIG_IGN)
@@ -664,6 +665,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         saveMessagesSeen(messagesSeen().forgetting(group: apps))
     }
 
+    // MARK: - While you were away
+
+    /// When the screen locked; nil while it is unlocked.
+    private var lockedAt: Date?
+    /// The lock the notice on screen is about: a click finds that lock's notifications again.
+    private var awaySince: Date?
+
+    private func startAway() {
+        // Started on a locked screen (an update at night): that lock counts from now.
+        if (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool == true { lockedAt = Date() }
+        let center = DistributedNotificationCenter.default()
+        center.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { [weak self] in if self?.lockedAt == nil { self?.lockedAt = Date() } }
+        }
+        center.addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { [weak self] in self?.unlocked() }
+        }
+    }
+
+    /// One notice for what came while locked and still waits. Not under Do Not Disturb: that asked for quiet.
+    private func unlocked() {
+        guard let since = lockedAt else { return }
+        lockedAt = nil
+        guard notes.dnd == nil, let a = awayNoticeNow(since: since) else { return }
+        awaySince = since
+        log("away: \(a.title)")
+        post(GzymsNotification(id: awayNoticeID, app: nil, level: .info, title: a.title, subtitle: nil, body: nil,
+                               link: nil, altLink: nil, sound: nil, at: Date()))
+    }
+
+    private func awayNoticeNow(since: Date) -> (title: String, list: String)? {
+        awayNotice(waiting: notes.inboxes.values.flatMap { $0 } + notes.stacked, since: since,
+                   onBar: Set(model.workspaces.flatMap(\.appBundleIDs)))
+    }
+
+    /// The list with most of what came while locked, on the focused screen's bar, as if its icon was clicked.
+    private func openAwayList() {
+        guard let since = awaySince, let list = awayNoticeNow(since: since)?.list else { return }
+        let screen = focusedScreen(), visible = panels.values.filter(\.isVisible)
+        (visible.first { $0.screenFrame == screen?.frame } ?? visible.first)?.popups.open = list
+    }
+
     // MARK: - Keyboard mode (leader, hints, popups by keys)
 
     /// The bar the mode runs on and its targets in hint order, frozen while the mode is on.
@@ -819,6 +862,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if b.meetingStart != nil { finishMeeting(b) }
         if b.id == duplicateNoticeID {
             toggleSettings(.debug)
+        } else if b.id == awayNoticeID {
+            openAwayList()
         } else if let target = alt ? b.altLink : b.link {
             // Any process in the session can post, sandboxed ones too: a file: link would launch whatever it points at.
             let opened = URL(string: target).map { $0.scheme != nil && !$0.isFileURL && NSWorkspace.shared.open($0) } ?? false
@@ -906,7 +951,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let due = notes.tick(now: ProcessInfo.processInfo.systemUptime)
         due.forEach { sendToPhone($0) }
         // After a tick the banner can only have expired (left the stack), or a snooze came back into it.
-        if let b = before, !notes.contains(b.id) { flyToIcon(b); logNote(b, "expired") }
+        if let b = before, !notes.contains(b.id) {
+            // Its count goes stale: gone, not filed under the 🔔.
+            if b.id == awayNoticeID { notes.remove(b.id, now: ProcessInfo.processInfo.systemUptime) } else { flyToIcon(b) }
+            logNote(b, "expired")
+        }
         for r in notes.stacked where !was.contains(r.id) { logNote(r, r.reminder ? "reminder" : "in from the queue") }
         notesChanged()
     }
