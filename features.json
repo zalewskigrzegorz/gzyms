@@ -62,7 +62,7 @@
     "Command palette (leader, then space)",
     "Sound output pill with device switching",
     "Mic pill with input level",
-    "Camera pill while any app has a camera on",
+    "Camera and mic pill with the apps using them",
     "Banned audio devices",
     "Custom audio device icons",
     "Workspaces pill from HyprMac",

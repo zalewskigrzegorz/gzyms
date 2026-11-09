@@ -144,7 +144,7 @@ public enum BarWidget: String, CaseIterable, Sendable {
     case music, cpu, memory, network, audio, mic, camera, shelf, dnd, caffeine, battery, clock
     public var title: String {
         switch self {
-        case .camera: "Camera in use"
+        case .camera: "Camera and mic in use"
         case .dnd: "Do Not Disturb"
         case .shelf: "File shelf"
         case .music: "Music"

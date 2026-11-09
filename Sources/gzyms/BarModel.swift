@@ -27,8 +27,10 @@ final class BarModel {
     var micLevel = 0.0
     @ObservationIgnored var onMicMute: () -> Void = {}
     @ObservationIgnored var onMicPopup: (Bool) -> Void = { _ in }
-    /// The names of the cameras running in any app; empty = no camera pill.
+    /// The names of the cameras running in any app, and the apps using the camera and the mic; all empty = no camera pill.
     var cameras: [String] = []
+    var cameraApps: [SeenApp] = []
+    var micApps: [SeenApp] = []
     @ObservationIgnored var onCPUPopup: (Bool) -> Void = { _ in }
     var inboxes: [String?: [GzymsNotification]] = [:]
     var dockBadges: [String: String] = [:]
@@ -155,7 +157,7 @@ struct PanelRoot: View {
                     media: mediaItems(model.nowPlaying, tabs: model.tabs, now: context.date.timeIntervalSince1970), onMusic: model.onMusic,
                     pluginPills: model.pluginPills, onPluginEvent: model.onPluginEvent,
                     caffeine: model.caffeine, onCaffeine: model.onCaffeine, dnd: model.dnd, onDND: model.onDND, shelf: model.shelf, onShelf: model.onShelf,
-                    cameras: model.cameras)
+                    cameras: model.cameras, cameraApps: model.cameraApps, micApps: model.micApps)
         }
         .environment(\.onAltNote) { model.onAltNote($0) }
         .overlay { if let nav = model.nav, nav.panel == panel { HintOverlay(labels: nav.labels, typed: nav.typed) } }

@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let chords = ChordTap()
     private var keysObserver: NSObjectProtocol?
     private var nc: NotificationCenterSource?
-    private var signal: DeliverySignal?
+    private var signal: LogStream?
     private lazy var banners = BannerSource { [weak self] n in self?.bannerArrived(n) }
     private var bannerGuard = BannerGuard()
     /// Notification Center shows no banners although apps send them (`BannerGuard`).
@@ -80,7 +80,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var meetings: [Meeting] = []
     private var meetingClock = MeetingClock()
     private lazy var music = MusicSource { [weak self] line in self?.musicChanged(line) }
-    private lazy var camera = CameraWatcher { [weak self] names in self?.model.cameras = names }
+    private lazy var camera = CameraWatcher(onChange: { [weak self] names in self?.model.cameras = names }, onApps: { [weak self] apps in
+        guard let self else { return }
+        model.cameraApps = apps.camera.compactMap { seenApp($0) }
+        model.micApps = apps.mic.compactMap { seenApp($0) }
+    })
     private lazy var mediaServer = MediaServer { [weak self] tabs in if self?.model.tabs != tabs { self?.model.tabs = tabs } }
     private let pluginHost = PluginHost(dir: Paths.configDir(env: ProcessInfo.processInfo.environment).appendingPathComponent("plugins"))
     private var pluginsStarted = false
@@ -488,7 +492,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Off still keeps the source: clicks go through its queue and its single owner of the panel's window.
         if c.bannerAX { banners.start() } else { banners.stop() }
         if c.signal, signal == nil {
-            let s = DeliverySignal { [weak self] app in self?.pending(app) }
+            let s = LogStream(name: "signal", filter: #"--process usernoted --predicate 'eventMessage BEGINSWITH "Delivering"'"#) { [weak self] message in
+                if let app = deliveredApp(message) { self?.pending(app) }
+            }
             s.start()
             signal = s
         } else if !c.signal, let s = signal {
