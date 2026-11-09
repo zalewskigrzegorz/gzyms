@@ -1,6 +1,6 @@
 {
-  "count": 94,
-  "updated": "2026-11-07",
+  "count": 95,
+  "updated": "2026-11-09",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -95,6 +95,7 @@
     "Notification when several apps send the same notification, with the list in Settings → Debug",
     "Automatic updates switch, off by default for Homebrew installs",
     "Homebrew installs hear about a new version once, with brew upgrade in Settings → About",
-    "Install the Claude Code plugin from Gzyms (CLI and Settings)"
+    "Install the Claude Code plugin from Gzyms (CLI and Settings)",
+    "After an unlock, one notice says how many notifications came while you were away and opens their list"
   ]
 }
