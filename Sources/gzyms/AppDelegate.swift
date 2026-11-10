@@ -1784,7 +1784,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settings.stepBack()
             LoginItem.openSettings()
         }
-        a.version = gzymsVersion
+        a.version = [gzymsVersion, Bundle.main.object(forInfoDictionaryKey: "GzymsDevBuild") as? String].compactMap { $0 }.joined(separator: " · ")
         a.canCheckForUpdates = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil
         a.homebrew = homebrew
         a.newVersion = { [weak self] in self?.model.newVersion }
