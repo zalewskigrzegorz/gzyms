@@ -686,8 +686,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Other apps' notifications only (not plugins, the instant icon or a snooze coming back). The anomaly log gets the bundle
     /// ids and a count, never the text. The notification waits 3 s, so four calendars make one, not three.
     private func noteDuplicates(_ n: GzymsNotification) {
-        guard let app = n.app, !n.compact, !n.reminder, !app.hasPrefix("plugin:"), !n.id.hasPrefix("plugin:"),
-              let hit = dupes.record(app: app, title: n.title, body: n.body, at: ProcessInfo.processInfo.systemUptime) else { return }
+        // shortcut: only meetings with a video link are known here, upgrade if reminders for other events pile up too.
+        let now = Date().timeIntervalSince1970
+        let soon = meetings.filter { abs($0.start - now) <= DuplicateDetector.meetingWindow }.map(\.title)
+        guard let app = n.app, !n.compact, !n.reminder, n.meetingStart == nil, !app.hasPrefix("plugin:"), !n.id.hasPrefix("plugin:"),
+              let hit = dupes.record(app: app, title: n.title, body: n.body, meetings: soon,
+                                     at: ProcessInfo.processInfo.systemUptime) else { return }
         anomalies.write(kind: "duplicate_apps", detail: ["apps": hit.apps.joined(separator: ","), "count": String(hit.count)])
         log("dupes: \(hit.apps.joined(separator: ",")) x\(hit.count)")
         dupeApps.formUnion(hit.apps)
