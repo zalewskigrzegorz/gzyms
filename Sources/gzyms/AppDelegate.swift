@@ -129,8 +129,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watchdog.start()
         claudeCodeMark = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop").map { NSWorkspace.shared.icon(forFile: $0.path) }
         // After sleep macOS thaws Gzyms, fires every due timer and often moves the screens: a short stall is expected.
-        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [watchdog] _ in
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [watchdog, pluginHost] _ in
             watchdog.settling("wake")
+            // shortcut: 10 s for the network to come back, a plugin that asks too early backs off; upgrade to a network-up signal if that bites.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { MainActor.assumeIsolated { pluginHost.restartAll() } }
         }
         let ws = NSWorkspace.shared.notificationCenter
         for (name, asleep) in [(NSWorkspace.willSleepNotification, true), (NSWorkspace.screensDidSleepNotification, true),
