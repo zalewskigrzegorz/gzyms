@@ -74,6 +74,22 @@ final class PluginHost {
 
     func stopAll() { staleTimer?.invalidate(); for f in Array(runs.keys) { stop(f) } }
 
+    /// After sleep: a plugin's own `sleep` stood still while the Mac slept, so it would wait out the rest of its interval
+    /// (an hour for some) while its pill says "No answer". A fresh start asks right away. The pills stay, greyed, until its first line.
+    func restartAll() {
+        for (folder, r) in runs where r.process != nil {
+            let p = r.process
+            r.process = nil  // so `ended` takes it for a stop on purpose
+            try? r.stdin?.close()
+            r.stdin = nil
+            r.buffer = Data()
+            p?.terminate()
+            log("plugin \(folder): restarting after sleep")
+            launch(r)
+        }
+        publish()
+    }
+
     func send(plugin: String, _ e: PluginEvent, id: String) {
         guard let h = runs[plugin]?.stdin else { return }
         try? h.write(contentsOf: Data((pluginEventLine(e, id: id) + "\n").utf8))

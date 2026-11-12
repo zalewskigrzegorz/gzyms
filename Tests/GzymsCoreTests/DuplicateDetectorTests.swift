@@ -59,6 +59,29 @@ private let standup = ("Standup with the team", "Starts in 5 minutes")
     #expect(d.record(app: "b", title: standup.0, body: standup.1, at: 61)?.count == 2)
 }
 
+@Test func remindersAboutOneMeetingFromTwoAppsMatchMinutesApartInOtherWords() {
+    // The real 15:00 case: Spark's "📅 Bartek:Greg", then Calendar and Notion Calendar with their own text.
+    var d = DuplicateDetector()
+    let m = ["Bartek:Greg"]
+    #expect(d.record(app: "com.readdle.SparkDesktop", title: "📅 Bartek:Greg", body: nil, meetings: m, at: 0) == nil)
+    #expect(d.record(app: "com.apple.iCal", title: "Bartek:Greg", body: "15:00–15:30", meetings: m, at: 7)?.apps
+            == ["com.apple.iCal", "com.readdle.SparkDesktop"])
+    #expect(d.record(app: "com.cron.electron", title: "Bartek:Greg", body: "in 5 min", meetings: m, at: 300)?.apps.count == 3)
+    #expect(d.record(app: "com.apple.iCal", title: "Bartek:Greg", body: "now", meetings: m, at: 600) == nil)  // its own next alert
+}
+
+@Test func aMeetingWordInAChatMessageBodyIsNotAReminder() {
+    var d = DuplicateDetector()
+    _ = d.record(app: "com.apple.iCal", title: "Sync", body: nil, meetings: ["Sync"], at: 0)
+    #expect(d.record(app: "com.tinyspeck.slackmacgap", title: "Anna", body: "sync now?", meetings: ["Sync"], at: 60) == nil)
+}
+
+@Test func meetingRemindersOutsideTheirWindowDoNotMatch() {
+    var d = DuplicateDetector()
+    _ = d.record(app: "a", title: "Bartek:Greg", body: nil, meetings: ["Bartek:Greg"], at: 0)
+    #expect(d.record(app: "b", title: "Bartek:Greg", body: nil, meetings: ["Bartek:Greg"], at: DuplicateDetector.meetingWindow + 1) == nil)
+}
+
 @Test func pairsAreSortedAndUnique() {
     #expect(appPairs(["b", "a", "b"]) == ["a|b"])
     #expect(appPairs(["c", "a", "b"]) == ["a|b", "a|c", "b|c"])

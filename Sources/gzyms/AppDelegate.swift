@@ -129,8 +129,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watchdog.start()
         claudeCodeMark = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop").map { NSWorkspace.shared.icon(forFile: $0.path) }
         // After sleep macOS thaws Gzyms, fires every due timer and often moves the screens: a short stall is expected.
-        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [watchdog] _ in
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [watchdog, pluginHost] _ in
             watchdog.settling("wake")
+            // shortcut: 10 s for the network to come back, a plugin that asks too early backs off; upgrade to a network-up signal if that bites.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { MainActor.assumeIsolated { pluginHost.restartAll() } }
         }
         let ws = NSWorkspace.shared.notificationCenter
         for (name, asleep) in [(NSWorkspace.willSleepNotification, true), (NSWorkspace.screensDidSleepNotification, true),
@@ -497,6 +499,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             for var n in list where !wasHandled(n.id) {
                 n.app = n.app.map(AppIcons.bundleID(matching:))
+                guard allowed(n.app) else { continue }
                 lastShown = (n.app, Date(), "database")
                 post(n)
             }
@@ -578,6 +581,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         post(n)
     }
 
+    /// Allow notifications off in System Settings: macOS still files the row and logs the delivery, but the user turned
+    /// the app off, so it shows nowhere (Greg, 2026-11-12: Calendar and Notion Calendar came back as duplicates). Unknown = allowed.
+    private func allowed(_ app: String?) -> Bool { model.seenApps.first { $0.id == app }?.mac?.allowed != false }
+
     /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb or a macOS Focus, not for apps whose
     /// macOS style is None (they never show a banner), not while the observer is off, not on a locked or sleeping screen,
     /// not while the screen is shared (macOS holds its banners back then).
@@ -587,7 +594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if session?["CGSSessionScreenIsLocked"] as? Bool == true || CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return }
         // The per-app warnings say which apps never show a banner; read once a minute, not only when Settings opens.
         if warningsRead.map({ Date().timeIntervalSince($0) > 60 }) ?? true { warningsRead = Date(); refreshAppWarnings() }
-        guard model.config.signal, notes.dnd == nil, screenShared != true, banners.attached,
+        guard model.config.signal, notes.dnd == nil, screenShared != true, banners.attached, allowed(app),
               model.seenApps.first(where: { $0.id == app })?.mac?.desktop != false else { return }
         // A Focus holds banners back on purpose: not a hung Notification Center.
         if let data = try? Data(contentsOf: Self.focusAssertions), focusIsOn(assertions: data) { return }
@@ -686,8 +693,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Other apps' notifications only (not plugins, the instant icon or a snooze coming back). The anomaly log gets the bundle
     /// ids and a count, never the text. The notification waits 3 s, so four calendars make one, not three.
     private func noteDuplicates(_ n: GzymsNotification) {
-        guard let app = n.app, !n.compact, !n.reminder, !app.hasPrefix("plugin:"), !n.id.hasPrefix("plugin:"),
-              let hit = dupes.record(app: app, title: n.title, body: n.body, at: ProcessInfo.processInfo.systemUptime) else { return }
+        // shortcut: only meetings with a video link are known here, upgrade if reminders for other events pile up too.
+        let now = Date().timeIntervalSince1970
+        let soon = meetings.filter { abs($0.start - now) <= DuplicateDetector.meetingWindow }.map(\.title)
+        guard let app = n.app, !n.compact, !n.reminder, n.meetingStart == nil, !app.hasPrefix("plugin:"), !n.id.hasPrefix("plugin:"),
+              let hit = dupes.record(app: app, title: n.title, body: n.body, meetings: soon,
+                                     at: ProcessInfo.processInfo.systemUptime) else { return }
         anomalies.write(kind: "duplicate_apps", detail: ["apps": hit.apps.joined(separator: ","), "count": String(hit.count)])
         log("dupes: \(hit.apps.joined(separator: ",")) x\(hit.count)")
         dupeApps.formUnion(hit.apps)
@@ -1780,7 +1791,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settings.stepBack()
             LoginItem.openSettings()
         }
-        a.version = gzymsVersion
+        a.version = [gzymsVersion, Bundle.main.object(forInfoDictionaryKey: "GzymsDevBuild") as? String].compactMap { $0 }.joined(separator: " · ")
         a.canCheckForUpdates = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil
         a.homebrew = homebrew
         a.newVersion = { [weak self] in self?.model.newVersion }

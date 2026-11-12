@@ -10,6 +10,8 @@ label="dev.gzyms"
 feed="${GZYMS_FEED_URL:-https://gzyms.dev/appcast.xml}"
 version=$(sed -nE 's/^let gzymsVersion = "(.*)"/\1/p' Sources/gzyms/Report.swift)
 [ -n "$version" ] || { echo "no gzymsVersion in Sources/gzyms/Report.swift"; exit 1; }
+# Set by install-dev.sh only, so About tells a local build from a release.
+dev=${GZYMS_DEV_BUILD:+"<key>GzymsDevBuild</key><string>$GZYMS_DEV_BUILD</string>"}
 
 bash scripts/gen-skill.sh  # skill/*.md and whatsnew/*.md into the binary
 swift build -c release
@@ -38,6 +40,7 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
+  $dev
   <key>LSUIElement</key><true/>
   <key>NSCameraUsageDescription</key><string>Gzyms shows your camera in the check before a meeting.</string>
   <key>NSCalendarsFullAccessUsageDescription</key><string>Gzyms reminds you of meetings that have a video link.</string>

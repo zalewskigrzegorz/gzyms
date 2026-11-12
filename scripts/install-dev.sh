@@ -9,7 +9,7 @@ plist="$HOME/Library/LaunchAgents/$label.plist"
 logs="$HOME/Library/Logs/Gzyms"
 
 mkdir -p "$logs"
-GZYMS_TIMESTAMP=--timestamp=none bash scripts/bundle.sh "$app"
+GZYMS_DEV_BUILD="dev $(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo +)" GZYMS_TIMESTAMP=--timestamp=none bash scripts/bundle.sh "$app"
 
 cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
