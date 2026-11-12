@@ -499,6 +499,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             for var n in list where !wasHandled(n.id) {
                 n.app = n.app.map(AppIcons.bundleID(matching:))
+                guard allowed(n.app) else { continue }
                 lastShown = (n.app, Date(), "database")
                 post(n)
             }
@@ -580,6 +581,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         post(n)
     }
 
+    /// Allow notifications off in System Settings: macOS still files the row and logs the delivery, but the user turned
+    /// the app off, so it shows nowhere (Greg, 2026-11-12: Calendar and Notion Calendar came back as duplicates). Unknown = allowed.
+    private func allowed(_ app: String?) -> Bool { model.seenApps.first { $0.id == app }?.mac?.allowed != false }
+
     /// Counts a delivery with no banner after it (`BannerGuard`). Not under do not disturb or a macOS Focus, not for apps whose
     /// macOS style is None (they never show a banner), not while the observer is off, not on a locked or sleeping screen,
     /// not while the screen is shared (macOS holds its banners back then).
@@ -589,7 +594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if session?["CGSSessionScreenIsLocked"] as? Bool == true || CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return }
         // The per-app warnings say which apps never show a banner; read once a minute, not only when Settings opens.
         if warningsRead.map({ Date().timeIntervalSince($0) > 60 }) ?? true { warningsRead = Date(); refreshAppWarnings() }
-        guard model.config.signal, notes.dnd == nil, screenShared != true, banners.attached,
+        guard model.config.signal, notes.dnd == nil, screenShared != true, banners.attached, allowed(app),
               model.seenApps.first(where: { $0.id == app })?.mac?.desktop != false else { return }
         // A Focus holds banners back on purpose: not a hung Notification Center.
         if let data = try? Data(contentsOf: Self.focusAssertions), focusIsOn(assertions: data) { return }

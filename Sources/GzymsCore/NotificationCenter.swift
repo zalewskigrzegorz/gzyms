@@ -33,7 +33,7 @@ public let ncOpenOriginalUnsupported: Set<String> = ["com.apple.mail"]
 
 /// One app's page in System Settings → Notifications, as far as Gzyms cares (Settings → Apps draws it).
 public struct NCAppSettings: Equatable, Sendable {
-    /// Allow notifications: off means nothing at all reaches Gzyms.
+    /// Allow notifications: off still files a row and logs the delivery, Gzyms drops both.
     public var allowed = true
     /// The Desktop tile: off means no banner to read.
     public var desktop = true
