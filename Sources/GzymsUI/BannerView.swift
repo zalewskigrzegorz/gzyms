@@ -205,6 +205,27 @@ private struct PulsingIcon: NSViewRepresentable {
     }
 }
 
+/// An SF Symbol turning round, like PulsingIcon: the window server draws it. Still with animations off.
+struct SpinningSymbol: NSViewRepresentable {
+    let name: String, color: NSColor, size: CGFloat
+
+    func makeNSView(context: Context) -> PulseView { PulseView() }
+
+    func updateNSView(_ v: PulseView, context: Context) {
+        let cfg = NSImage.SymbolConfiguration(pointSize: size, weight: .regular).applying(.init(paletteColors: [color]))
+        v.icon.contents = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(cfg)?
+            .layerContents(forContentsScale: v.window?.backingScaleFactor ?? 2)
+        guard context.environment.animate else { v.icon.removeAnimation(forKey: "spin"); return }
+        guard v.icon.animation(forKey: "spin") == nil else { return }
+        let a = CABasicAnimation(keyPath: "transform.rotation.z")
+        a.fromValue = 0
+        a.toValue = -2 * Double.pi  // clockwise
+        a.duration = 1.6
+        a.repeatCount = .infinity
+        v.icon.add(a, forKey: "spin")
+    }
+}
+
 final class PulseView: NSView {
     let icon = CALayer()
 

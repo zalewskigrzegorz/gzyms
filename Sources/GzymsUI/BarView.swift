@@ -897,7 +897,7 @@ public struct PluginPillView: View {
         let i = pill.item, failure = pill.failure
         HStack(spacing: small ? 4 : 5) {
             if let icon = i.icon { Image(systemName: icon).font(.system(size: small ? 9 : 10)) }
-            pluginText(i.text, theme).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 160)
+            pillText(i.text, theme, size: small ? 10 : 11, color: theme.tint(i.color)).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 160)
             if failure != nil { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: small ? 8 : 9)).foregroundStyle(theme[\.peach]) }
         }
         .font(.system(size: small ? 10 : 11))
@@ -945,8 +945,29 @@ func failureSince(_ f: PluginFailure, _ tz: TimeZone) -> String {
 }
 
 /// A plugin's text with its `:symbol:` pieces drawn as SF Symbols, in the text's font and colour, or the `@colour` they name.
-func pluginText(_ s: String, _ theme: Theme) -> Text {
-    textPieces(s) { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil }.reduce(Text(verbatim: "")) { t, p in
+func pluginText(_ s: String, _ theme: Theme) -> Text { piecesText(symbolPieces(s), theme) }
+
+private func symbolPieces(_ s: String) -> [TextPiece] { textPieces(s) { NSImage(systemSymbolName: $0, accessibilityDescription: nil) != nil } }
+
+/// The CI glyph for "running": on a pill it spins.
+private let spinningSymbol = "arrow.triangle.2.circlepath"
+
+/// A pill's text; the first running glyph in it spins, drawn by Core Animation so the bar never redraws for it.
+@ViewBuilder func pillText(_ s: String, _ theme: Theme, size: CGFloat, color: Color) -> some View {
+    let pieces = symbolPieces(s)
+    if let k = pieces.firstIndex(where: { if case .symbol(spinningSymbol, _) = $0 { true } else { false } }), case .symbol(_, let c) = pieces[k] {
+        HStack(spacing: 0) {
+            piecesText(pieces[..<k], theme)
+            SpinningSymbol(name: spinningSymbol, color: NSColor(c.map(theme.tint) ?? color), size: size).frame(width: size + 2, height: size + 2)
+            piecesText(pieces[(k + 1)...], theme)
+        }
+    } else {
+        piecesText(pieces, theme)
+    }
+}
+
+private func piecesText(_ pieces: some Sequence<TextPiece>, _ theme: Theme) -> Text {
+    pieces.reduce(Text(verbatim: "")) { t, p in
         switch p {
         case .text(let x): Text("\(t)\(Text(verbatim: x))")
         case .symbol(let n, let c?): Text("\(t)\(Text(Image(systemName: n)).foregroundColor(theme.tint(c)))")
