@@ -1533,9 +1533,25 @@ private struct HacksTab: View {
     private static let docs = "https://gzyms.dev/docs/#hacks"
     private static let pref = "media.hardwaremediakeys.enabled"
 
+    @State private var reported: String?
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: live ? 2 : 3600)) { _ in
             let h = actions.hacks()
+            VStack(alignment: .leading, spacing: 0) {
+            // The most fragile part of Gzyms: said first, with the way to tell us when one breaks.
+            HStack {
+                Text(reported ?? "These ride on hidden parts of macOS. An update can break them. If one stops working, tell us.")
+                    .foregroundStyle(theme[\.peach])
+                Spacer()
+                Button("Make report…") {
+                    reported = actions.report().map { "Saved as \($0.lastPathComponent) on the Desktop. Attach it to the GitHub discussion that opens." }
+                        ?? "Could not make the report. The log says why."
+                }
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(theme[\.peach].opacity(0.12)))
+            .padding(.horizontal, 8).padding(.top, 8)
             Columns {
                 Section(title: "Media") {
                     Row(title: "Media keys for the music player only",
@@ -1601,6 +1617,7 @@ private struct HacksTab: View {
                     }
                     Row(title: "How these work", note: "What each hack rests on and what a macOS update can break.") { docsButton }
                 }
+            }
             }
         }
         .busy("settings: hacks, every 2 s", while: live)
