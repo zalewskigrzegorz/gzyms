@@ -59,7 +59,7 @@ final class AgentsHost {
         p.standardOutput = out
         p.standardError = FileHandle.nullDevice
         out.fileHandleForReading.readabilityHandler = { [weak self] h in
-            guard !h.availableData.isEmpty else { return }
+            guard !h.availableData.isEmpty else { h.readabilityHandler = nil; return }  // end of file, or it fires forever
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.lookTuios() } }
         }
         p.terminationHandler = { [weak self] p in

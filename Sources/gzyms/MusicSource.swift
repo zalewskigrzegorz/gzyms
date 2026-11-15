@@ -37,6 +37,7 @@ final class MusicSource {
         p.standardError = err
         out.fileHandleForReading.readabilityHandler = { [weak self] h in
             let d = h.availableData
+            if d.isEmpty { h.readabilityHandler = nil; return }  // end of file, or it fires forever
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.consume(d) } }
         }
         p.terminationHandler = { [weak self] p in

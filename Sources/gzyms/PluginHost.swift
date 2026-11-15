@@ -188,12 +188,15 @@ final class PluginHost {
         p.standardOutput = out
         p.standardError = err
         p.standardInput = inp
+        // End of file: unhook, or the handler fires forever with no data (200% CPU after two days, 2026-11-15).
         out.fileHandleForReading.readabilityHandler = { [weak self] h in
             let d = h.availableData
+            if d.isEmpty { h.readabilityHandler = nil; return }
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.stdout(folder, d) } }
         }
         err.fileHandleForReading.readabilityHandler = { [weak self] h in
             let d = h.availableData
+            if d.isEmpty { h.readabilityHandler = nil; return }
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.stderr(folder, d) } }
         }
         p.terminationHandler = { [weak self] p in
