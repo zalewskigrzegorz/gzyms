@@ -1671,7 +1671,8 @@ public struct ClockView: View {
 func deviceSymbol(_ kind: AudioDevice.Kind?, input: Bool, muted: Bool) -> String {
     let plainOff = input ? "mic.slash.fill" : "speaker.slash.fill"
     let (on, off): (String, String) = switch kind {
-    case .builtIn?: ("laptopcomputer", "laptopcomputer.slash")
+    // Both built-in pills would show the same laptop, so they show the direction instead.
+    case .builtIn?: input ? ("mic.fill", "mic.slash.fill") : ("speaker.wave.2.fill", "speaker.slash.fill")
     case .iPhone?: ("iphone", "iphone.slash")
     // headset for the mic: the output pill next to it already shows headphones. No headset.slash exists.
     case .headphones?: input ? ("headset", plainOff) : ("headphones", "headphones.slash")

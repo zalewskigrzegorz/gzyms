@@ -483,6 +483,15 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     }
 }
 
+@Test func builtInSoundAndMicPillsLookDifferent() {
+    // act
+    let output = deviceSymbol(.builtIn, input: false, muted: false)
+    let input = deviceSymbol(.builtIn, input: true, muted: false)
+
+    // assert
+    #expect(output != input)
+}
+
 @MainActor @Test func permissionsPreviews() {
     let states = [GrantState(grant: .accessibility, granted: true), GrantState(grant: .fullDiskAccess, granted: false)]
     preview(PermissionsWizardView(states: states, open: { _ in }, later: {}), "wizard-missing-fda")
