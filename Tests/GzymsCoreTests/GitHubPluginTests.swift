@@ -356,6 +356,15 @@ private func ghBuildsMixes(states: [String]) throws {
     #expect(tags == ["failed", "running", "passed", "done", "none"].flatMap { s in states.filter { $0 == s }.map { _ in buildTags[s]! } })
 }
 
+@Test("a pending status that waits for a person is not CI that runs, in gh-builds and gh-prs")
+private func humanGateIsNotRunning() throws {
+    let review = "{\"__typename\":\"StatusContext\",\"context\":\"Visual review (o/r)\",\"state\":\"PENDING\",\"targetUrl\":\"\"}"
+    let b = try pill("gh-builds", buildsAnswer(prs: [[check("lint", "SUCCESS"), review]], branches: []))
+    #expect(b.text == buildsPill(["passed"]).text)
+    let p = try pill("gh-prs", search([pr(1, draft: false, mergeable: "MERGEABLE", review: "APPROVED", conv: [], checks: [check("lint", "SUCCESS"), review])]))
+    #expect(p.menu?.first { $0.id == "pr:o/r#1" }?.detail == ":checkmark.circle@green: passed")
+}
+
 // MARK: star-watcher
 
 private func starAnswer(_ repos: [(n: Int, who: [String])]) -> String {
