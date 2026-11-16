@@ -549,6 +549,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastSignal = Date()
         countSignal(AppIcons.bundleID(matching: app))
         if let b = notes.banner, !b.compact { return }
+        // Off in System Settings: macOS still logs the delivery, but no row follows, so the icon would expire empty.
+        guard allowed(AppIcons.bundleID(matching: app)) else { return }
         post(.pending(app: AppIcons.bundleID(matching: app), at: Date()))
     }
 
