@@ -5,8 +5,9 @@ import GzymsCore
 let workspacesRefreshName = Notification.Name("dev.gzyms.workspaces")
 let aerospaceBundleID = "bobko.aerospace"
 
-/// Workspaces from AeroSpace or macOS Spaces. HyprMac has its own `StateWatcher`. A slow poll catches windows that open
-/// and close, a nudge on each switch (AeroSpace's callback, the Spaces notification) makes the switch itself instant.
+/// Workspaces from OmniWM, AeroSpace or macOS Spaces. HyprMac has its own `StateWatcher`. OmniWM pushes events. For the
+/// others a slow poll catches windows that open and close, a nudge on each switch (AeroSpace's callback, the Spaces
+/// notification) makes the switch itself instant.
 @MainActor
 final class WorkspaceFeed {
     private let onChange: (HyprMacState?) -> Void
@@ -15,6 +16,8 @@ final class WorkspaceFeed {
     private var cancels: [() -> Void] = []
     /// One AeroSpace read at a time. shortcut: a CLI call that never returns stops the polling; add a timeout if that shows up.
     private var reading = false
+    /// An OmniWM event came in during a read: read once more when it ends, so the last state wins.
+    private var again = false
 
     init(onChange: @escaping (HyprMacState?) -> Void) { self.onChange = onChange }
 
@@ -22,6 +25,7 @@ final class WorkspaceFeed {
         guard s != source else { return }
         stop()
         source = s
+        if s == .omniwm { log("workspaces: from omniwm"); return watchOmni() }
         guard s == .aerospace || s == .spaces else { return }
         log("workspaces: from \(s.rawValue)")
         refresh()
@@ -45,8 +49,57 @@ final class WorkspaceFeed {
         onChange(nil)
     }
 
+    /// OmniWM pushes its changes: a lasting `omniwmctl subscribe` wakes a read, no polling. `--reconnect` rides out an
+    /// OmniWM relaunch. If the stream ends anyway (no CLI yet, first connect refused), it starts again in 3 s.
+    private func watchOmni() {
+        refresh()
+        guard let bin = Self.cli("omniwmctl") else { return retryOmni() }
+        let p = Process()
+        p.executableURL = bin
+        p.arguments = ["subscribe", "workspace-bar,active-workspace,focused-monitor,windows-changed,display-changed",
+                       "--no-send-initial", "--reconnect", "--format", "ndjson"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        // One event line, or a burst of them, is one read: refresh() skips while a read runs and reads again after.
+        out.fileHandleForReading.readabilityHandler = { [weak self] h in
+            guard !h.availableData.isEmpty else { h.readabilityHandler = nil; return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.refresh() } }
+        }
+        p.terminationHandler = { [weak self] _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { if self?.source == .omniwm { self?.retryOmni() } } }
+        }
+        do { try p.run() } catch { return retryOmni() }
+        cancels.append { p.terminationHandler = nil; out.fileHandleForReading.readabilityHandler = nil; p.terminate() }
+    }
+
+    private func retryOmni() {
+        cancels.forEach { $0() }; cancels = []
+        let t = Timer(timeInterval: 3, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { if self?.source == .omniwm { self?.watchOmni() } }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
     func refresh() {
         switch source {
+        case .omniwm:
+            guard !reading else { again = true; return }
+            reading = true
+            DispatchQueue.global(qos: .utility).async {
+                let ws = Self.exec("omniwmctl", ["query", "workspaces", "--json"])
+                let wins = Self.exec("omniwmctl", ["query", "windows", "--json"])
+                let state = ws.flatMap { omniwmState(workspaces: $0, windows: wins ?? Data()) }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        self.reading = false
+                        guard self.source == .omniwm else { return }
+                        self.onChange(state)
+                        if self.again { self.again = false; self.refresh() }
+                    }
+                }
+            }
         case .aerospace:
             guard !reading else { return }
             reading = true
@@ -70,6 +123,9 @@ final class WorkspaceFeed {
     /// else open Mission Control: switching directly needs code in the Dock (SIP off).
     func select(_ n: Int, state: HyprMacState?) {
         switch source {
+        case .omniwm:
+            // OmniWM's numbers are global: this opens workspace n on the monitor it lives on. The event stream redraws the bar.
+            DispatchQueue.global(qos: .userInitiated).async { _ = Self.exec("omniwmctl", ["command", "switch-workspace", "\(n)"]) }
         case .aerospace:
             let name = state?.workspaces.first { $0.id == n }?.label ?? "\(n)"
             DispatchQueue.global(qos: .userInitiated).async {
@@ -93,15 +149,17 @@ final class WorkspaceFeed {
     }
 
     /// The CLI comes from Homebrew (or nix), never inside the app bundle. A GUI app's PATH has no /opt/homebrew/bin.
-    /// Looked up on every call (a few stats, every 3 s): AeroSpace may be installed while Gzyms already runs.
-    nonisolated static var aerospaceBinary: URL? {
+    /// Looked up on every call (a few stats, every 3 s): the tiler may be installed while Gzyms already runs.
+    nonisolated static func cli(_ name: String) -> URL? {
         let path = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
         let dirs = ["/opt/homebrew/bin", "/usr/local/bin", "/run/current-system/sw/bin", NSHomeDirectory() + "/.nix-profile/bin"] + path
-        return dirs.map { URL(fileURLWithPath: $0).appendingPathComponent("aerospace") }.first { FileManager.default.isExecutableFile(atPath: $0.path) }
+        return dirs.map { URL(fileURLWithPath: $0).appendingPathComponent(name) }.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
-    nonisolated static func aerospace(_ args: [String]) -> Data? {
-        guard let bin = aerospaceBinary else { return nil }
+    nonisolated static func aerospace(_ args: [String]) -> Data? { exec("aerospace", args) }
+
+    nonisolated static func exec(_ name: String, _ args: [String]) -> Data? {
+        guard let bin = cli(name) else { return nil }
         let p = Process()
         p.executableURL = bin
         p.arguments = args

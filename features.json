@@ -68,6 +68,7 @@
     "Short tag on the sound and mic pills (two speakers of one kind)",
     "Workspaces pill from HyprMac",
     "Workspaces from AeroSpace or macOS Spaces (auto-detected)",
+    "Workspaces from OmniWM, live from its event stream",
     "Workspace names and colors",
     "Small bar on the notch screen",
     "Notch and multi-monitor placement",
