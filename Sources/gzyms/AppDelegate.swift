@@ -1775,6 +1775,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             p.arguments = ["hud"]
             try? p.run()
         }
+        a.showEntry = { [weak self] in
+            let id = "gzyms-entry-preview", up = { ProcessInfo.processInfo.systemUptime }
+            self?.notes.remove(id, now: up())  // a second click comes in again, not as an update of the first
+            self?.post(GzymsNotification(id: id, app: nil, level: .info, title: "A banner comes in like this", subtitle: nil,
+                                         body: "Settings → Animations → Entry", link: nil, altLink: nil, sound: nil, at: Date()))
+            // A sample has no place in the 🔔: it leaves once its banner is long gone.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { self?.notes.remove(id, now: up()); self?.notesChanged() }
+        }
         a.openLog = { NSWorkspace.shared.activateFileViewerSelecting([Paths.logsDir(home: FileManager.default.homeDirectoryForCurrentUser).appendingPathComponent("gzyms.log")]) }
         a.report = { [weak self] in
             let zip = Report.make(grants: self?.model.grants)

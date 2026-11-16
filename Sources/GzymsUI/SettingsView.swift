@@ -69,6 +69,8 @@ public struct SettingsActions {
     public var openGrant: (Grant) -> Void = { _ in }
     public var restart: () -> Void = {}
     public var showHUD: () -> Void = {}
+    /// Posts a sample banner, so the chosen entry style can be seen at once.
+    public var showEntry: () -> Void = {}
     public var openLog: () -> Void = {}
     /// Makes the report; returns where it went (nil = failed, see the log).
     public var report: () -> URL? = { nil }
@@ -234,7 +236,7 @@ public struct SettingsView: View {
         case .general: GeneralTab(config: config, names: workspaceNames, from: workspacesFrom, found: workspacesFound, login: actions.loginItem(), write: actions.write,
                                   reveal: actions.revealConfig, openLoginItems: actions.openLoginItems, open: actions.openURL)
         case .appearance: AppearanceTab(config: config, write: actions.write, openThemes: { tab = .themes }, openSounds: { tab = .sounds })
-        case .animations: AnimationsTab(config: config, write: actions.write)
+        case .animations: AnimationsTab(config: config, write: actions.write, showEntry: actions.showEntry)
         case .themes: ThemesTab(config: config, write: actions.write)
         case .notifications: NotificationsTab(config: config, actions: actions, focusModes: focusModes)
         case .apps: AppsTab(config: config, apps: apps, plugins: plugins, actions: actions, live: live, selected: openApp)
@@ -477,6 +479,7 @@ private struct AppearanceTab: View {
 private struct AnimationsTab: View {
     let config: GzymsConfig
     let write: (String, TOMLValue?, ConfigTable) -> Void
+    let showEntry: () -> Void
 
     private var entryNote: String {
         switch config.bannerEntry {
@@ -502,8 +505,11 @@ private struct AnimationsTab: View {
         }
         Section(title: "Banner") {
             Row(title: "Entry", note: entryNote) {
-                menu(config.bannerEntry, BannerEntry.allCases.map { ($0, $0 == .icon ? "Icon first" : $0.rawValue.capitalized) }, width: 110) {
-                    write("banner_entry", $0 == .drop ? nil : .string($0.rawValue), table)
+                HStack(spacing: 8) {
+                    menu(config.bannerEntry, BannerEntry.allCases.map { ($0, $0 == .icon ? "Icon first" : $0.rawValue.capitalized) }, width: 110) {
+                        write("banner_entry", $0 == .drop ? nil : .string($0.rawValue), table)
+                    }
+                    Button("Show", action: showEntry).help("A sample banner comes in with this style")
                 }
             }
             Row(title: "Speed") {
