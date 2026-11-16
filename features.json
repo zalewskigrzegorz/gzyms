@@ -1,5 +1,5 @@
 {
-  "count": 102,
+  "count": 103,
   "updated": "2026-11-16",
   "features": [
     "gzyms notify command",
@@ -103,6 +103,7 @@
     "What comes while you are away (locked, asleep, Do Not Disturb, sharing) waits on its own pill, and one notice says so when you are back",
     "Quiet while sharing the screen",
     "Camera and mic pill with the apps using them",
-    "Do Not Disturb synced with macOS Focus"
+    "Do Not Disturb synced with macOS Focus",
+    "Animated border on the agents pill while an agent works (running light, breathing, glow, still)"
   ]
 }

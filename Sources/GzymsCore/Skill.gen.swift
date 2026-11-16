@@ -91,6 +91,8 @@ Coding agents (Settings → Agents) are built in, one switch per source: `agents
 
 How a banner arrives: `appearance.banner_entry` is `icon`, `drop` (the default), `notch`, `unroll`, `pop` or `fade`. `appearance.animation_speed` is `slow`, `normal` (the default) or `fast`. With `appearance.animations false` nothing moves. Under macOS Reduce motion every entry is a fade, unless `appearance.follow_reduce_motion` is false.
 
+While an agent works, the agents pill shows it on its border: `appearance.agent_border` is `comet` (a light runs around it, the default), `pulse`, `glow`, `still` (lit, no motion) or `off`. With animations off every style stands still. Settings → Animations → Agents.
+
 ## Themes: gzyms theme
 
 - `gzyms theme` prints the current theme.

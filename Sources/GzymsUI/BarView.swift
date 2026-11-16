@@ -68,6 +68,8 @@ extension EnvironmentValues {
     @Entry public var fileIcon: (String) -> NSImage = { NSWorkspace.shared.icon(forFile: $0) }
     /// Off with `[appearance] animations = false` or macOS "Reduce motion": counts change without the bump.
     @Entry public var animate = true
+    /// `[appearance] agent_border`: the agents pill while an agent works.
+    @Entry public var agentBorder = AgentBorder.comet
     /// Apps set to `count = false`: their icon shows no number, their list still opens.
     @Entry public var hiddenCounts: Set<String> = []
     /// Built-in widgets turned off in Settings → Plugins.
@@ -887,6 +889,7 @@ public struct PluginPillView: View {
     @Environment(\.reportIconFrame) private var report
     @Environment(\.hiddenCounts) private var hiddenCounts
     @Environment(\.timeZone) private var timeZone
+    @Environment(\.agentBorder) private var agentBorder
     public init(pill: PluginPill, small: Bool, notes: [GzymsNotification] = [], onOpen: @escaping (String) -> Void = { _ in },
                 onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
         self.pill = pill; self.small = small; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
@@ -907,6 +910,10 @@ public struct PluginPillView: View {
         .padding(.horizontal, small ? 6 : 8)
         .padding(.vertical, small ? 2 : 4)
         .background(theme[\.surface], in: RoundedRectangle(cornerRadius: 10))
+        // Sky = an agent works and none waits (`agentsItem`): its border says so, drawn by Core Animation.
+        .overlay { if pill.plugin == agentsPill, i.color == "sky", failure == nil, agentBorder != .off {
+            AgentBorderView(style: agentBorder, color: NSColor(theme[\.sky]), radius: 10)
+        } }
         // A banner that runs out flies here, not to the bell.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { report("plugin:\(pill.plugin)", $0) }
         .overlay(alignment: .topTrailing) {
