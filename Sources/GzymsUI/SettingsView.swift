@@ -1111,6 +1111,10 @@ private struct ShortcutsTab: View {
     var body: some View {
         Columns {
             Section(title: "Keyboard mode") {
+                // One plain switch: a lone "Off" button next to the key read as a state, not as a way out (2026-11-16).
+                Row(title: "Keyboard mode", note: "Hints over the bar and letters on banners. Off: no leader key.") {
+                    Switch(on: config.leader != nil) { write("leader", $0 ? nil : .string("off"), .table(["keys"])) }
+                }
                 LeaderRow(leader: config.leader, recording: recording) { write("leader", .string($0), .table(["keys"])) }
                 LetterRow(title: "Open", key: "open", letter: config.verbs.open, config: config, write: write)
                 LetterRow(title: "Dismiss", key: "dismiss", letter: config.verbs.dismiss, config: config, write: write)
@@ -1166,7 +1170,6 @@ private struct LeaderRow: View {
                     .background(RoundedRectangle(cornerRadius: 5).fill(monitor != nil ? theme[\.mauve].opacity(0.4) : theme[\.surface]))
                     .onTapGesture(perform: record)
                     .settingsSlot(choose: record)
-                if leader != nil { Button("Off") { set("off") } }
             }
         }
         .onDisappear(perform: stop)
