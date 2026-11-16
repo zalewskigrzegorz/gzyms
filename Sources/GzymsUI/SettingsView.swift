@@ -3,7 +3,7 @@ import GzymsCore
 import SwiftUI
 
 public enum SettingsTab: String, CaseIterable, Sendable {
-    case general, appearance, animations, themes, notifications, apps, modules, plugins, calendar, agents, sounds, shortcuts, permissions, hacks, debug, about
+    case general, appearance, animations, themes, notifications, apps, modules, plugins, calendar, agents, audio, sounds, shortcuts, permissions, hacks, debug, about
     public var title: String { self == .modules ? "Order" : rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 }
 
@@ -69,6 +69,8 @@ public struct SettingsActions {
     public var openGrant: (Grant) -> Void = { _ in }
     public var restart: () -> Void = {}
     public var showHUD: () -> Void = {}
+    /// Posts a sample banner, so the chosen entry style can be seen at once.
+    public var showEntry: () -> Void = {}
     public var openLog: () -> Void = {}
     /// Makes the report; returns where it went (nil = failed, see the log).
     public var report: () -> URL? = { nil }
@@ -105,6 +107,10 @@ public struct SettingsView: View {
     let broken: Bool
     let apps: [SeenApp]
     let devices: [String]
+    /// What the bar reads now: Settings → Audio draws each device's pill from it.
+    let audio: AudioState?
+    /// The device open on the side of Sounds when the panel first draws (snapshots).
+    let openDevice: String?
     /// Workspace names come from HyprMac (Greg, 2026-10-31); Gzyms only colours them.
     let workspaceNames: [Int: String]
     /// The source the bar reads now (auto resolved), and whether it answers.
@@ -131,12 +137,13 @@ public struct SettingsView: View {
     @Environment(\.settingsNav) private var nav
 
     public init(tab: Binding<SettingsTab>, config: GzymsConfig, problems: [String], broken: Bool, apps: [SeenApp],
-                devices: [String], workspaceNames: [Int: String] = [:], workspacesFrom: WorkspaceSource = .hyprmac,
+                devices: [String], audio: AudioState? = nil, workspaceNames: [Int: String] = [:], workspacesFrom: WorkspaceSource = .hyprmac,
                 workspacesFound: Bool = false, grants: [GrantState] = [], calendars: [CalendarInfo] = [],
                 focusModes: [FocusMode] = [],
                 logo: NSImage? = nil, live: Bool = true, plugins: [PluginStatus] = [], agents: [AgentSource: AgentSourceStatus] = [:],
-                openApp: String? = nil, openPlugin: String? = nil, actions: SettingsActions) {
+                openApp: String? = nil, openPlugin: String? = nil, openDevice: String? = nil, actions: SettingsActions) {
         self.logo = logo; self.live = live; self.plugins = plugins; self.agents = agents; self.openApp = openApp; self.openPlugin = openPlugin
+        self.audio = audio; self.openDevice = openDevice
         _tab = tab; self.config = config; self.problems = problems; self.broken = broken
         self.apps = apps; self.devices = devices; self.workspaceNames = workspaceNames; self.grants = grants
         self.workspacesFrom = workspacesFrom; self.workspacesFound = workspacesFound
@@ -228,8 +235,8 @@ public struct SettingsView: View {
         switch tab {
         case .general: GeneralTab(config: config, names: workspaceNames, from: workspacesFrom, found: workspacesFound, login: actions.loginItem(), write: actions.write,
                                   reveal: actions.revealConfig, openLoginItems: actions.openLoginItems, open: actions.openURL)
-        case .appearance: AppearanceTab(config: config, devices: devices, write: actions.write, openThemes: { tab = .themes })
-        case .animations: AnimationsTab(config: config, write: actions.write)
+        case .appearance: AppearanceTab(config: config, write: actions.write, openThemes: { tab = .themes }, openAudio: { tab = .audio })
+        case .animations: AnimationsTab(config: config, write: actions.write, showEntry: actions.showEntry)
         case .themes: ThemesTab(config: config, write: actions.write)
         case .notifications: NotificationsTab(config: config, actions: actions, focusModes: focusModes)
         case .apps: AppsTab(config: config, apps: apps, plugins: plugins, actions: actions, live: live, selected: openApp)
@@ -238,6 +245,7 @@ public struct SettingsView: View {
         case .calendar: CalendarTab(config: config, calendars: calendars, write: actions.write)
         case .agents: AgentsTab(config: config, write: actions.write, status: agents, plugin: actions.claudePlugin,
                                 open: openPlugin.flatMap(AgentSource.init(rawValue:)))
+        case .audio: AudioTab(config: config, devices: devices, audio: audio, write: actions.write, selected: openDevice)
         case .sounds: SoundsTab(config: config, write: actions.write, actions: actions)
         case .shortcuts: ShortcutsTab(config: config, write: actions.write, recording: actions.recording)
         case .permissions: Section(title: "Permissions") {
@@ -447,9 +455,9 @@ private struct WorkspaceRow: View {
 
 private struct AppearanceTab: View {
     let config: GzymsConfig
-    let devices: [String]
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let openThemes: () -> Void
+    let openAudio: () -> Void
 
     var body: some View {
         Columns {
@@ -459,21 +467,9 @@ private struct AppearanceTab: View {
                 menu(config.cpuChart.rawValue, [("line", "Line"), ("bars", "Bars")]) { write("chart", .string($0), .table(["cpu"])) }
             }
         }
-        // Banned lives in `[audio] banned`, not in the icons: the bar popups and M and S leave it out.
+        // Moved: device icons have a tab of their own now, a pointer stays for whoever looks here.
         Section(title: "Device icons") {
-            let banned = config.bannedDevices
-            let names = devices + banned.subtracting(devices).sorted()  // a banned one unplugged now can still be let back in
-            if names.isEmpty { Row(title: "No audio devices found") { EmptyView() } }
-            ForEach(names, id: \.self) { d in
-                Row(title: d, note: banned.contains(d) ? (d.localizedCaseInsensitiveContains("iphone") ? "banned, its camera too" : "banned") : nil) {
-                    menu(banned.contains(d) ? "banned" : config.deviceIcons[d]?.rawValue ?? "auto",
-                         [("auto", "Automatic")] + AudioDevice.Kind.allCases.map { ($0.rawValue, $0.rawValue.capitalized) } + [("banned", "Banned")]) { k in
-                        let next = k == "banned" ? banned.union([d]) : banned.subtracting([d])
-                        if next != banned { write("banned", next.isEmpty ? nil : .strings(next.sorted()), .table(["audio"])) }
-                        write(d, k == "auto" || k == "banned" ? nil : .string(k), .table(["audio", "icons"]))
-                    }
-                }
-            }
+            Row(title: "Audio device icons", note: "In Audio, with a preview of each icon.") { Button("Open Audio", action: openAudio) }
         }
         }
     }
@@ -484,6 +480,7 @@ private struct AppearanceTab: View {
 private struct AnimationsTab: View {
     let config: GzymsConfig
     let write: (String, TOMLValue?, ConfigTable) -> Void
+    let showEntry: () -> Void
 
     private var entryNote: String {
         switch config.bannerEntry {
@@ -509,8 +506,11 @@ private struct AnimationsTab: View {
         }
         Section(title: "Banner") {
             Row(title: "Entry", note: entryNote) {
-                menu(config.bannerEntry, BannerEntry.allCases.map { ($0, $0 == .icon ? "Icon first" : $0.rawValue.capitalized) }, width: 110) {
-                    write("banner_entry", $0 == .drop ? nil : .string($0.rawValue), table)
+                HStack(spacing: 8) {
+                    menu(config.bannerEntry, BannerEntry.allCases.map { ($0, $0 == .icon ? "Icon first" : $0.rawValue.capitalized) }, width: 110) {
+                        write("banner_entry", $0 == .drop ? nil : .string($0.rawValue), table)
+                    }
+                    Button("Show", action: showEntry).help("A sample banner comes in with this style")
                 }
             }
             Row(title: "Speed") {
@@ -1111,6 +1111,10 @@ private struct ShortcutsTab: View {
     var body: some View {
         Columns {
             Section(title: "Keyboard mode") {
+                // One plain switch: a lone "Off" button next to the key read as a state, not as a way out (2026-11-16).
+                Row(title: "Keyboard mode", note: "Hints over the bar and letters on banners. Off: no leader key.") {
+                    Switch(on: config.leader != nil) { write("leader", $0 ? nil : .string("off"), .table(["keys"])) }
+                }
                 LeaderRow(leader: config.leader, recording: recording) { write("leader", .string($0), .table(["keys"])) }
                 LetterRow(title: "Open", key: "open", letter: config.verbs.open, config: config, write: write)
                 LetterRow(title: "Dismiss", key: "dismiss", letter: config.verbs.dismiss, config: config, write: write)
@@ -1166,7 +1170,6 @@ private struct LeaderRow: View {
                     .background(RoundedRectangle(cornerRadius: 5).fill(monitor != nil ? theme[\.mauve].opacity(0.4) : theme[\.surface]))
                     .onTapGesture(perform: record)
                     .settingsSlot(choose: record)
-                if leader != nil { Button("Off") { set("off") } }
             }
         }
         .onDisappear(perform: stop)
@@ -1252,6 +1255,66 @@ private struct ShortcutRow: View {
     }
 }
 
+/// Audio devices, laid out like Apps: the list on the left, the picked one's options on the right.
+private struct AudioTab: View {
+    let config: GzymsConfig
+    let devices: [String]
+    let audio: AudioState?
+    let write: (String, TOMLValue?, ConfigTable) -> Void
+    @State var selected: String?
+    @State private var hovered: String?
+    @Environment(\.settingsNav) private var nav
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Columns {
+            Section(title: "Audio devices") {
+                if names.isEmpty { Row(title: "No audio devices found") { EmptyView() } }
+                ForEach(names, id: \.self, content: row)
+            }
+            if let name = selected, names.contains(name) {
+                let (d, input) = device(name)
+                Section(title: name) { DeviceDrawer(name: name, device: d, input: input, config: config, write: write) }
+            }
+        }
+        // Esc closes the drawer first, the panel on the next press.
+        .onChange(of: selected) { _, s in nav?.escape = s == nil ? nil : { selected = nil } }
+        .onDisappear { nav?.escape = nil }
+    }
+
+    /// A banned one unplugged now can still be let back in.
+    private var names: [String] { devices + config.bannedDevices.subtracting(devices).sorted() }
+
+    /// The device as the bar sees it, with what the file says now (the bar's own copy follows on its next 2 s look).
+    private func device(_ name: String) -> (AudioDevice, input: Bool) {
+        let found = audio?.outputs.first { $0.name == name }.map { ($0, false) } ?? audio?.inputs.first { $0.name == name }.map { ($0, true) }
+        var d = found?.0 ?? AudioDevice(id: 0, name: name, transport: 0)
+        d.kindOverride = config.deviceIcons[name]; d.customSymbol = config.deviceSymbols[name]; d.tag = config.deviceTags[name]
+        return (d, found?.1 ?? name.localizedCaseInsensitiveContains("microphone"))
+    }
+
+    private func row(_ name: String) -> some View {
+        let (d, input) = device(name), banned = config.bannedDevices.contains(name)
+        let pick = { selected = selected == name ? nil : name }
+        let state = banned ? "hidden" : config.deviceSymbols[name] ?? config.deviceIcons[name]?.title ?? "auto"
+        return HStack(spacing: 10) {
+            Image(systemName: deviceSymbol(d, input: input, muted: false)).frame(width: 18)
+            Text(name).lineLimit(1).strikethrough(banned)
+            Spacer()
+            Text(state + (d.tag.map { " · \($0)" } ?? "")).font(.system(size: 12)).foregroundStyle(theme[\.overlay])
+            Image(systemName: selected == name ? "chevron.down" : "chevron.right").font(.system(size: 9)).foregroundStyle(theme[\.overlay])
+        }
+        .opacity(banned ? 0.6 : 1)
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(selected == name ? theme[\.surface] : hovered == name ? theme[\.surface].opacity(0.5) : .clear).padding(.horizontal, 4))
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 ? name : (hovered == name ? nil : hovered) }
+        .onTapGesture(perform: pick)
+        .settingsSlot(choose: pick)
+    }
+}
+
 private struct SoundsTab: View {
     let config: GzymsConfig
     let write: (String, TOMLValue?, ConfigTable) -> Void
@@ -1262,6 +1325,111 @@ private struct SoundsTab: View {
                 Switch(on: config.notificationSounds) { write("sounds", .bool($0), .table(["notifications"])) }
             }
             ForEach(SoundEvent.allCases, id: \.self) { e in SoundRow(event: e, choice: config.sounds[e], write: write, actions: actions) }
+        }
+    }
+}
+
+extension AudioDevice.Kind {
+    var title: String {
+        switch self {
+        case .builtIn: "Laptop"
+        case .iPhone: "iPhone"
+        case .homepodMini: "HomePod mini"
+        case .homepod: "HomePod"
+        case .airpods: "AirPods"
+        case .stereo: "Stereo pair"
+        case .airplay: "AirPlay"
+        case .studioMic: "Studio mic"
+        case .monitor: "Display"
+        case .tv: "TV"
+        case .appleTV: "Apple TV"
+        case .external: "Generic"
+        default: rawValue.prefix(1).uppercased() + rawValue.dropFirst()
+        }
+    }
+
+    /// The icon grid in Settings → Audio, by what the thing is. Every kind sits in one group.
+    static let groups: [(String, [Self])] = [
+        ("Computer and phone", [.builtIn, .iPhone]),
+        ("Headphones", [.headphones, .headset, .airpods]),
+        ("Speakers", [.speaker, .stereo, .homepod, .homepodMini, .airplay, .car, .external]),
+        ("Mics", [.mic, .studioMic, .interface]),
+        ("Screens", [.monitor, .tv, .appleTV, .camera]),
+        ("Other", [.console]),
+    ]
+}
+
+/// One audio device: its pill as the bar draws it, the icon grid, any SF Symbol, a short tag and Hide.
+private struct DeviceDrawer: View {
+    let name: String
+    let device: AudioDevice
+    let input: Bool
+    let config: GzymsConfig
+    let write: (String, TOMLValue?, ConfigTable) -> Void
+    @Environment(\.theme) private var theme
+
+    private var guess: AudioDevice.Kind { var g = device; g.kindOverride = nil; return g.kind }
+    private func icon(_ v: String?) { write(name, v.map(TOMLValue.string), .table(["audio", "icons"])) }
+
+    var body: some View {
+        let custom = config.deviceSymbols[name], banned = config.bannedDevices
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("On the bar").foregroundStyle(theme[\.overlay])
+                HStack(spacing: 4) {
+                    Image(systemName: deviceSymbol(device, input: input, muted: false))
+                    if let t = device.tag { Text(t).fontWeight(.semibold) }
+                    if !input { Text("50").monospacedDigit() }
+                }
+                .font(.system(size: 11)).padding(.horizontal, 8).padding(.vertical, 4)
+                .background(theme[\.surface], in: RoundedRectangle(cornerRadius: 10))
+                Text(input ? "mic pill" : "sound pill").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+            }
+            tiles("", [(deviceSymbol(guess, input: input, muted: false), "Auto", custom == nil && config.deviceIcons[name] == nil, { icon(nil) })])
+            ForEach(AudioDevice.Kind.groups, id: \.0) { g, kinds in
+                tiles(g, kinds.map { k in (deviceSymbol(k, input: input, muted: false), k.title, custom == nil && config.deviceIcons[name] == k, { icon(k.rawValue) }) })
+            }
+        }
+        .padding(12)
+        Row(title: "Custom", note: custom.map { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil
+                ? "macOS has no symbol \"\($0)\". The pill shows the kind." : "Your own SF Symbol." }
+                ?? "Any SF Symbol name, e.g. guitars. Return saves it.") {
+            CommitField(text: custom ?? "") { v in let s = v.trimmingCharacters(in: .whitespaces).lowercased(); icon(s.isEmpty ? nil : s) }.frame(width: 180)
+        }
+        Row(title: "Short tag", note: "Up to 3 letters next to the icon. Tells two speakers of one kind apart.") {
+            CommitField(text: config.deviceTags[name] ?? "") { v in
+                let t = String(v.trimmingCharacters(in: .whitespaces).prefix(3))
+                write(name, t.isEmpty ? nil : .string(t), .table(["audio", "tags"]))
+            }.frame(width: 60)
+        }
+        // Banned lives in `[audio] banned`, not in the icons: the bar popups and M and S leave it out.
+        Row(title: "Hide", note: name.localizedCaseInsensitiveContains("iphone") ? "Out of the popups, M and S. Its camera too." : "Out of the popups, M and S.") {
+            Switch(on: banned.contains(name)) { on in
+                let next = on ? banned.union([name]) : banned.subtracting([name])
+                write("banned", next.isEmpty ? nil : .strings(next.sorted()), .table(["audio"]))
+            }
+        }
+    }
+
+    private func tiles(_ title: String, _ items: [(symbol: String, title: String, on: Bool, pick: () -> Void)]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if !title.isEmpty { Text(title.uppercased()).font(.system(size: 10)).kerning(0.5).foregroundStyle(theme[\.overlay]) }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 68), spacing: 4)], alignment: .leading, spacing: 4) {
+                ForEach(items.indices, id: \.self) { i in
+                    let t = items[i]
+                    VStack(spacing: 2) {
+                        Image(systemName: t.symbol).font(.system(size: 13)).frame(height: 15)
+                        Text(t.title).font(.system(size: 9)).lineLimit(1)
+                    }
+                    .frame(width: 68, height: 38)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(t.on ? theme[\.mauve].opacity(0.25) : theme[\.surface]))
+                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(t.on ? theme[\.mauve] : .clear))
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: t.pick)
+                    .settingsSlot(choose: t.pick)
+                    .help(t.title)
+                }
+            }
         }
     }
 }
@@ -1533,9 +1701,25 @@ private struct HacksTab: View {
     private static let docs = "https://gzyms.dev/docs/#hacks"
     private static let pref = "media.hardwaremediakeys.enabled"
 
+    @State private var reported: String?
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: live ? 2 : 3600)) { _ in
             let h = actions.hacks()
+            VStack(alignment: .leading, spacing: 0) {
+            // The most fragile part of Gzyms: said first, with the way to tell us when one breaks.
+            HStack {
+                Text(reported ?? "These ride on hidden parts of macOS. An update can break them. If one stops working, tell us.")
+                    .foregroundStyle(theme[\.peach])
+                Spacer()
+                Button("Make report…") {
+                    reported = actions.report().map { "Saved as \($0.lastPathComponent) on the Desktop. Attach it to the GitHub discussion that opens." }
+                        ?? "Could not make the report. The log says why."
+                }
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(theme[\.peach].opacity(0.12)))
+            .padding(.horizontal, 8).padding(.top, 8)
             Columns {
                 Section(title: "Media") {
                     Row(title: "Media keys for the music player only",
@@ -1601,6 +1785,7 @@ private struct HacksTab: View {
                     }
                     Row(title: "How these work", note: "What each hack rests on and what a macOS update can break.") { docsButton }
                 }
+            }
             }
         }
         .busy("settings: hacks, every 2 s", while: live)
@@ -1775,6 +1960,7 @@ private struct AppsTab: View {
     let actions: SettingsActions
     let live: Bool
     @State var selected: String?
+    @State private var hovered: String?
     @State private var showOK = false
     @State private var dropping = false
     @Environment(\.theme) private var theme
@@ -1861,10 +2047,14 @@ private struct AppsTab: View {
             } else {
                 Color.clear.frame(width: 84, height: 1)
             }
+            // The row opens a drawer: say so, a bare label did not look clickable (fresh-eyes test, 2026-11-16).
+            Image(systemName: selected == app.id ? "chevron.down" : "chevron.right").font(.system(size: 9)).foregroundStyle(theme[\.overlay])
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selected == app.id ? theme[\.surface] : .clear).padding(.horizontal, 4))
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(selected == app.id ? theme[\.surface] : hovered == app.id ? theme[\.surface].opacity(0.5) : .clear).padding(.horizontal, 4))
         .contentShape(Rectangle())
+        .onHover { hovered = $0 ? app.id : (hovered == app.id ? nil : hovered) }
         .onTapGesture(perform: pick)
         .settingsSlot(choose: pick)
         .help(app.mac?.warning ?? "")

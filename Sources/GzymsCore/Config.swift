@@ -104,6 +104,10 @@ public struct GzymsConfig: Equatable, Sendable {
     public var favoriteThemes: [String] = []
     /// Device name → the icon its pills show, for hardware that reports an odd transport.
     public var deviceIcons: [String: AudioDevice.Kind] = [:]
+    /// `[audio.icons]` values that are no kind: an SF Symbol name of the user's choice.
+    public var deviceSymbols: [String: String] = [:]
+    /// `[audio.tags]`: device name → up to three letters on its pill.
+    public var deviceTags: [String: String] = [:]
     /// `[audio] banned`: device names M and S in the meeting preview skip, the popups dim (an iPhone mic that pops up).
     public var bannedDevices: Set<String> = []
     /// A banned iPhone mic or speaker bans its Continuity camera too: one phone, one ban (Greg, 2026-11-01).
@@ -391,7 +395,14 @@ public func loadConfig(toml: String?) -> ConfigLoad {
     if let b = raw.audio?.banned { config.bannedDevices = Set(b) }
     for (device, icon) in raw.audio?.icons ?? [:] {
         if let k = AudioDevice.Kind(rawValue: icon) { config.deviceIcons[device] = k }
-        else { problems.append("audio.icons.\"\(device)\": \"\(icon)\" must be \(AudioDevice.Kind.allCases.map(\.rawValue).joined(separator: ", ")), ignored") }
+        // Anything shaped like an SF Symbol name is the user's own pick; the bar checks it exists.
+        else if icon.wholeMatch(of: /[a-z0-9]+(\.[a-z0-9]+)*/) != nil { config.deviceSymbols[device] = icon }
+        else { problems.append("audio.icons.\"\(device)\": \"\(icon)\" must be \(AudioDevice.Kind.allCases.map(\.rawValue).joined(separator: ", ")) or an SF Symbol name, ignored") }
+    }
+    for (device, tag) in raw.audio?.tags ?? [:] {
+        let t = tag.trimmingCharacters(in: .whitespaces)
+        if (1...3).contains(t.count) { config.deviceTags[device] = t }
+        else { problems.append("audio.tags.\"\(device)\": \"\(tag)\" must be 1 to 3 characters, ignored") }
     }
     if let v = raw.workspaces?.show_empty { config.showEmpty = v }
     if let v = raw.workspaces?.small_on_notch { config.smallOnNotch = v }
@@ -816,14 +827,16 @@ private struct RawBar: Decodable {
 
 private struct RawAudio: Decodable {
     var icons: [String: String]?
+    var tags: [String: String]?
     var banned: [String]?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case icons, banned }
+    enum CodingKeys: String, CodingKey { case icons, tags, banned }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         icons = lenient(c, .icons, "audio.icons", &unknown)
+        tags = lenient(c, .tags, "audio.tags", &unknown)
         banned = lenient(c, .banned, "audio.banned", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["icons", "banned"], prefix: "audio.")
+        unknown += try unknownKeys(in: decoder, known: ["icons", "tags", "banned"], prefix: "audio.")
     }
 }
 

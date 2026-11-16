@@ -35,9 +35,11 @@ enum MeetingTestCommand {
 /// `gzyms settings [tab]`: opens (or closes) the settings panel of the running bar.
 @MainActor
 enum SettingsCommand {
-    static func run(_ tab: String?) -> Never {
+    static func run(_ name: String?) -> Never {
+        // The name the window shows works too: "order" opens the modules tab.
+        let tab = name.map { n in SettingsTab.allCases.first { $0.title.lowercased() == n.lowercased() }?.rawValue ?? n }
         if let tab, SettingsTab(rawValue: tab) == nil {
-            FileHandle.standardError.write(Data("gzyms settings: no tab \"\(tab)\" (\(SettingsTab.allCases.map(\.rawValue).joined(separator: ", ")))\n".utf8))
+            FileHandle.standardError.write(Data("gzyms settings: no tab \"\(tab)\" (\(SettingsTab.allCases.map { $0.title.lowercased() }.joined(separator: ", ")))\n".utf8))
             exit(1)
         }
         let skip = [ProcessInfo.processInfo.processIdentifier, InstanceLock.holderPid(path: HUD.pidFile.path)]

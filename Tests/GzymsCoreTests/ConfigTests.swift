@@ -164,10 +164,28 @@ import Testing
 
 @Test func appearanceAndDeviceIcons() {
     #expect(GzymsConfig.defaults.animations && GzymsConfig.defaults.followReduceMotion)
-    let load = loadConfig(toml: "[appearance]\nanimations = false\n\n[audio.icons]\n\"Shure MV7\" = \"external\"\n\"Desk\" = \"toaster\"\n")
+    let load = loadConfig(toml: "[appearance]\nanimations = false\n\n[audio.icons]\n\"Shure MV7\" = \"external\"\n\"Desk\" = \"Toaster!\"\n")
     #expect(!load.config.animations)
     #expect(load.config.deviceIcons == ["Shure MV7": .external])
     #expect(load.problems.count == 1)
+}
+
+/// A kind by its name, anything shaped like an SF Symbol as the user's own, and a tag of one to three characters.
+@Test func customDeviceIconsAndTags() {
+    let load = loadConfig(toml: """
+        [audio.icons]
+        "Kitchen" = "homepod-mini"
+        "Amp" = "guitars.fill"
+
+        [audio.tags]
+        "Kitchen" = " K "
+        "Living Room" = "LR"
+        "Desk" = "DESK"
+        """)
+    #expect(load.config.deviceIcons == ["Kitchen": .homepodMini])
+    #expect(load.config.deviceSymbols == ["Amp": "guitars.fill"])
+    #expect(load.config.deviceTags == ["Kitchen": "K", "Living Room": "LR"])
+    #expect(load.problems == ["audio.tags.\"Desk\": \"DESK\" must be 1 to 3 characters, ignored"])
 }
 
 @Test func bannerEntryAndSpeed() {

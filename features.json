@@ -1,6 +1,6 @@
 {
-  "count": 100,
-  "updated": "2026-11-09",
+  "count": 101,
+  "updated": "2026-11-16",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -64,7 +64,8 @@
     "Sound output pill with device switching",
     "Mic pill with input level",
     "Banned audio devices",
-    "Custom audio device icons",
+    "Custom audio device icons: a grid with a preview in Settings → Sounds, or any SF Symbol",
+    "Short tag on the sound and mic pills (two speakers of one kind)",
     "Workspaces pill from HyprMac",
     "Workspaces from AeroSpace or macOS Spaces (auto-detected)",
     "Workspace names and colors",

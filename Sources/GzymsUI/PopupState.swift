@@ -89,7 +89,8 @@ struct NavRow: ViewModifier {
         let lit = popups.open != nil && popups.row == index
         content
             .id(NavID(index: index))
-            .background(lit ? theme[\.gold].opacity(0.3) : .clear, in: RoundedRectangle(cornerRadius: 5))
+            // The theme's accent, as on the active tab: gold read as a warning and turned brown on dark bases (Greg, 2026-11-16).
+            .background(lit ? theme[\.mauve].opacity(0.24) : .clear, in: RoundedRectangle(cornerRadius: 5))
             .overlay(alignment: .trailing) {
                 if lit && popups.noAlt == index {
                     Text("No second action").font(.system(size: 11, weight: .medium)).foregroundStyle(theme[\.gold])

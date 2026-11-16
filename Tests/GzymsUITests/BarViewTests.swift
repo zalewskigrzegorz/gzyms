@@ -1,4 +1,5 @@
 import AppKit
+import CoreAudio
 import GzymsCore
 import SwiftUI
 import Testing
@@ -481,6 +482,38 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
             }
         }
     }
+}
+
+@Test func everyDeviceKindIsInOneIconGroup() {
+    let grouped = AudioDevice.Kind.groups.flatMap(\.1)
+    #expect(grouped.count == Set(grouped).count)
+    #expect(Set(grouped) == Set(AudioDevice.Kind.allCases))
+}
+
+/// A custom symbol macOS has wins, one it lacks falls back to the kind, muted is always the plain slash.
+@Test func customDeviceSymbolOrItsKind() {
+    var d = AudioDevice(id: 1, name: "Amp", transport: 0)
+    d.customSymbol = "guitars.fill"
+    #expect(deviceSymbol(d, input: false, muted: false) == "guitars.fill")
+    #expect(deviceSymbol(d, input: false, muted: true) == "speaker.slash.fill")
+    d.customSymbol = "no.such.symbol.anywhere"
+    #expect(deviceSymbol(d, input: true, muted: false) == deviceSymbol(d.kind, input: true, muted: false))
+}
+
+/// Issue #16's case set up the new way: a mic icon and a tag on the built-in mic, its drawer open.
+@MainActor @Test func audioDevicesPreview() {
+    var config = GzymsConfig.defaults
+    config.deviceIcons["MacBook Pro Microphone"] = .mic
+    config.deviceTags["MacBook Pro Microphone"] = "MB"
+    config.deviceSymbols["Shure MV7"] = "music.mic"
+    let builtIn = UInt32(kAudioDeviceTransportTypeBuiltIn)
+    let audio = AudioState(outputs: [AudioDevice(id: 1, name: "MacBook Pro Speakers", transport: builtIn)],
+                           inputs: [AudioDevice(id: 2, name: "MacBook Pro Microphone", transport: builtIn), AudioDevice(id: 3, name: "Shure MV7", transport: 0)],
+                           output: 1, input: 2, volume: 0.5, outputMuted: false, inputMuted: false)
+    preview(SettingsView(tab: .constant(.audio), config: config, problems: [], broken: false, apps: [],
+                         devices: ["MacBook Pro Speakers", "MacBook Pro Microphone", "Shure MV7"], audio: audio,
+                         openDevice: "MacBook Pro Microphone", actions: SettingsActions { _, _, _ in }).frame(width: 1200, height: 1000),
+            "settings-audio-device")
 }
 
 @MainActor @Test func permissionsPreviews() {

@@ -57,7 +57,7 @@ struct SettingsSlot: ViewModifier {
         let _ = nav?.chooses[me] = enabled ? choose : {}
         content
             // Drawn around the control, not padded into it: the rows keep their layout.
-            .background { if nav?.current == me { RoundedRectangle(cornerRadius: 6).fill(theme[\.gold].opacity(0.35)).padding(-4) } }
+            .background { if nav?.current == me { RoundedRectangle(cornerRadius: 6).fill(theme[\.mauve].opacity(0.24)).padding(-4) } }
             .id(me)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { nav?.frames[me] = $0 }
             .onDisappear { nav?.forget(me) }

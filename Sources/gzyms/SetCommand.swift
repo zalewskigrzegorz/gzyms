@@ -17,6 +17,8 @@ enum SetCommand {
               gzyms set agents.done_after 0
               gzyms set notifications.apps."com.mitchellh.ghostty".banner false
               gzyms set calendar.points [5, 0]
+              gzyms set audio.icons."MacBook Pro Microphone" mic    (a kind, or any SF Symbol name)
+              gzyms set audio.tags."Kitchen" K    (up to 3 letters on the pill)
             phone push keys go to the Keychain, not the file. Leave the value out to keep it off history and ps:
               pbpaste | gzyms set notifications.phone.pushover_token
               gzyms set notifications.phone.url    (asks, hidden)
@@ -35,6 +37,11 @@ enum SetCommand {
         let old = Set(loadConfig(toml: before).problems)
         let new = loadConfig(toml: after).problems.filter { !old.contains($0) }
         if !new.isEmpty { fail(verb, new.joined(separator: "\n") + "\nnothing written") }
+        // The config takes any symbol-shaped name; only here can AppKit say macOS has no such symbol.
+        let symbols = loadConfig(toml: after).config.deviceSymbols, had = loadConfig(toml: before).config.deviceSymbols
+        if let (d, s) = symbols.first(where: { had[$0.key] != $0.value && NSImage(systemSymbolName: $0.value, accessibilityDescription: nil) == nil }) {
+            fail(verb, "audio.icons.\"\(d)\": macOS has no SF Symbol \"\(s)\". The SF Symbols app lists them.\nnothing written")
+        }
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try after.write(to: file, atomically: true, encoding: .utf8)
