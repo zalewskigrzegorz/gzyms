@@ -1252,6 +1252,7 @@ private struct SoundsTab: View {
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let actions: SettingsActions
     @State var selected: String?
+    @State private var hovered: String?
     @Environment(\.settingsNav) private var nav
     @Environment(\.theme) private var theme
 
@@ -1302,8 +1303,10 @@ private struct SoundsTab: View {
         }
         .opacity(banned ? 0.6 : 1)
         .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selected == name ? theme[\.surface] : .clear).padding(.horizontal, 4))
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(selected == name ? theme[\.surface] : hovered == name ? theme[\.surface].opacity(0.5) : .clear).padding(.horizontal, 4))
         .contentShape(Rectangle())
+        .onHover { hovered = $0 ? name : (hovered == name ? nil : hovered) }
         .onTapGesture(perform: pick)
         .settingsSlot(choose: pick)
     }
@@ -1940,6 +1943,7 @@ private struct AppsTab: View {
     let actions: SettingsActions
     let live: Bool
     @State var selected: String?
+    @State private var hovered: String?
     @State private var showOK = false
     @State private var dropping = false
     @Environment(\.theme) private var theme
@@ -2026,10 +2030,14 @@ private struct AppsTab: View {
             } else {
                 Color.clear.frame(width: 84, height: 1)
             }
+            // The row opens a drawer: say so, a bare label did not look clickable (fresh-eyes test, 2026-11-16).
+            Image(systemName: selected == app.id ? "chevron.down" : "chevron.right").font(.system(size: 9)).foregroundStyle(theme[\.overlay])
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selected == app.id ? theme[\.surface] : .clear).padding(.horizontal, 4))
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(selected == app.id ? theme[\.surface] : hovered == app.id ? theme[\.surface].opacity(0.5) : .clear).padding(.horizontal, 4))
         .contentShape(Rectangle())
+        .onHover { hovered = $0 ? app.id : (hovered == app.id ? nil : hovered) }
         .onTapGesture(perform: pick)
         .settingsSlot(choose: pick)
         .help(app.mac?.warning ?? "")
