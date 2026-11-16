@@ -113,4 +113,12 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 - Thanks to @danylkaaa for suggestions.
 
 """##,
+    "0.2.1": ##"""
+# 0.2.1
+
+The notes Gzyms shows once after an update to this version. Only the "- " lines are shown.
+
+- An app with notifications turned off in System Settings no longer shows an empty icon on the island.
+
+"""##,
 ]
