@@ -103,7 +103,7 @@ final class BarModel {
 
     /// Where the workspaces come from now: `config.workspaceSource`, with auto resolved to what runs.
     var source = WorkspaceSource.hyprmac
-    /// AeroSpace's or the Spaces' workspaces; nil = not running or not readable.
+    /// OmniWM's, AeroSpace's or the Spaces' workspaces; nil = not running or not readable.
     var sourceState: HyprMacState?
     @ObservationIgnored var onSelectWorkspace: (Int) -> Void = { _ in }
 

@@ -6,7 +6,7 @@ public struct GzymsConfig: Equatable, Sendable {
     public var workspaces: [WorkspaceStyle]
     public var showEmpty: Bool
     public var smallOnNotch: Bool
-    /// `[workspaces] source`: HyprMac, AeroSpace or macOS Spaces. Auto takes what runs.
+    /// `[workspaces] source`: HyprMac, OmniWM, AeroSpace or macOS Spaces. Auto takes what runs.
     public var workspaceSource = WorkspaceSource.auto
     public var theme: Theme
     public var cpuChart: CPUChart

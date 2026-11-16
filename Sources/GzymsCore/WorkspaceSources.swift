@@ -2,12 +2,13 @@ import Foundation
 
 /// `[workspaces] source`: where the bar's workspaces come from. Every source produces a `HyprMacState`, so the bar does not care.
 public enum WorkspaceSource: String, CaseIterable, Sendable {
-    case auto, hyprmac, aerospace, spaces
+    case auto, hyprmac, omniwm, aerospace, spaces
 
     public var title: String {
         switch self {
         case .auto: "Auto"
         case .hyprmac: "HyprMac"
+        case .omniwm: "OmniWM"
         case .aerospace: "AeroSpace"
         case .spaces: "macOS Spaces"
         }
@@ -17,21 +18,80 @@ public enum WorkspaceSource: String, CaseIterable, Sendable {
     public var homepage: String? {
         switch self {
         case .hyprmac: "https://hyprmac.app"
+        case .omniwm: "https://github.com/OmniNull/OmniWM"
         case .aerospace: "https://nikitabobko.github.io/AeroSpace/guide"
         case .auto, .spaces: nil
         }
     }
 }
 
-/// Auto takes the tiler that runs, HyprMac first. Without one, macOS Spaces: they are always there.
-public func activeSource(_ setting: WorkspaceSource, hyprmac: Bool, aerospace: Bool) -> WorkspaceSource {
+public let omniwmBundleID = "com.barut.OmniWM"
+
+/// Auto takes the tiler that runs, OmniWM first: it is seen by its process alone, while HyprMac also counts through
+/// its state file and a 10 s grace, so a move from HyprMac to OmniWM would otherwise keep HyprMac's old state.
+/// Without a tiler, macOS Spaces: they are always there.
+public func activeSource(_ setting: WorkspaceSource, hyprmac: Bool, omniwm: Bool, aerospace: Bool) -> WorkspaceSource {
     guard setting == .auto else { return setting }
-    return hyprmac ? .hyprmac : aerospace ? .aerospace : .spaces
+    return omniwm ? .omniwm : hyprmac ? .hyprmac : aerospace ? .aerospace : .spaces
 }
 
 /// The apps whose launch or quit can change what auto resolves to.
 public func isWorkspaceTiler(_ bundleID: String) -> Bool {
-    bundleID == "bobko.aerospace" || bundleID.hasPrefix("com.zachgray.HyprMac")
+    bundleID == "bobko.aerospace" || bundleID == omniwmBundleID || bundleID.hasPrefix("com.zachgray.HyprMac")
+}
+
+// MARK: - OmniWM
+
+/// `omniwmctl query workspaces --json` and `query windows --json`. Workspaces keep OmniWM's number (1…10 on the bar),
+/// the display name ("web") becomes the name. Scratchpad windows are left out: they belong to no workspace on screen.
+/// nil = the workspace list is unreadable.
+public func omniwmState(workspaces: Data, windows: Data) -> HyprMacState? {
+    guard let list = try? JSONDecoder().decode(OmniReply<OmniWorkspaces>.self, from: workspaces) else { return nil }
+    let all = list.result.payload.workspaces.compactMap(\.value).filter { (1...10).contains($0.number) }
+    let wins = ((try? JSONDecoder().decode(OmniReply<OmniWindows>.self, from: windows))?.result.payload.windows ?? [])
+        .compactMap(\.value).filter { $0.isScratchpad != true }
+    let spaces = all.map { o in
+        let w = wins.filter { $0.workspace?.number == o.number }.map {
+            Window(id: $0.windowId, app: $0.app?.name ?? "", bundleID: $0.app?.bundleId ?? "", floating: $0.mode == "floating", focused: $0.isFocused == true)
+        }
+        return Workspace(id: o.number, name: o.displayName == String(o.number) ? nil : o.displayName, monitor: o.display?.name ?? "", visible: o.isVisible == true, windows: w)
+    }
+    // `isCurrent`, not `isFocused`: OmniWM marks focused only the workspace holding the focused window, so an empty one never is.
+    let focused = all.first { $0.isCurrent == true }
+    let monitors = all.filter { $0.isVisible == true }.map { Monitor(name: $0.display?.name ?? "", visibleWorkspace: $0.number, focused: $0.isCurrent == true) }
+    return HyprMacState(focusedWorkspace: focused?.number, focusedMonitor: focused?.display?.name, monitors: monitors, workspaces: spaces)
+}
+
+private struct OmniReply<P: Decodable>: Decodable {
+    struct Result: Decodable { let payload: P }
+    let result: Result
+}
+
+private struct OmniName: Decodable { let name: String? }
+
+private struct OmniWorkspaces: Decodable {
+    struct Item: Decodable {
+        let number: Int
+        let displayName: String?
+        let isCurrent: Bool?
+        let isVisible: Bool?
+        let display: OmniName?
+    }
+    let workspaces: [Lenient<Item>]
+}
+
+private struct OmniWindows: Decodable {
+    struct Item: Decodable {
+        struct App: Decodable { let bundleId: String?; let name: String? }
+        struct Space: Decodable { let number: Int? }
+        let windowId: Int
+        let app: App?
+        let workspace: Space?
+        let mode: String?
+        let isFocused: Bool?
+        let isScratchpad: Bool?
+    }
+    let windows: [Lenient<Item>]
 }
 
 // MARK: - AeroSpace

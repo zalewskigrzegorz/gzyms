@@ -1287,7 +1287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateSource() {
         let running = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
         let hyprmac = !model.noWindowManager && (model.state != nil || running.contains { $0.hasPrefix("com.zachgray.HyprMac") })
-        model.source = activeSource(model.config.workspaceSource, hyprmac: hyprmac, aerospace: running.contains(aerospaceBundleID))
+        model.source = activeSource(model.config.workspaceSource, hyprmac: hyprmac, omniwm: running.contains(omniwmBundleID), aerospace: running.contains(aerospaceBundleID))
         workspaceFeed.run(model.source)
     }
 

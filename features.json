@@ -1,6 +1,6 @@
 {
-  "count": 100,
-  "updated": "2026-11-09",
+  "count": 101,
+  "updated": "2026-11-16",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -67,6 +67,7 @@
     "Custom audio device icons",
     "Workspaces pill from HyprMac",
     "Workspaces from AeroSpace or macOS Spaces (auto-detected)",
+    "Workspaces from OmniWM, live from its event stream",
     "Workspace names and colors",
     "Small bar on the notch screen",
     "Notch and multi-monitor placement",
