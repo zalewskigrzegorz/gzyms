@@ -93,6 +93,10 @@ private let ghStat = "def stat($st): ([$ENV.GZYMS_OPT_EVERY // \"\" | tonumber?]
 /// The checks of one commit, as both queries ask for them.
 private let checksQuery = "contexts(first:30){nodes{__typename ... on CheckRun{name status conclusion detailsUrl} ... on StatusContext{context state targetUrl}}}"
 
+/// jq: drops a pending status that waits for a person, not a machine (Redocly's "Visual review" stays PENDING until someone looks).
+/// shortcut: told apart by its name, review or approval; a real CI status with that name would stop counting as running.
+private let ciChecks = #"def ci: map(select(.state == "PENDING" and (.context // "" | test("review|approv"; "i")) | not));"#
+
 /// `sounds` option: kind → file in that folder, for the kinds that have one. Bash, sets `snd` (JSON).
 private let soundFiles = #"""
 snd='{}'
@@ -184,8 +188,9 @@ let ghPRs = CatalogPlugin(
     # The action chain is the one a PR needs from its author: the first that holds wins.
     read -r -d '' PROG <<'JQ'
     def foreign($me): (.author.login // "") as $l | (.author.__typename // "") != "Bot" and $l != $me and $l != "github-actions";
+    \#(ciChecks)
     def pr($me):
-      (.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // []) as $c
+      (.commits.nodes[0].commit.statusCheckRollup.contexts.nodes // [] | ci) as $c
       # failed as gh-builds counts it, so a PR and its build never disagree
       | ([$c[] | select((.conclusion // "" | IN("FAILURE", "TIMED_OUT", "STARTUP_FAILURE")) or (.state // "" | IN("FAILURE", "ERROR")))] | length) as $failed
       | ([$c[] | select(((.status // "") != "" and .status != "COMPLETED") or (.state // "" | IN("PENDING", "EXPECTED")))] | length) as $pending
@@ -396,7 +401,8 @@ let ghBuilds = CatalogPlugin(
 
     # Modes as in gh-prs. A target is one PR or one branch, with the state of its checks.
     read -r -d '' PROG <<'JQ'
-    def snap: (.contexts.nodes // []) as $c
+    \#(ciChecks)
+    def snap: (.contexts.nodes // [] | ci) as $c
       | [$c[] | select((.conclusion // "" | IN("FAILURE", "TIMED_OUT", "STARTUP_FAILURE")) or (.state // "" | IN("FAILURE", "ERROR")))
          | {name: (.name // .context // "check"), url: (.detailsUrl // .targetUrl // "")}] as $f
       | {failed: ($f | unique_by(.name)),
