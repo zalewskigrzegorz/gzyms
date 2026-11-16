@@ -147,7 +147,7 @@ private struct SettingsRoot: View {
     var body: some View {
         SettingsView(tab: Binding(get: { model.settingsTab }, set: { model.settingsTab = $0 }), config: model.config,
                      problems: model.configProblems, broken: model.configBroken, apps: model.seenApps,
-                     devices: model.audioDevices,
+                     devices: model.audioDevices, audio: model.audio,
                      workspaceNames: Dictionary((model.activeState?.workspaces ?? []).compactMap { w in w.name.map { (w.id, $0) } }) { a, _ in a },
                      workspacesFrom: model.source, workspacesFound: model.activeState != nil,
                      grants: model.grants,

@@ -5,7 +5,8 @@ import Foundation
 public struct AudioDevice: Equatable, Sendable {
     /// Raw values are the names `[audio.icons]` takes.
     public enum Kind: String, CaseIterable, Sendable {
-        case builtIn = "laptop", iPhone = "phone", headphones, monitor, camera, mic, speaker, external
+        case builtIn = "laptop", iPhone = "phone", headphones, headset, airpods, speaker, stereo, homepod, homepodMini = "homepod-mini",
+             airplay, car, mic, studioMic = "studio-mic", interface, monitor, tv, appleTV = "apple-tv", camera, console, external
     }
 
     public var id: UInt32
@@ -13,6 +14,10 @@ public struct AudioDevice: Equatable, Sendable {
     public var transport: UInt32
     /// From `[audio.icons]`, for hardware that reports an odd transport.
     public var kindOverride: Kind?
+    /// From `[audio.icons]` too: any SF Symbol name that is no kind. The pill falls back to `kind` when macOS has no such symbol.
+    public var customSymbol: String?
+    /// `[audio.tags]`: up to three letters next to the icon, to tell two speakers of one kind apart.
+    public var tag: String?
     /// In `[audio] banned`: the popups dim it.
     public var banned = false
     public init(id: UInt32, name: String, transport: UInt32) { self.id = id; self.name = name; self.transport = transport }
@@ -31,7 +36,7 @@ public struct AudioDevice: Equatable, Sendable {
         return .external
     }
 
-    public var isHeadphones: Bool { kind == .headphones }
+    public var isHeadphones: Bool { [.headphones, .headset, .airpods].contains(kind) }
 }
 
 public struct AudioState: Equatable, Sendable {

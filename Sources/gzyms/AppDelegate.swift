@@ -249,13 +249,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 var a = read
-                let icons = model.config.deviceIcons, banned = model.config.bannedDevices
-                for i in a.outputs.indices {
-                    a.outputs[i].kindOverride = icons[a.outputs[i].name]; a.outputs[i].banned = banned.contains(a.outputs[i].name)
+                let c = model.config
+                func dress(_ d: inout AudioDevice) {
+                    d.kindOverride = c.deviceIcons[d.name]; d.customSymbol = c.deviceSymbols[d.name]
+                    d.tag = c.deviceTags[d.name]; d.banned = c.bannedDevices.contains(d.name)
                 }
-                for i in a.inputs.indices {
-                    a.inputs[i].kindOverride = icons[a.inputs[i].name]; a.inputs[i].banned = banned.contains(a.inputs[i].name)
-                }
+                for i in a.outputs.indices { dress(&a.outputs[i]) }
+                for i in a.inputs.indices { dress(&a.inputs[i]) }
                 if a != model.audio { model.audio = a }
             }
         }

@@ -1501,8 +1501,9 @@ public struct AudioOutputView: View {
     public var body: some View {
         let dev = audio?.outputDevice, muted = audio?.outputMuted == true
         HStack(spacing: small ? 3 : 4) {
-            Image(systemName: deviceSymbol(dev?.kind, input: false, muted: muted))
+            Image(systemName: deviceSymbol(dev, input: false, muted: muted))
                 .frame(width: small ? 14 : 18, height: small ? 11 : 13)
+            if let t = dev?.tag { Text(t).fontWeight(.semibold).lineLimit(1) }
             Text(audio?.volume.map { String(format: "%.0f", $0 * 100) } ?? "–").lineLimit(1).frame(width: small ? 20 : 24, alignment: .trailing)
         }
         .font(.system(size: small ? 10 : 11).monospacedDigit())
@@ -1542,9 +1543,12 @@ public struct AudioInputView: View {
     }
 
     public var body: some View {
-        let muted = audio?.inputMuted == true
-        Image(systemName: deviceSymbol(audio?.inputDevice?.kind, input: true, muted: muted))
-            .frame(width: small ? 14 : 16, height: small ? 11 : 13)
+        let muted = audio?.inputMuted == true, dev = audio?.inputDevice
+        HStack(spacing: small ? 3 : 4) {
+            Image(systemName: deviceSymbol(dev, input: true, muted: muted))
+                .frame(width: small ? 14 : 16, height: small ? 11 : 13)
+            if let t = dev?.tag { Text(t).fontWeight(.semibold).lineLimit(1) }
+        }
             .font(.system(size: small ? 10 : 11))
             .foregroundStyle(muted ? theme[\.red] : theme[\.text])
             .padding(.horizontal, small ? 6 : 8)
@@ -1675,13 +1679,33 @@ func deviceSymbol(_ kind: AudioDevice.Kind?, input: Bool, muted: Bool) -> String
     case .iPhone?: ("iphone", "iphone.slash")
     // headset for the mic: the output pill next to it already shows headphones. No headset.slash exists.
     case .headphones?: input ? ("headset", plainOff) : ("headphones", "headphones.slash")
-    case .monitor?: ("display", plainOff)
-    case .camera?: ("web.camera.fill", plainOff)
-    case .mic?: ("mic.fill", "mic.slash.fill")
+    case .headset?: ("headset", plainOff)
+    case .airpods?: ("airpodspro", plainOff)
     case .speaker?: ("hifispeaker.fill", "speaker.slash.fill")
+    case .stereo?: ("hifispeaker.2.fill", plainOff)
+    case .homepod?: ("homepod.fill", plainOff)
+    case .homepodMini?: ("homepodmini.fill", plainOff)
+    case .airplay?: ("airplay.audio", plainOff)
+    case .car?: ("car.fill", plainOff)
+    case .mic?: ("mic.fill", "mic.slash.fill")
+    case .studioMic?: ("music.mic", "mic.slash.fill")
+    case .interface?: ("slider.vertical.3", plainOff)
+    case .monitor?: ("display", plainOff)
+    case .tv?: ("tv.fill", plainOff)
+    case .appleTV?: ("appletv.fill", plainOff)
+    case .camera?: ("web.camera.fill", plainOff)
+    case .console?: ("gamecontroller.fill", plainOff)
     case .external?, nil: input ? ("mic.fill", "mic.slash.fill") : ("speaker.wave.2.fill", "speaker.slash.fill")
     }
     return muted ? off : on
+}
+
+/// The device's own SF Symbol when it names one macOS has, else the symbol of its kind.
+func deviceSymbol(_ d: AudioDevice?, input: Bool, muted: Bool) -> String {
+    guard let s = d?.customSymbol, NSImage(systemSymbolName: s, accessibilityDescription: nil) != nil else {
+        return deviceSymbol(d?.kind, input: input, muted: muted)
+    }
+    return muted ? (input ? "mic.slash.fill" : "speaker.slash.fill") : s
 }
 
 /// The logo (assets/AppIcon.svg, "J1": a cat on the cornice, the island under it) without its tile, in theme colours.
