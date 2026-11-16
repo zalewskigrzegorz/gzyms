@@ -174,6 +174,7 @@ struct PanelRoot: View {
         .environment(\.reportHint, onHint)
         .environment(\.dockBadges, model.dockBadges)
         .environment(\.animate, model.animate)
+        .environment(\.agentBorder, model.config.agentBorder)
         .environment(\.hiddenCounts, Set(model.config.appRules.filter { !$0.value.count }.keys))
         .environment(\.hiddenWidgets, model.config.hiddenWidgets)
         .environment(\.barLayout, model.barLayout)

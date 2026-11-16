@@ -519,6 +519,22 @@ private struct AnimationsTab: View {
                 }
             }
         }
+        Section(title: "Agents") {
+            Row(title: "While an agent works", note: agentNote) {
+                menu(config.agentBorder, [(AgentBorder.comet, "Running light"), (.pulse, "Breathing"), (.glow, "Glow"), (.still, "Still"), (.off, "Off")],
+                     width: 130) { write("agent_border", $0 == .comet ? nil : .string($0.rawValue), table) }
+            }
+        }
+        }
+    }
+
+    private var agentNote: String {
+        switch config.agentBorder {
+        case .comet: "A light runs around the agents pill."
+        case .pulse: "The agents pill's border fades in and out."
+        case .glow: "A glow around the agents pill grows and fades."
+        case .still: "The agents pill's border lights up and stays still."
+        case .off: "The agents pill only changes its color."
         }
     }
 }

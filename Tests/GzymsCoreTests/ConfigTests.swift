@@ -346,3 +346,10 @@ import Testing
     #expect(!off.config.quietSharing)
     #expect(off.problems.isEmpty)
 }
+
+@Test func agentBorderStyle() {
+    #expect(GzymsConfig.defaults.agentBorder == .comet)
+    #expect(loadConfig(toml: "[appearance]\nagent_border = \"still\"\n").config.agentBorder == .still)
+    let bad = loadConfig(toml: "[appearance]\nagent_border = \"disco\"\n")
+    #expect(bad.config.agentBorder == .comet && bad.problems.count == 1)
+}

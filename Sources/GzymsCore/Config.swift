@@ -90,6 +90,8 @@ public struct GzymsConfig: Equatable, Sendable {
     public var animations = true
     public var followReduceMotion = true
     /// `[appearance] banner_entry`: how a banner arrives on an empty island.
+    /// `[appearance] agent_border`: how the agents pill shows that an agent works.
+    public var agentBorder = AgentBorder.comet
     public var bannerEntry = BannerEntry.drop  // icon first delays the text by ~1 s, so it is opt-in (Greg)
     /// `[appearance] animation_speed`: scales every island and icon-flight duration.
     public var animationSpeed = AnimationSpeed.normal
@@ -119,6 +121,12 @@ public struct GzymsConfig: Equatable, Sendable {
 }
 
 /// Strongest first, the order Settings lists them in (Greg, after the HTML prototype of 2026-11-05).
+/// comet: a light runs around the agents pill. pulse: its border breathes. glow: a glow grows and fades.
+/// still: the border lit, no motion (also what every style turns into with animations off). off: no border.
+public enum AgentBorder: String, CaseIterable, Sendable {
+    case comet, pulse, glow, still, off
+}
+
 public enum BannerEntry: String, CaseIterable, Sendable {
     /// icon: the icon drops in, then the text unrolls out of it. drop: slides down from under the edge with a spring.
     /// notch: grows out of the notch's shape. unroll: unrolls down from the edge. pop: grows from 85 % and fades in.
@@ -380,6 +388,10 @@ public func loadConfig(toml: String?) -> ConfigLoad {
     }
     if let v = raw.appearance?.animations { config.animations = v }
     if let v = raw.appearance?.follow_reduce_motion { config.followReduceMotion = v }
+    if let s = raw.appearance?.agent_border {
+        if let v = AgentBorder(rawValue: s) { config.agentBorder = v }
+        else { problems.append("appearance.agent_border: \"\(s)\" must be comet, pulse, glow, still or off, kept comet") }
+    }
     if let s = raw.appearance?.banner_entry {
         if let v = BannerEntry(rawValue: s) { config.bannerEntry = v }
         else { problems.append("appearance.banner_entry: \"\(s)\" must be icon, drop, notch, unroll, pop or fade, kept drop") }
@@ -683,9 +695,9 @@ private struct RawLetters: Decodable {
 }
 
 private struct RawAppearance: Decodable {
-    var animations: Bool?, follow_reduce_motion: Bool?, banner_entry: String?, animation_speed: String?, favorite_themes: [String]?
+    var animations: Bool?, follow_reduce_motion: Bool?, banner_entry: String?, animation_speed: String?, favorite_themes: [String]?, agent_border: String?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case animations, follow_reduce_motion, banner_entry, animation_speed, favorite_themes }
+    enum CodingKeys: String, CodingKey { case animations, follow_reduce_motion, banner_entry, animation_speed, favorite_themes, agent_border }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         animations = lenient(c, .animations, "appearance.animations", &unknown)
@@ -693,7 +705,8 @@ private struct RawAppearance: Decodable {
         banner_entry = lenient(c, .banner_entry, "appearance.banner_entry", &unknown)
         animation_speed = lenient(c, .animation_speed, "appearance.animation_speed", &unknown)
         favorite_themes = lenient(c, .favorite_themes, "appearance.favorite_themes", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["animations", "follow_reduce_motion", "banner_entry", "animation_speed", "favorite_themes"],
+        agent_border = lenient(c, .agent_border, "appearance.agent_border", &unknown)
+        unknown += try unknownKeys(in: decoder, known: ["animations", "follow_reduce_motion", "banner_entry", "animation_speed", "favorite_themes", "agent_border"],
                                    prefix: "appearance.")
     }
 }

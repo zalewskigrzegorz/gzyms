@@ -226,6 +226,88 @@ struct SpinningSymbol: NSViewRepresentable {
     }
 }
 
+/// The agents pill's border while an agent works. Core Animation draws every style, so the bar never redraws for it.
+struct AgentBorderView: NSViewRepresentable {
+    let style: AgentBorder
+    let color: NSColor
+    let radius: CGFloat
+
+    func makeNSView(context: Context) -> BorderLayerView { BorderLayerView() }
+
+    func updateNSView(_ v: BorderLayerView, context: Context) {
+        // Animations off or Reduce motion: every style stands still, lit.
+        let s = context.environment.animate ? style : .still
+        guard v.style != s || v.color != color || v.radius != radius else { return }
+        v.style = s; v.color = color; v.radius = radius
+        v.needsLayout = true
+    }
+}
+
+final class BorderLayerView: NSView {
+    let line = CAShapeLayer()
+    var style = AgentBorder.still, radius: CGFloat = 10
+    var color: NSColor?
+    private var drawn: (CGSize, AgentBorder)?
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        line.fillColor = nil
+        line.lineWidth = 1.5
+        line.lineCap = .round
+        layer?.addSublayer(line)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    /// Clicks go to the pill under it.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        guard bounds.width > 0, drawn.map({ $0.0 != bounds.size || $0.1 != style }) ?? true else { return }
+        drawn = (bounds.size, style)
+        let r = bounds.insetBy(dx: 0.75, dy: 0.75)
+        line.frame = bounds
+        line.path = CGPath(roundedRect: r, cornerWidth: radius - 0.75, cornerHeight: radius - 0.75, transform: nil)
+        line.strokeColor = color?.cgColor
+        line.removeAllAnimations()
+        line.lineDashPattern = nil
+        line.opacity = 1
+        line.shadowOpacity = 0
+        switch style {
+        case .comet:
+            // One dash a quarter of the way round, its phase walking the whole perimeter.
+            let perimeter = 2 * (r.width + r.height) - (8 - 2 * .pi) * (radius - 0.75)
+            line.lineDashPattern = [NSNumber(value: perimeter * 0.25), NSNumber(value: perimeter * 0.75)]
+            add("lineDashPhase", from: 0, to: -perimeter, duration: 2, reverses: false)
+        case .pulse:
+            add("opacity", from: 0.15, to: 0.9, duration: 0.8, reverses: true)
+        case .glow:
+            line.opacity = 0.35
+            line.shadowColor = color?.cgColor
+            line.shadowOffset = .zero
+            line.shadowRadius = 4
+            add("shadowOpacity", from: 0, to: 0.9, duration: 0.9, reverses: true)
+        case .still:
+            line.opacity = 0.8
+        case .off:
+            line.opacity = 0
+        }
+    }
+
+    private func add(_ key: String, from: Double, to: Double, duration: Double, reverses: Bool) {
+        let a = CABasicAnimation(keyPath: key)
+        a.fromValue = from
+        a.toValue = to
+        a.duration = duration
+        a.autoreverses = reverses
+        a.repeatCount = .infinity
+        if reverses { a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut) }
+        line.add(a, forKey: key)
+    }
+}
+
 final class PulseView: NSView {
     let icon = CALayer()
 
