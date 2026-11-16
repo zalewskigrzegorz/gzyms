@@ -62,4 +62,5 @@ Not done here (nothing left this machine):
   1. gh release create v$version "$zip" --repo zalewskigrzegorz/gzyms $notes
   2. cp "$out/appcast.xml" ~/Code/personal/gzyms-site/site/, then deploy gzyms.dev (wrangler deploy)
   3. git -C $tap push
+  4. scripts/next-release.sh --done    (the next-release label off the merged PRs)
 EOF
