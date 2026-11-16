@@ -95,4 +95,22 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 - Plugins start again right after the Mac wakes, so their pills no longer say "No answer" for up to an hour.
 
 """##,
+    "0.2.0": ##"""
+# 0.2.0
+
+The notes Gzyms shows once after an update to this version. Only the "- " lines are shown.
+
+- Workspaces from OmniWM. The pill follows a switch at once, with no polling.
+- Settings → Audio: pick each device's icon from a grid with a preview, or type any SF Symbol name. A tag of up to 3 letters tells two speakers of one kind apart.
+- While an agent works, a light runs around the agents pill. Settings → Animations has four other styles.
+- A running CI check spins on the GitHub builds pill. A review that waits for a person no longer counts as running.
+- Gzyms no longer eats CPU after a plugin restarts. After a few days it could climb to 200%.
+- Settings → Animations: a Show button plays a sample banner with the entry you picked.
+- Rows in popups and in Settings light up in your theme's color, not in gold.
+- Settings → Shortcuts: one switch turns the keyboard mode off.
+- Settings → Hacks says up front that a macOS update can break them, with a button to send a report.
+- Report a problem opens a GitHub Discussion.
+- Thanks to @danylkaaa for suggestions.
+
+"""##,
 ]
