@@ -1269,15 +1269,16 @@ private struct SoundsTab: View {
                 if names.isEmpty { Row(title: "No audio devices found") { EmptyView() } }
                 ForEach(names, id: \.self, content: row)
             }
-            if let name = selected, names.contains(name) {
-                let (d, input) = device(name)
-                Section(title: name) { DeviceDrawer(name: name, device: d, input: input, config: config, write: write) }
-            }
             Section(title: "Alert sounds") {
                 Row(title: "Sounds") {
                     Switch(on: config.notificationSounds) { write("sounds", .bool($0), .table(["notifications"])) }
                 }
                 ForEach(SoundEvent.allCases, id: \.self) { e in SoundRow(event: e, choice: config.sounds[e], write: write, actions: actions) }
+            }
+            // Last, so Columns puts it in a column of its own beside the list: under it, Hide fell off the screen.
+            if let name = selected, names.contains(name) {
+                let (d, input) = device(name)
+                Section(title: name) { DeviceDrawer(name: name, device: d, input: input, config: config, write: write) }
             }
         }
         // Esc closes the drawer first, the panel on the next press.
@@ -1403,14 +1404,14 @@ private struct DeviceDrawer: View {
     private func tiles(_ title: String, _ items: [(symbol: String, title: String, on: Bool, pick: () -> Void)]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             if !title.isEmpty { Text(title.uppercased()).font(.system(size: 10)).kerning(0.5).foregroundStyle(theme[\.overlay]) }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 6)], alignment: .leading, spacing: 6) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 68), spacing: 4)], alignment: .leading, spacing: 4) {
                 ForEach(items.indices, id: \.self) { i in
                     let t = items[i]
-                    VStack(spacing: 3) {
-                        Image(systemName: t.symbol).font(.system(size: 15)).frame(height: 18)
-                        Text(t.title).font(.system(size: 10)).lineLimit(1)
+                    VStack(spacing: 2) {
+                        Image(systemName: t.symbol).font(.system(size: 13)).frame(height: 15)
+                        Text(t.title).font(.system(size: 9)).lineLimit(1)
                     }
-                    .frame(width: 74, height: 46)
+                    .frame(width: 68, height: 38)
                     .background(RoundedRectangle(cornerRadius: 7).fill(t.on ? theme[\.mauve].opacity(0.25) : theme[\.surface]))
                     .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(t.on ? theme[\.mauve] : .clear))
                     .contentShape(Rectangle())
