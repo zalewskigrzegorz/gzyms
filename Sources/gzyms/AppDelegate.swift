@@ -1492,7 +1492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func reportIssue() {
         messages.next()
         if let zip = Report.make(grants: model.grants) { NSWorkspace.shared.activateFileViewerSelecting([zip]) }
-        if let url = URL(string: "https://github.com/zalewskigrzegorz/gzyms/issues/new") { NSWorkspace.shared.open(url) }
+        if let url = URL(string: "https://github.com/zalewskigrzegorz/gzyms/discussions/new?category=problems") { NSWorkspace.shared.open(url) }
     }
 
     // MARK: - Settings

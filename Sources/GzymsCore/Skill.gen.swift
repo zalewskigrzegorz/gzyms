@@ -11,7 +11,7 @@ Gzyms is a status bar for macOS. It has a bar at the top of the screen, an islan
 
 1. **The CLI.** Notifications, settings and themes need no code: `gzyms notify`, `gzyms set`, `gzyms theme`. Try this first.
 2. **A plugin.** Only when the CLI cannot do it: something that stays on the bar, reacts to a click, or runs in a loop. Start with `gzyms plugin new <name>` and read `gzyms skill plugins`.
-3. **A feature request.** Only when neither the CLI nor a plugin can do it. Never send it yourself. Write it for the user to send to the author of Gzyms: what is missing, what you tried with the CLI and with a plugin, and why that fell short.
+3. **A feature request.** Only when neither the CLI nor a plugin can do it. Never send it yourself. Write it for the user to send to the author of Gzyms: what is missing, what you tried with the CLI and with a plugin, and why that fell short. It goes to [Discussions](https://github.com/zalewskigrzegorz/gzyms/discussions): Ideas for a feature, Problems for a bug, never an issue.
 
 ## Notifications: gzyms notify
 
