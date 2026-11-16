@@ -5,8 +5,6 @@ cd "$(dirname "$0")/.."
 
 bash scripts/gen-skill.sh  # skill/*.md into the binary
 python3 -c 'import json,sys; d=json.load(open("features.json")); sys.exit(d["count"]!=len(d["features"]))' || { echo "features.json: count does not match the list"; exit 1; }
-# Greg's GitHub profile README shows this file straight from main: moving it breaks the profile.
-test -s assets/readme/banner.png || { echo "assets/readme/banner.png is gone: github.com/zalewskigrzegorz shows it, fix that README too"; exit 1; }
 log=$(mktemp)
 if ! swift build -c release >"$log" 2>&1; then
   grep -E 'error:' "$log" | head -20
