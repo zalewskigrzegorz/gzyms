@@ -510,10 +510,10 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     let audio = AudioState(outputs: [AudioDevice(id: 1, name: "MacBook Pro Speakers", transport: builtIn)],
                            inputs: [AudioDevice(id: 2, name: "MacBook Pro Microphone", transport: builtIn), AudioDevice(id: 3, name: "Shure MV7", transport: 0)],
                            output: 1, input: 2, volume: 0.5, outputMuted: false, inputMuted: false)
-    preview(SettingsView(tab: .constant(.sounds), config: config, problems: [], broken: false, apps: [],
+    preview(SettingsView(tab: .constant(.audio), config: config, problems: [], broken: false, apps: [],
                          devices: ["MacBook Pro Speakers", "MacBook Pro Microphone", "Shure MV7"], audio: audio,
                          openDevice: "MacBook Pro Microphone", actions: SettingsActions { _, _, _ in }).frame(width: 1200, height: 1000),
-            "settings-sounds-device")
+            "settings-audio-device")
 }
 
 @MainActor @Test func permissionsPreviews() {

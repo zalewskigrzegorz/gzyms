@@ -3,7 +3,7 @@ import GzymsCore
 import SwiftUI
 
 public enum SettingsTab: String, CaseIterable, Sendable {
-    case general, appearance, animations, themes, notifications, apps, modules, plugins, calendar, agents, sounds, shortcuts, permissions, hacks, debug, about
+    case general, appearance, animations, themes, notifications, apps, modules, plugins, calendar, agents, audio, sounds, shortcuts, permissions, hacks, debug, about
     public var title: String { self == .modules ? "Order" : rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 }
 
@@ -107,7 +107,7 @@ public struct SettingsView: View {
     let broken: Bool
     let apps: [SeenApp]
     let devices: [String]
-    /// What the bar reads now: Sounds → Audio devices draws each device's pill from it.
+    /// What the bar reads now: Settings → Audio draws each device's pill from it.
     let audio: AudioState?
     /// The device open on the side of Sounds when the panel first draws (snapshots).
     let openDevice: String?
@@ -235,7 +235,7 @@ public struct SettingsView: View {
         switch tab {
         case .general: GeneralTab(config: config, names: workspaceNames, from: workspacesFrom, found: workspacesFound, login: actions.loginItem(), write: actions.write,
                                   reveal: actions.revealConfig, openLoginItems: actions.openLoginItems, open: actions.openURL)
-        case .appearance: AppearanceTab(config: config, write: actions.write, openThemes: { tab = .themes }, openSounds: { tab = .sounds })
+        case .appearance: AppearanceTab(config: config, write: actions.write, openThemes: { tab = .themes }, openAudio: { tab = .audio })
         case .animations: AnimationsTab(config: config, write: actions.write, showEntry: actions.showEntry)
         case .themes: ThemesTab(config: config, write: actions.write)
         case .notifications: NotificationsTab(config: config, actions: actions, focusModes: focusModes)
@@ -245,7 +245,8 @@ public struct SettingsView: View {
         case .calendar: CalendarTab(config: config, calendars: calendars, write: actions.write)
         case .agents: AgentsTab(config: config, write: actions.write, status: agents, plugin: actions.claudePlugin,
                                 open: openPlugin.flatMap(AgentSource.init(rawValue:)))
-        case .sounds: SoundsTab(config: config, devices: devices, audio: audio, write: actions.write, actions: actions, selected: openDevice)
+        case .audio: AudioTab(config: config, devices: devices, audio: audio, write: actions.write, selected: openDevice)
+        case .sounds: SoundsTab(config: config, write: actions.write, actions: actions)
         case .shortcuts: ShortcutsTab(config: config, write: actions.write, recording: actions.recording)
         case .permissions: Section(title: "Permissions") {
             PermissionsView(states: grants, open: actions.openGrant, restart: actions.restart)
@@ -456,7 +457,7 @@ private struct AppearanceTab: View {
     let config: GzymsConfig
     let write: (String, TOMLValue?, ConfigTable) -> Void
     let openThemes: () -> Void
-    let openSounds: () -> Void
+    let openAudio: () -> Void
 
     var body: some View {
         Columns {
@@ -466,9 +467,9 @@ private struct AppearanceTab: View {
                 menu(config.cpuChart.rawValue, [("line", "Line"), ("bars", "Bars")]) { write("chart", .string($0), .table(["cpu"])) }
             }
         }
-        // Moved: device icons live in Sounds → Audio devices now, a pointer stays for whoever looks here.
+        // Moved: device icons have a tab of their own now, a pointer stays for whoever looks here.
         Section(title: "Device icons") {
-            Row(title: "Audio device icons", note: "In Sounds, with a preview of each icon.") { Button("Open Sounds", action: openSounds) }
+            Row(title: "Audio device icons", note: "In Audio, with a preview of each icon.") { Button("Open Audio", action: openAudio) }
         }
         }
     }
@@ -1251,12 +1252,12 @@ private struct ShortcutRow: View {
     }
 }
 
-private struct SoundsTab: View {
+/// Audio devices, laid out like Apps: the list on the left, the picked one's options on the right.
+private struct AudioTab: View {
     let config: GzymsConfig
     let devices: [String]
     let audio: AudioState?
     let write: (String, TOMLValue?, ConfigTable) -> Void
-    let actions: SettingsActions
     @State var selected: String?
     @State private var hovered: String?
     @Environment(\.settingsNav) private var nav
@@ -1264,18 +1265,10 @@ private struct SoundsTab: View {
 
     var body: some View {
         Columns {
-            // Audio devices first: issue #16 looked for the device icons here, not in Appearance.
             Section(title: "Audio devices") {
                 if names.isEmpty { Row(title: "No audio devices found") { EmptyView() } }
                 ForEach(names, id: \.self, content: row)
             }
-            Section(title: "Alert sounds") {
-                Row(title: "Sounds") {
-                    Switch(on: config.notificationSounds) { write("sounds", .bool($0), .table(["notifications"])) }
-                }
-                ForEach(SoundEvent.allCases, id: \.self) { e in SoundRow(event: e, choice: config.sounds[e], write: write, actions: actions) }
-            }
-            // Last, so Columns puts it in a column of its own beside the list: under it, Hide fell off the screen.
             if let name = selected, names.contains(name) {
                 let (d, input) = device(name)
                 Section(title: name) { DeviceDrawer(name: name, device: d, input: input, config: config, write: write) }
@@ -1319,6 +1312,20 @@ private struct SoundsTab: View {
     }
 }
 
+private struct SoundsTab: View {
+    let config: GzymsConfig
+    let write: (String, TOMLValue?, ConfigTable) -> Void
+    let actions: SettingsActions
+    var body: some View {
+        Section(title: "Sounds") {
+            Row(title: "Sounds") {
+                Switch(on: config.notificationSounds) { write("sounds", .bool($0), .table(["notifications"])) }
+            }
+            ForEach(SoundEvent.allCases, id: \.self) { e in SoundRow(event: e, choice: config.sounds[e], write: write, actions: actions) }
+        }
+    }
+}
+
 extension AudioDevice.Kind {
     var title: String {
         switch self {
@@ -1338,7 +1345,7 @@ extension AudioDevice.Kind {
         }
     }
 
-    /// The icon grid in Settings → Sounds, by what the thing is. Every kind sits in one group.
+    /// The icon grid in Settings → Audio, by what the thing is. Every kind sits in one group.
     static let groups: [(String, [Self])] = [
         ("Computer and phone", [.builtIn, .iPhone]),
         ("Headphones", [.headphones, .headset, .airpods]),
