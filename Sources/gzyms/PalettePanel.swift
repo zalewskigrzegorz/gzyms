@@ -50,9 +50,11 @@ final class PalettePanel: NSPanel {
         return super.performKeyEquivalent(with: event)
     }
 
-    func show(items: [PaletteItem], extra: @escaping (String) -> [PaletteItem], on screen: NSScreen?) {
+    func show(items: [PaletteItem], extra: @escaping (String) -> [PaletteItem], last: @escaping (String) -> [PaletteItem] = { _ in [] },
+              on screen: NSScreen?) {
         state.items = items
         state.extra = extra
+        state.last = last
         state.query = ""
         guard let f = (screen ?? NSScreen.main)?.visibleFrame else { return }
         top = f.maxY - f.height * 0.2
