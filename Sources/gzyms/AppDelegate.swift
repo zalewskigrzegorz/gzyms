@@ -1705,12 +1705,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             items.append(PaletteItem(id: "note:\(n.id)", title: n.title, kind: app, words: [app, n.subtitle, n.body].compactMap { $0 }.joined(separator: " "),
                                      alt: alt) { [weak self] in self?.open(n.id) })
         }
+        let openedAt = Date(), marks = model.config.marks
         palette.show(items: items, extra: { [weak self] q in
             guard let m = paletteDNDMinutes(q) else { return [] }
             let span = m % 60 == 0 ? "\(m / 60) h" : m > 60 ? "\(m / 60) h \(m % 60) min" : "\(m) min"
             return [PaletteItem(id: "dnd:\(m)", title: "Do Not Disturb for \(span)", kind: "Action") { self?.setDND(Date() + Double(m) * 60) }]
+        }, last: { [weak self] q in
+            // The time is when the palette opened, so typing the note does not move it.
+            let note = q.trimmingCharacters(in: .whitespaces)
+            guard marks, !note.isEmpty else { return [] }
+            return [PaletteItem(id: "mark", title: "Mark: \(note)", kind: "Action") { self?.saveMark(note, openedAt: openedAt) }]
         }, on: focusedScreen())
         log("palette: open")
+    }
+
+    /// `~/Library/Logs/Gzyms/marks/<time>.txt`: the note and the logs around it, for a later look.
+    private func saveMark(_ note: String, openedAt: Date) {
+        let dir = Paths.logsDir(home: FileManager.default.homeDirectoryForCurrentUser)
+        // shortcut: a log that rotated in the last 5 min loses its older half (gzyms.log.1), add it if a mark comes out short.
+        let logs = ["gzyms.log", "anomalies.jsonl"].map { ($0, (try? String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8)) ?? "") }
+        let file = dir.appendingPathComponent("marks").appendingPathComponent(Marks.fileName(openedAt))
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Marks.text(note: note, openedAt: openedAt, now: Date(), logs: logs).write(to: file, atomically: true, encoding: .utf8)
+            log("mark: saved \(file.lastPathComponent)")
+        } catch {
+            log("mark: could not save \(file.lastPathComponent): \(error.localizedDescription)")
+        }
     }
 
     private func settingsActions() -> SettingsActions {
