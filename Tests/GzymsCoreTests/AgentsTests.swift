@@ -95,6 +95,8 @@ private func agent(_ id: String, _ state: AgentState, _ source: AgentSource = .t
     #expect(item.menu?.map(\.text) == ["b", "q · approve?", "d", "w", "i"])
     #expect(item.menu?.map(\.dim) == [false, false, false, false, true])
     #expect(item.text == "2" && item.color == "peach")
+    #expect(agentsWork(item))  // one waits, another works: the border still runs
+    #expect(!agentsWork(agentsItem([.tuios: AgentSourceLook(agents: [agent("q", .waits), agent("i", .idle)])]).item))
     #expect(agentsItem([.tuios: AgentSourceLook(agents: [agent("w", .working)])]).item.color == "sky")
     #expect(agentsItem([.tuios: AgentSourceLook()]).item.menu?.map(\.text) == ["No agents."])
 }
@@ -106,6 +108,8 @@ private func agent(_ id: String, _ state: AgentState, _ source: AgentSource = .t
     #expect(item.menu?.first?.text == ":exclamationmark.triangle.fill@peach: tuios: Agent features are off.")
     #expect(item.menu?.dropFirst().map(\.dim) == [true, false])
     #expect(item.text == "1" && item.color == "sky")  // the old waiting one is not counted as fresh
+    #expect(agentsWork(item))
+    #expect(!agentsWork(agentsItem([.tuios: AgentSourceLook(agents: [agent("old", .working)], problem: "off", since: at0)]).item))
     // Every source on fails: the whole pill greys out with what broke.
     let all = agentsItem([.tuios: broke])
     #expect(all.failure == PluginFailure(message: "Agent features are off.", since: at0))

@@ -189,6 +189,11 @@ public func agentsItem(_ looks: [AgentSource: AgentSourceLook]) -> (item: Plugin
     return (PluginItem(id: agentsPill, text: text, icon: "sparkles", color: color, tooltip: "\(waiting) waiting, \(working) working", menu: rows), failure)
 }
 
+/// An agent from a source that did not fail is at work, even while another one waits: the pill's border says so.
+public func agentsWork(_ item: PluginItem) -> Bool {
+    item.menu?.contains { $0.tag == AgentState.working.rawValue && !$0.dim } ?? false
+}
+
 /// One source on Settings → Agents: its state in a few words, and in full what broke.
 public struct AgentSourceStatus: Equatable, Sendable {
     public var line: String
