@@ -910,8 +910,8 @@ public struct PluginPillView: View {
         .padding(.horizontal, small ? 6 : 8)
         .padding(.vertical, small ? 2 : 4)
         .background(theme[\.surface], in: RoundedRectangle(cornerRadius: 10))
-        // Sky = an agent works and none waits (`agentsItem`): its border says so, drawn by Core Animation.
-        .overlay { if pill.plugin == agentsPill, i.color == "sky", failure == nil, agentBorder != .off {
+        // An agent works, also while another waits: its border says so, drawn by Core Animation.
+        .overlay { if pill.plugin == agentsPill, agentsWork(i), failure == nil, agentBorder != .off {
             AgentBorderView(style: agentBorder, color: NSColor(theme[\.sky]), radius: 10)
         } }
         // A banner that runs out flies here, not to the bell.
