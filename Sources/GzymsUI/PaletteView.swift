@@ -50,11 +50,16 @@ public final class PaletteState {
     public var items: [PaletteItem] = []
     /// Rows made from the query itself ("dnd 1h").
     @ObservationIgnored public var extra: (String) -> [PaletteItem] = { _ in [] }
+    /// Rows made from the query that go under every match, so Enter never picks them by accident ("Mark: …").
+    @ObservationIgnored public var last: (String) -> [PaletteItem] = { _ in [] }
     public static let limit = 8
 
     public init() {}
 
-    public var shown: [PaletteItem] { Array((extra(query) + paletteRank(query, items) { $0.title + " " + $0.words }).prefix(Self.limit)) }
+    public var shown: [PaletteItem] {
+        let end = last(query)
+        return Array((extra(query) + paletteRank(query, items) { $0.title + " " + $0.words }).prefix(Self.limit - end.count)) + end
+    }
     public var current: PaletteItem? { let s = shown; return s.indices.contains(selected) ? s[selected] : nil }
     public func move(_ by: Int) { selected = min(max(selected + by, 0), max(shown.count - 1, 0)) }
 }
