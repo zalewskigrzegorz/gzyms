@@ -267,7 +267,7 @@ let ghPRs = CatalogPlugin(
               color: (if $n.fix then "red" elif $n.comments or $u != [] then "sky" elif $n.merge then "green" else "overlay" end),
               tooltip: (if $cnt == [] then "\($prs | length) open pull requests" else ($cnt | map("\(.s) \(.n)") | join(", ")) end),
               menu: ((if $prs == [] then [] else
-                   [{value: "\($prs | length)", unit: "open pull requests"}]
+                   [{value: "\($prs | length)", unit: (if ($prs | length) == 1 then "open pull request" else "open pull requests" end)}]
                    + (if $cnt == [] then [] else [{stats: [$cnt[] | {label: .s, value: "\(.n)",
                         color: {fix: "red", merge: "green", comments: "sky", draft: "mauve"}[.s]}]}] end)
                    + [{separator: true}] end)
