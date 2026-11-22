@@ -128,6 +128,8 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 
 - Plugins can draw more than rows in their popup: a big value with its changes, a line or bar chart, stat tiles and level meters. `gzyms skill plugins` shows the JSON.
 - Star watcher opens with your total, how it changed in 7 and 30 days, and a bar for each day's new stars.
+- GitHub PRs shows the agents working on each pull request under it. `a` opens the agent, and the agents list shows each agent's branch and its pull request.
+- GitHub PRs can send CI notifications (Settings → Plugins → GitHub PRs → CI notifications). A CI banner opens the agent on that branch as its second action.
 - GitHub PRs opens with the number of open pull requests and a tile per state: fix, merge, comments, draft.
 
 """##,

@@ -116,7 +116,7 @@ let ghPRs = CatalogPlugin(
     summary: "Your pull requests through the gh CLI: a glyph per state (fix, merge, comments, draft) with the number of PRs in it, and every row with its CI.",
     manifest: """
     name = "GitHub PRs"
-    description = "Your pull requests through the gh CLI. One glyph per state with the number of PRs in it: fix, merge, comments, draft. A PR counts in every state it is in, a draft only as a draft. A notification on a new approval or comment."
+    description = "Your pull requests through the gh CLI. One glyph per state with the number of PRs in it: fix, merge, comments, draft. A PR counts in every state it is in, a draft only as a draft. A notification on a new approval or comment, and on CI when you turn CI notifications on."
     command = "./plugin.sh"
     icon = "arrow.triangle.branch"
 

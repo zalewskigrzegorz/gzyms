@@ -242,11 +242,15 @@ A row can also be a block that Gzyms draws for you. Mix blocks with plain rows a
 
 A chart needs at least two numbers, else the row is left out. A `null` in `"values"` drops that point and its label. Labels whose count differs from the values are not shown. Gzyms keeps the newest 400 points. A meter has 1 to 12 segments, and `"value"` is kept between 0 and `"max"`. Numbers on the chart use a dot, as in JSON.
 
+A row about a branch of a GitHub repo says so with `"branch":"owner/repo@branch"`. Gzyms finds the coding agents whose folder is on that branch and lists them under the row, a dot in each one's state colour and its name. `a` on the row, or a click on that line, opens the agent that needs you first. The agents popup shows each agent's branch under it, with the detail of your row on that branch, and `a` there clicks your row. Nothing extra comes to your script.
+
 A notification, with the same fields as `gzyms notify`. Its `"level"` is one of `info`, `warning`, `error`, `critical`, `armageddon`. A notification with the same `"id"` replaces the earlier one from this plugin. Once its banner is gone it waits on the plugin's first pill: a count in the pill's corner and a list at the top of its popup. Only a plugin with no pill files them under the 🔔. `"sound"` is an event name (`message`, `success`, `fail`, `waiting`), a macOS sound name, or a path to an audio file (`.mp3`, `.m4a`, `.wav`, `.aiff`).
 
 ```json
 {"notify":{"id":"deploy","title":"Deploy done","subtitle":"api","body":"1.4.2 is live","level":"info","sound":"success","link":"https://example.com"}}
 ```
+
+`"branch"` works on a notification too: when an agent is on that branch, the second action opens it, under the name Open agent. With no agent there your own `"alt_label"` stays.
 
 `"row"` ties a notification to a menu row of the plugin's: once no pill of the plugin has a row with that id, the notification leaves the list. Use it for a notification about a thing a row stands for, so it goes when the thing does.
 
