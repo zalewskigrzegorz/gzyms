@@ -183,11 +183,70 @@ public struct PluginRow: Equatable, Sendable {
     public var separator: Bool
     /// Drawn faded: an idle agent, or one from a source that failed. Gzyms' own rows only, not in the protocol.
     public var dim: Bool
+    /// Blocks: a row with one of these draws it instead of the plain tag, text and detail (a meter row keeps those).
+    public var headline: RowHeadline?
+    public var chart: RowChart?
+    public var stats: [RowStat]?
+    public var meter: RowMeter?
     public init(id: String? = nil, text: String = "", tag: String? = nil, color: String? = nil, detail: String? = nil, separator: Bool = false,
-                dim: Bool = false) {
+                dim: Bool = false, headline: RowHeadline? = nil, chart: RowChart? = nil, stats: [RowStat]? = nil, meter: RowMeter? = nil) {
         self.id = id; self.text = text; self.tag = tag; self.color = color; self.detail = detail; self.separator = separator; self.dim = dim
+        self.headline = headline; self.chart = chart; self.stats = stats; self.meter = meter
     }
 }
+
+/// A small coloured label next to a headline: "1 d +0.0437".
+public struct RowChip: Equatable, Sendable {
+    public var label: String, text: String
+    public var color: String?
+    public init(label: String, text: String, color: String? = nil) { self.label = label; self.text = text; self.color = color }
+}
+
+/// A big value with its unit and changes, on top of a popup. Its colour is the row's.
+public struct RowHeadline: Equatable, Sendable {
+    public var value: String
+    public var unit: String?
+    public var deltas: [RowChip]
+    public init(value: String, unit: String? = nil, deltas: [RowChip] = []) { self.value = value; self.unit = unit; self.deltas = deltas }
+}
+
+public enum ChartKind: String, Equatable, Sendable { case line, bars }
+
+/// A dashed reference line across a chart, e.g. a threshold.
+public struct RowRule: Equatable, Sendable {
+    public var value: Double
+    public var label: String?
+    public init(value: Double, label: String? = nil) { self.value = value; self.label = label }
+}
+
+/// A chart Gzyms draws: at least two values, labels only when there is one per value.
+public struct RowChart: Equatable, Sendable {
+    public var values: [Double]
+    public var labels: [String]?
+    public var kind: ChartKind
+    public var line: RowRule?
+    public var color: String?
+    public init(values: [Double], labels: [String]? = nil, kind: ChartKind = .line, line: RowRule? = nil, color: String? = nil) {
+        self.values = values; self.labels = labels; self.kind = kind; self.line = line; self.color = color
+    }
+}
+
+/// One tile of a stats row.
+public struct RowStat: Equatable, Sendable {
+    public var label: String, value: String
+    public var color: String?
+    public init(label: String, value: String, color: String? = nil) { self.label = label; self.value = value; self.color = color }
+}
+
+/// A bar of `max` segments, `value` of them lit in the row's colour.
+public struct RowMeter: Equatable, Sendable {
+    public var value: Int, max: Int
+    public init(value: Int, max: Int) { self.value = value; self.max = max }
+}
+
+/// The most points a chart keeps, the newest ones.
+// shortcut: 400 points, raise when a plugin needs a year of daily data
+let chartPointLimit = 400
 
 /// A pill on the bar with the plugin it belongs to (clicks go back to that plugin).
 public struct PluginPill: Equatable, Sendable {
@@ -232,7 +291,15 @@ public enum PluginMessage: Equatable, Sendable {
 
 /// nil = not a message (a half line, garbage, a field missing); the host logs it.
 public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMessage? {
-    struct Row: Decodable { var id, text, tag, color, detail: String?; var separator: Bool? }
+    struct Chip: Decodable { var label, text, color: String? }
+    struct Rule: Decodable { var value: Double?; var label: String? }
+    struct Chart: Decodable { var values: [Double?]?; var labels: [String]?; var kind: String?; var line: Rule?; var color: String? }
+    struct Meter: Decodable { var value: Int?; var max: Int? }
+    struct Stat: Decodable { var label, value, color: String? }
+    struct Row: Decodable {
+        var id, text, tag, color, detail: String?; var separator: Bool?
+        var value, unit: String?; var deltas: [Chip]?; var chart: Chart?; var stats: [Stat]?; var meter: Meter?
+    }
     struct Item: Decodable {
         var id: String?; var text: String?; var icon: String?; var color: String?; var tooltip: String?; var remove: Bool?; var menu: [Row]?
         var error: String?; var expect: Int?
@@ -247,7 +314,29 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
         if i.remove == true { return .removeItem(id) }
         guard let text = i.text else { return nil }
         let menu = i.menu.map { rows in
-            rows.map { PluginRow(id: $0.id, text: $0.text ?? "", tag: $0.tag, color: $0.color, detail: $0.detail, separator: $0.separator ?? false) }
+            rows.compactMap { r -> PluginRow? in
+                var row = PluginRow(id: r.id, text: r.text ?? "", tag: r.tag, color: r.color, detail: r.detail, separator: r.separator ?? false)
+                if let v = r.value {
+                    row.headline = RowHeadline(value: v, unit: r.unit,
+                                               deltas: (r.deltas ?? []).map { RowChip(label: $0.label ?? "", text: $0.text ?? "", color: $0.color) })
+                }
+                if let c = r.chart {
+                    let raw = c.values ?? []
+                    // a label goes with its value, so a dropped null takes its label along
+                    let paired = c.labels.flatMap { $0.count == raw.count ? $0 : nil }
+                    let kept = Array(raw.indices.filter { raw[$0] != nil }.suffix(chartPointLimit))
+                    guard kept.count >= 2 else { return nil }
+                    row.chart = RowChart(values: kept.map { raw[$0]! }, labels: paired.map { l in kept.map { l[$0] } },
+                                         kind: c.kind.flatMap(ChartKind.init(rawValue:)) ?? .line,
+                                         line: c.line?.value.map { RowRule(value: $0, label: c.line?.label) }, color: c.color)
+                }
+                if let s = r.stats { row.stats = s.map { RowStat(label: $0.label ?? "", value: $0.value ?? "", color: $0.color) } }
+                if let m = r.meter {
+                    let mx = Swift.min(12, Swift.max(1, m.max ?? 5))
+                    row.meter = RowMeter(value: Swift.min(mx, Swift.max(0, m.value ?? 0)), max: mx)
+                }
+                return row
+            }
         }
         return .item(PluginItem(id: id, text: text, icon: i.icon, color: i.color, tooltip: i.tooltip, menu: menu,
                                 error: i.error.flatMap { $0.isEmpty ? nil : $0 }, expect: i.expect.flatMap { $0 > 0 ? $0 : nil }))

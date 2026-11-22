@@ -135,3 +135,59 @@ import Testing
     let h3 = hold(good, previous: h2, now: t0.addingTimeInterval(130))
     #expect(h3.errorSince == nil && pluginFailure(h3, exit: nil, now: t0.addingTimeInterval(130)) == nil)
 }
+
+
+// MARK: - Popup blocks
+
+private func menu(_ rows: String) -> [PluginRow] {
+    guard case .item(let i) = pluginMessage(#"{"item":{"id":"x","text":"x","menu":["# + rows + #"]}}"#, plugin: "p", now: Date()) else { return [] }
+    return i.menu ?? []
+}
+
+@Test func blocksAreParsed() {
+    let rows = menu(#"""
+    {"value":"4.0613","color":"green","unit":"PLN per USD","deltas":[{"label":"1 d","text":"+0.0437","color":"green"}]},
+    {"chart":{"values":[3.9,4.0,4.06],"labels":["9 Oct","1 Nov","20 Nov"],"line":{"value":4.0,"label":"threshold"},"color":"sky"}},
+    {"stats":[{"label":"min","value":"3.8827"}]},
+    {"text":"trawy","meter":{"value":4,"max":5},"color":"peach","detail":"wysokie"}
+    """#)
+    #expect(rows.count == 4)
+    #expect(rows[0].headline == RowHeadline(value: "4.0613", unit: "PLN per USD", deltas: [RowChip(label: "1 d", text: "+0.0437", color: "green")]))
+    #expect(rows[0].color == "green")
+    #expect(rows[1].chart == RowChart(values: [3.9, 4.0, 4.06], labels: ["9 Oct", "1 Nov", "20 Nov"], kind: .line,
+                                      line: RowRule(value: 4.0, label: "threshold"), color: "sky"))
+    #expect(rows[2].stats == [RowStat(label: "min", value: "3.8827", color: nil)])
+    #expect(rows[3].meter == RowMeter(value: 4, max: 5))
+    #expect(rows[3].text == "trawy" && rows[3].detail == "wysokie" && rows[3].color == "peach")
+}
+
+@Test func aNullValueDropsOnlyThatPoint() {
+    #expect(menu(#"{"chart":{"values":[1,null,3]}}"#).first?.chart?.values == [1, 3])
+}
+
+@Test func aChartWithFewerThanTwoValuesIsLeftOut() {
+    let rows = menu(#"{"text":"a"},{"chart":{"values":[1]}},{"text":"b"}"#)
+    #expect(rows.map(\.text) == ["a", "b"])
+}
+
+@Test func wrongLabelCountDropsLabels() {
+    let c = menu(#"{"chart":{"values":[1,2,3],"labels":["a","b"]}}"#).first?.chart
+    #expect(c?.values == [1, 2, 3] && c?.labels == nil)
+}
+
+@Test func meterIsClamped() {
+    #expect(menu(#"{"text":"a","meter":{"value":9,"max":5}}"#).first?.meter == RowMeter(value: 5, max: 5))
+    #expect(menu(#"{"text":"a","meter":{"value":-1,"max":50}}"#).first?.meter == RowMeter(value: 0, max: 12))
+    #expect(menu(#"{"text":"a","meter":{"value":1,"max":0}}"#).first?.meter == RowMeter(value: 1, max: 1))
+}
+
+@Test func unknownChartKindFallsBackToLine() {
+    #expect(menu(#"{"chart":{"values":[1,2],"kind":"pie"}}"#).first?.chart?.kind == .line)
+    #expect(menu(#"{"chart":{"values":[1,2],"kind":"bars"}}"#).first?.chart?.kind == .bars)
+}
+
+@Test func aLongChartKeepsTheNewestPoints() {
+    let vs = (1...500).map(String.init).joined(separator: ",")
+    let c = menu(#"{"chart":{"values":["# + vs + #"]}}"#).first?.chart
+    #expect(c?.values.count == 400 && c?.values.last == 500)
+}
