@@ -16,6 +16,9 @@ private func number(_ v: Double, digits: ClosedRange<Int> = 0...4) -> String {
     v.formatted(.number.precision(.fractionLength(digits)).grouping(.never).locale(Locale(identifier: "en_US_POSIX")))
 }
 
+/// The point under the pointer, if it still exists: rows are kept by position, so a chart can get fewer points while hovered.
+func hoverPoint(_ h: Int?, count: Int) -> Int? { h.flatMap { $0 < count ? $0 : nil } }
+
 /// Digits for the axis, from how wide the range is, so every tick has the same number of them.
 /// `whole`: every value is a whole number (counts), so the ticks need no digits after the dot.
 func axisDigits(_ d: ClosedRange<Double>, whole: Bool = false) -> Int {
@@ -79,7 +82,7 @@ struct ChartBlock: View {
                         if let l = r.label { Text("\(l) \(number(r.value, digits: digits...digits))").font(.system(size: 10).monospaced()).foregroundStyle(theme[\.peach]) }
                     }
             }
-            if let h = hovered {
+            if let h = hoverPoint(hovered, count: n) {
                 RuleMark(x: .value("i", h)).foregroundStyle(theme[\.overlay]).lineStyle(StrokeStyle(lineWidth: 1))
                 PointMark(x: .value("i", h), y: .value("v", chart.values[h])).foregroundStyle(theme[\.text]).symbolSize(30)
             }
@@ -112,7 +115,7 @@ struct ChartBlock: View {
         }
         .frame(height: 140)
         .overlay(alignment: .topTrailing) {
-            if let h = hovered {
+            if let h = hoverPoint(hovered, count: n) {
                 Text([chart.labels?[h], number(chart.values[h])].compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 11).monospaced()).foregroundStyle(theme[\.text])
                     .padding(.horizontal, 7).padding(.vertical, 2)

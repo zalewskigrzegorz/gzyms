@@ -19,6 +19,13 @@ import Testing
     #expect(axisDigits(0...3.3, whole: true) == 0)  // counts per day: no "1.0"
 }
 
+/// The plugin sent fewer points while the pointer rested on the last one: no marker, no read past the end.
+@Test func aHoverPastTheNewDataIsDropped() {
+    #expect(hoverPoint(29, count: 29) == nil)
+    #expect(hoverPoint(28, count: 29) == 28)
+    #expect(hoverPoint(nil, count: 29) == nil)
+}
+
 @Test func barsStartAtZero() {
     #expect(chartDomain(RowChart(values: [1, 2], kind: .bars)).lowerBound == 0)
 }
