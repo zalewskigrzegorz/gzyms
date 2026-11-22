@@ -1,6 +1,6 @@
 {
-  "count": 103,
-  "updated": "2026-11-16",
+  "count": 104,
+  "updated": "2026-11-22",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -17,6 +17,7 @@
     "gzyms skill guide for coding agents",
     "gzyms plugin command (new, add, list, remove)",
     "Plugins in any language (pills, menus, notifications)",
+    "Plugin popup blocks: headline, chart, stats and level meter rows",
     "A plugin's notifications wait on its pill, not in the bell",
     "Log watcher plugin",
     "GitHub pull requests plugin",

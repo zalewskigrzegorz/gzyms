@@ -225,6 +225,23 @@ A pill with `"menu"` opens a list on click. A row with an `"id"` can be clicked,
 {"item":{"id":"prs","text":"3 open","menu":[{"id":"pr:12","tag":"review","color":"peach","text":"#12 fix login","detail":"2h"},{"separator":true},{"text":"updated just now"}]}}
 ```
 
+A row can also be a block that Gzyms draws for you. Mix blocks with plain rows and separators in any order. A block row keeps `"id"`, so it can be clicked like any row.
+
+- `"value"` makes a headline: a big value in the row's `"color"`, with `"unit"` next to it and `"deltas"` under it, each a chip with a `"label"`, a `"text"` and its own `"color"`.
+- `"chart"` draws a chart from `"values"`, a list of numbers. `"kind"` is `line` (the default, a line with a faded area and a dot on the last value) or `bars`. `"labels"` are optional, one per value, and the first, middle and last go under the chart. `"line"` is a dashed reference line with a `"value"` and a `"label"`, such as a threshold. `"color"` colours the line or the bars. Moving the pointer over the chart shows the value and the label of that point.
+- `"stats"` is a row of tiles, each with a `"label"`, a `"value"` and an optional `"color"`.
+- `"meter"` puts a level bar of `"max"` segments on a plain row, `"value"` of them lit in the row's colour, before its `"detail"`.
+
+```json
+{"item":{"id":"usd","text":"4.0613","menu":[
+  {"value":"4.0613","color":"green","unit":"PLN per USD","deltas":[{"label":"1 d","text":"+0.0437","color":"green"}]},
+  {"chart":{"values":[3.9022,3.9211,4.0613],"labels":["9 Oct","10 Oct","20 Nov"],"line":{"value":4.0,"label":"threshold"},"color":"sky"}},
+  {"stats":[{"label":"min","value":"3.9022"},{"label":"max","value":"4.0613"}]},
+  {"text":"grass","meter":{"value":4,"max":5},"color":"peach","detail":"high"}]}}
+```
+
+A chart needs at least two numbers, else the row is left out. A `null` in `"values"` drops that point and its label. Labels whose count differs from the values are not shown. Gzyms keeps the newest 400 points. A meter has 1 to 12 segments, and `"value"` is kept between 0 and `"max"`. Numbers on the chart use a dot, as in JSON.
+
 A notification, with the same fields as `gzyms notify`. Its `"level"` is one of `info`, `warning`, `error`, `critical`, `armageddon`. A notification with the same `"id"` replaces the earlier one from this plugin. Once its banner is gone it waits on the plugin's first pill: a count in the pill's corner and a list at the top of its popup. Only a plugin with no pill files them under the 🔔. `"sound"` is an event name (`message`, `success`, `fail`, `waiting`), a macOS sound name, or a path to an audio file (`.mp3`, `.m4a`, `.wav`, `.aiff`).
 
 ```json

@@ -266,7 +266,12 @@ let ghPRs = CatalogPlugin(
             else {item: ({id: "prs", text: ($parts | join(" ")), icon: "arrow.triangle.branch",
               color: (if $n.fix then "red" elif $n.comments or $u != [] then "sky" elif $n.merge then "green" else "overlay" end),
               tooltip: (if $cnt == [] then "\($prs | length) open pull requests" else ($cnt | map("\(.s) \(.n)") | join(", ")) end),
-              menu: ([$ev | to_entries[] | .key as $i | .value
+              menu: ((if $prs == [] then [] else
+                   [{value: "\($prs | length)", unit: (if ($prs | length) == 1 then "open pull request" else "open pull requests" end)}]
+                   + (if $cnt == [] then [] else [{stats: [$cnt[] | {label: .s, value: "\(.n)",
+                        color: {fix: "red", merge: "green", comments: "sky", draft: "mauve"}[.s]}]}] end)
+                   + [{separator: true}] end)
+                + [$ev | to_entries[] | .key as $i | .value
                    | {id: "ev\($i)", tag: kind[0], color: kind[1], text: "\(short($multi)) \(what)  \(.title)", detail: .at}]
                 + (if $ev != [] then [{separator: true}] else [] end)
                 + (if $prs == [] then [{text: "No open pull requests."}] else
@@ -523,10 +528,11 @@ let starWatcher = CatalogPlugin(
     while IFS= read -r r; do
       r="${r#"${r%%[![:space:]]*}"}"; r="${r%"${r##*[![:space:]]}"}"
       [ -n "$r" ] || continue
-      # Names go in as GraphQL variables, never into the query text. The newest five stargazers name a burst of new stars.
+      # Names go in as GraphQL variables, never into the query text. The newest stargazers name a burst of new stars and fill the bars.
+      # shortcut: the newest 100 stars, so a repo with more than 100 in a month undercounts; page when one gets there
       if [[ "$r" =~ ^([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$ ]]; then
         decl+=" \$o${i}:String! \$n${i}:String!"
-        sel+=" r${i}:repository(owner:\$o${i},name:\$n${i}){stargazerCount stargazers(first:5,orderBy:{field:STARRED_AT,direction:DESC}){nodes{login}}}"
+        sel+=" r${i}:repository(owner:\$o${i},name:\$n${i}){stargazerCount stargazers(first:100,orderBy:{field:STARRED_AT,direction:DESC}){edges{starredAt node{login}}}}"
         vars+=(-f "o$i=${BASH_REMATCH[1]}" -f "n$i=${BASH_REMATCH[2]}")
         rp=$("$JQ" -c --argjson i $i --arg repo "$r" '. + [{i: $i, repo: $repo}]' <<< "$rp")
         i=$((i + 1))
@@ -557,19 +563,29 @@ let starWatcher = CatalogPlugin(
           + (if $st.err then {} else {menu: [{text: "Asking GitHub…"}]} end) + stat($st))}
         else
           ([$c[]] | add // 0) as $t
-          | {item: ({id: "stars", text: "\($t)", icon: "star.fill", color: "gold", tooltip: "\($t) GitHub stars",
-              menu: ([$repos[] | .repo as $r | if $c[$r] != null then {id: $r, text: $r, detail: ":star.fill@gold: \($c[$r])"} else {text: "Not found: \($r)"} end]
+          | (now | floor) as $now
+          | [($st.at // [])[] | (($now - .) / 86400 | floor) | select(. >= 0 and . < 30)] as $ago
+          | def delta($d): ([$ago[] | select(. < $d)] | length) as $k | {label: "\($d) d", text: (if $k > 0 then "+\($k)" else "0" end),
+              color: (if $k > 0 then "green" else "overlay" end)};
+          {item: ({id: "stars", text: "\($t)", icon: "star.fill", color: "gold", tooltip: "\($t) GitHub stars",
+              menu: ([{value: "\($t)", color: "gold", unit: (if ($c | length) == 1 then ($c | keys[0]) else "\($c | length) repos" end),
+                       deltas: [delta(7), delta(30)]},
+                      {chart: {kind: "bars", color: "gold", values: [range(29; -1; -1) as $d | [$ago[] | select(. == $d)] | length],
+                               labels: [range(29; -1; -1) as $d | $now - $d * 86400 | strflocaltime("%e %b") | ltrimstr(" ")]}},
+                      {separator: true}]
+                + [$repos[] | .repo as $r | if $c[$r] != null then {id: $r, text: $r, detail: ":star.fill@gold: \($c[$r])"} else {text: "Not found: \($r)"} end]
                 + [$bad[] | {text: "Skipped, not owner/name: \(.)"}])} + stat($st))}
         end;
     if $mode == "poll" then
       . as $r
       | [$repos[] | .repo as $repo | ($r.data["r\(.i)"] // null) as $o | select($o != null)
-         | {repo: $repo, n: $o.stargazerCount, who: [$o.stargazers.nodes[]? | .login]}] as $got
+         | {repo: $repo, n: $o.stargazerCount, who: [$o.stargazers.edges[]? | .node.login],
+            at: [$o.stargazers.edges[]? | .starredAt | fromdateiso8601? ]}] as $got
       | ($st.base // {}) as $b
       | ($got | map({(.repo): .n}) | add // {}) as $counts
       # a repo with no count in the cache is the baseline: a first start tells nothing
       | [$got[] | select($b[.repo] != null and .n > $b[.repo]) | . + {d: (.n - $b[.repo])}] as $new
-      | ($st + {base: ($b + $counts), counts: $counts, err: null}) as $s
+      | ($st + {base: ($b + $counts), counts: $counts, at: [$got[].at[] | select(now - . < 31 * 86400)], err: null}) as $s
       | $s, ($new[] | notify), render($s)
     elif $mode == "error" then ($st + {err: $err}) as $s | $s, render($s)
     else $st, render($st) end

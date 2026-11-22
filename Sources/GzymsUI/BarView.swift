@@ -1036,15 +1036,11 @@ private struct PluginRowView: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(spacing: 10) {
-            if let tag = row.tag {
-                pluginText(tag, theme).font(.system(size: 11, weight: .semibold).monospaced()).foregroundStyle(theme.tint(row.color))
-                    .frame(width: 82, alignment: .leading)
-            }
-            pluginText(row.text, theme).lineLimit(1).truncationMode(.tail)
-                .foregroundStyle(row.id == nil ? theme[\.overlay] : theme[\.text])
-            Spacer(minLength: 8)
-            if let d = row.detail { pluginText(d, theme).foregroundStyle(theme[\.overlay]).lineLimit(1).layoutPriority(1) }
+        Group {
+            if let h = row.headline { HeadlineBlock(row: row, headline: h) }
+            else if let c = row.chart { ChartBlock(chart: c) }
+            else if let s = row.stats { StatsBlock(stats: s) }
+            else { line }
         }
         .opacity(row.dim ? 0.5 : 1)
         .font(.system(size: 12))
@@ -1054,6 +1050,24 @@ private struct PluginRowView: View {
         .onHover { hover = $0 }
         .overlay {
             if let id = row.id { Clicks(left: { send(.click, id) }, right: { send(.rightClick, id) }) }
+        }
+    }
+
+    private var line: some View {
+        HStack(spacing: 10) {
+            if let tag = row.tag {
+                pluginText(tag, theme).font(.system(size: 11, weight: .semibold).monospaced()).foregroundStyle(theme.tint(row.color))
+                    .frame(width: 82, alignment: .leading)
+            }
+            // A meter row reads as content, not a label, even without an id.
+            pluginText(row.text, theme).lineLimit(1).truncationMode(.tail)
+                .foregroundStyle(row.id == nil && row.meter == nil ? theme[\.overlay] : theme[\.text])
+            Spacer(minLength: 8)
+            if let m = row.meter {
+                // a fixed column for the word, so the meters line up
+                MeterView(meter: m, color: row.color)
+                pluginText(row.detail ?? "", theme).foregroundStyle(theme[\.overlay]).lineLimit(1).frame(minWidth: 100, alignment: .leading)
+            } else if let d = row.detail { pluginText(d, theme).foregroundStyle(theme[\.overlay]).lineLimit(1).layoutPriority(1) }
         }
     }
 }
