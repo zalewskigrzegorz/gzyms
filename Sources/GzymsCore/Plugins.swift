@@ -188,10 +188,17 @@ public struct PluginRow: Equatable, Sendable {
     public var chart: RowChart?
     public var stats: [RowStat]?
     public var meter: RowMeter?
+    /// The repo and branch the row is about (`"branch"`): Gzyms puts the agents working on it under the row.
+    public var branch: RepoBranch?
+    /// Set by Gzyms, not in the protocol: the agents on `branch`, the line under an agent's row, and what `a` does.
+    public var agents: [RowAgent] = []
+    public var gitLine: String?
+    public var alt: RowAlt?
     public init(id: String? = nil, text: String = "", tag: String? = nil, color: String? = nil, detail: String? = nil, separator: Bool = false,
-                dim: Bool = false, headline: RowHeadline? = nil, chart: RowChart? = nil, stats: [RowStat]? = nil, meter: RowMeter? = nil) {
+                dim: Bool = false, headline: RowHeadline? = nil, chart: RowChart? = nil, stats: [RowStat]? = nil, meter: RowMeter? = nil,
+                branch: RepoBranch? = nil) {
         self.id = id; self.text = text; self.tag = tag; self.color = color; self.detail = detail; self.separator = separator; self.dim = dim
-        self.headline = headline; self.chart = chart; self.stats = stats; self.meter = meter
+        self.headline = headline; self.chart = chart; self.stats = stats; self.meter = meter; self.branch = branch
     }
 }
 
@@ -314,6 +321,7 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
     struct Row: Decodable {
         var id, text, tag, color, detail: String?; var separator: Bool?
         var value: Loose?; var unit: String?; var deltas: [Chip]?; var chart: Chart?; var stats: [Stat]?; var meter: Meter?
+        var branch: String?
     }
     struct Item: Decodable {
         var id: String?; var text: String?; var icon: String?; var color: String?; var tooltip: String?; var remove: Bool?; var menu: [Lossy<Row>]?
@@ -321,7 +329,7 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
     }
     struct Notify: Decodable {
         var id: String?, title: String?, subtitle: String?, body: String?, level: String?, sound: String?, link: String?
-        var alt_link: String?, alt_label: String?, row: String?
+        var alt_link: String?, alt_label: String?, row: String?, branch: String?
     }
     struct Raw: Decodable { var item: Item?; var notify: Notify?; var dismiss: String?; var log: String? }
     guard let raw = try? JSONDecoder().decode(Raw.self, from: Data(line.utf8)) else { return nil }
@@ -330,7 +338,8 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
         guard let text = i.text else { return nil }
         let menu = i.menu.map { rows in
             rows.compactMap(\.value).compactMap { r -> PluginRow? in
-                var row = PluginRow(id: r.id, text: r.text ?? "", tag: r.tag, color: r.color, detail: r.detail, separator: r.separator ?? false)
+                var row = PluginRow(id: r.id, text: r.text ?? "", tag: r.tag, color: r.color, detail: r.detail, separator: r.separator ?? false,
+                                    branch: r.branch.flatMap(RepoBranch.init(ref:)))
                 if let v = r.value {
                     row.headline = RowHeadline(value: v.s, unit: r.unit,
                                                deltas: (r.deltas ?? []).map { RowChip(label: $0.label ?? "", text: $0.text?.s ?? "", color: $0.color) })
@@ -365,6 +374,7 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
                                      link: n.link, altLink: n.alt_link, sound: n.sound, at: now)
         note.altLabel = n.alt_label
         note.row = n.row
+        note.branch = n.branch.flatMap(RepoBranch.init(ref:))
         return .notify(note)
     }
     if let d = raw.dismiss, !d.isEmpty { return .dismiss("plugin:\(plugin):" + d) }

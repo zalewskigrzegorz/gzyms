@@ -39,10 +39,12 @@ public struct Agent: Equatable, Sendable {
     public var since: Date?
     /// Where a click goes: the tuios session, or the app a Claude session runs in (nil = unknown).
     public var target: String?
+    /// The repo and branch its folder is on; nil = not a GitHub repo, no branch, or not read yet.
+    public var branch: RepoBranch?
     public init(source: AgentSource, id: String, name: String, place: String, state: AgentState, message: String = "",
-                since: Date? = nil, target: String? = nil) {
+                since: Date? = nil, target: String? = nil, branch: RepoBranch? = nil) {
         self.source = source; self.id = id; self.name = name; self.place = place; self.state = state; self.message = message
-        self.since = since; self.target = target
+        self.since = since; self.target = target; self.branch = branch
     }
     /// Its row's id and its notification's: unique across sources.
     public var key: String { "\(source.rawValue):\(id)" }
