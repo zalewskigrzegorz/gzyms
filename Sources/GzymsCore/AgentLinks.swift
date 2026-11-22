@@ -100,6 +100,8 @@ public func linkAgents(_ pills: [PluginPill], agents: [Agent]) -> [PluginPill] {
             if pill.plugin == agentsPill {
                 guard let id = r.id, let br = byKey[id]?.branch else { return r }
                 let t = target[br]
+                // main or master with no PR says nothing a glance needs: no line
+                if t == nil, ["main", "master"].contains(br.branch) { return r }
                 r.gitLine = br.branch + (t?.row.detail.map { "  " + $0 } ?? "")
                 r.alt = t.map { .row(plugin: $0.plugin, id: $0.row.id!) }
             } else if let br = r.branch, let on = onBranch[br], let first = on.first {

@@ -1072,7 +1072,7 @@ private struct PluginRowView: View {
     }
 
     private var line: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 1) {
             main
                 .overlay { if hasSub, let id = row.id { Clicks(left: { send(.click, id) }, right: { send(.rightClick, id) }) } }
             if hasSub {
@@ -1096,10 +1096,13 @@ private struct PluginRowView: View {
                     Text(a.name).lineLimit(1)
                 }
             }
-            if let g = row.gitLine { pluginText(g, theme).lineLimit(1) }
+            if let g = row.gitLine {
+                Image(systemName: "arrow.triangle.branch").font(.system(size: 9))
+                pluginText(g, theme).lineLimit(1).truncationMode(.middle)
+            }
             Spacer(minLength: 0)
         }
-        .font(.system(size: 11))
+        .font(.system(size: 10.5))
         .foregroundStyle(theme[\.overlay])
     }
 
@@ -1117,6 +1120,9 @@ private struct PluginRowView: View {
                 // a fixed column for the word, so the meters line up
                 MeterView(meter: m, color: row.color)
                 pluginText(row.detail ?? "", theme).foregroundStyle(theme[\.overlay]).lineLimit(1).frame(minWidth: 100, alignment: .leading)
+            } else if let d = row.detail, row.gitLine != nil {
+                // an agent's place (a worktree session can be long): the name comes first, the place gets cut in the middle
+                pluginText(d, theme).foregroundStyle(theme[\.overlay]).lineLimit(1).truncationMode(.middle).frame(maxWidth: 150, alignment: .trailing)
             } else if let d = row.detail { pluginText(d, theme).foregroundStyle(theme[\.overlay]).lineLimit(1).layoutPriority(1) }
         }
     }

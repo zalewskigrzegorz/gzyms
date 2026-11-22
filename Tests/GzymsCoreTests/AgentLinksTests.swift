@@ -103,6 +103,13 @@ private func agentsPillOf(_ agents: [Agent]) -> PluginPill { pill(agentsPill, ag
     #expect(row.gitLine == "b" && row.alt == nil)
 }
 
+@Test func agentOnTheDefaultBranchWithoutPRGetsNothing() {
+    for name in ["main", "master"] {
+        let a = agent("a", .done, RepoBranch(ref: "o/r@" + name))
+        #expect(linkAgents([agentsPillOf([a])], agents: [a])[0].item.menu![0].gitLine == nil, "\(name)")
+    }
+}
+
 @Test func agentWithoutBranchGetsNothing() {
     let a = agent("a", .working, nil)
     let pills = [pill("gh-prs", [PluginRow(id: "pr:o/r#1", text: "r#1", branch: b)]), agentsPillOf([a])]

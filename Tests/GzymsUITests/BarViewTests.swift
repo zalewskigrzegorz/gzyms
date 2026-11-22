@@ -255,7 +255,9 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         withGit(PluginRow(id: "tuios:2", text: "coupon-split", tag: "working", color: "sky", detail: "Wintermute"),
                 "fix/coupon  :checkmark.circle@green: passed  :exclamationmark.circle@peach: changes requested", pr: true),
         withGit(PluginRow(id: "tuios:3", text: "Lepsze widgety", tag: "working", color: "sky", detail: "gzyms"), "feat/plugin-blocks", pr: false),
-        withGit(PluginRow(id: "tuios:4", text: "dotfiles cleanup", tag: "done", color: "green", detail: "dotfiles"), "master", pr: false),
+        withGit(PluginRow(id: "tuios:6", text: "Review: organization name in the picker", tag: "done", color: "green",
+                          detail: "redocly-claude-zumigo-custom-branding-db3721"), "claude/zumigo-custom-branding-db3721", pr: false),
+        PluginRow(id: "tuios:4", text: "dotfiles cleanup", tag: "done", color: "green", detail: "dotfiles"),
         PluginRow(id: "tuios:5", text: "Bon Empik", tag: "idle", color: "overlay", detail: "bazgroly", dim: true),
     ]) { _, _ in }, "agents-popup-branches")
     preview(pill("gh-builds", ":xmark.circle@red: 1 :arrow.triangle.2.circlepath@gold: 2 :checkmark.circle@green: 5", "hammer", "red"), "gh-builds-pill")
