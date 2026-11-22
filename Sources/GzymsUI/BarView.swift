@@ -145,6 +145,7 @@ public struct BarView: View {
     /// Files are being dragged over the bar: the shelf shows, even empty, to say it takes them.
     @State private var dropping = false
     var onPluginEvent: (String, PluginEvent, String) -> Void = { _, _, _ in }
+    var onRowAlt: (RowAlt) -> Void = { _ in }
     @Environment(\.theme) private var theme
     @Environment(\.hiddenWidgets) private var hidden
     @Environment(\.barLayout) private var layout
@@ -171,7 +172,7 @@ public struct BarView: View {
                     ForEach(pills, id: \.key) { p in
                         // The plugin's notifications sit on its first pill, not in the bell.
                         let own = p.key == pills.first?.key ? notes : []
-                        PluginPillView(pill: p, small: small, notes: own, onOpen: onOpenNote, onRemove: onRemoveNote) { e, id in onPluginEvent(p.plugin, e, id) }
+                        PluginPillView(pill: p, small: small, notes: own, onOpen: onOpenNote, onRemove: onRemoveNote, onAlt: onRowAlt) { e, id in onPluginEvent(p.plugin, e, id) }
                             .hintTarget("plugin:\(p.plugin):\(p.item.id)", popup: p.item.menu != nil || !own.isEmpty) { onPluginEvent(p.plugin, .click, p.item.id) }
                     }
                 }
@@ -220,6 +221,7 @@ public struct BarView: View {
                 meetingPill: String? = nil, onMeetingPill: @escaping () -> Void = {}, logo: NSImage? = nil,
                 media: [MediaItem] = [], onMusic: @escaping (MusicAction) -> Void = { _ in },
                 pluginPills: [PluginPill] = [], onPluginEvent: @escaping (String, PluginEvent, String) -> Void = { _, _, _ in },
+                onRowAlt: @escaping (RowAlt) -> Void = { _ in },
                 caffeine: CaffeineState? = nil, onCaffeine: @escaping (Int??) -> Void = { _ in },
                 dnd: Date? = nil, dndByFocus: Bool = false, onDND: @escaping (Date?) -> Void = { _ in },
                 shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }, cameras: [String] = [],
@@ -227,7 +229,7 @@ public struct BarView: View {
         self.shelf = shelf; self.onShelf = onShelf; self.cameras = cameras; self.cameraApps = cameraApps; self.micApps = micApps
         self.dnd = dnd; self.dndByFocus = dndByFocus; self.onDND = onDND
         self.logo = logo; self.media = media; self.onMusic = onMusic
-        self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent
+        self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent; self.onRowAlt = onRowAlt
         self.caffeine = caffeine; self.onCaffeine = onCaffeine
         self.workspaces = workspaces; self.small = small; self.notch = notch; self.stale = stale
         self.now = now; self.cpu = cpu; self.cpuSeries = cpuSeries; self.cpuChart = cpuChart; self.topProcesses = topProcesses
@@ -883,6 +885,7 @@ public struct PluginPillView: View {
     let notes: [GzymsNotification]
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
+    let onAlt: (RowAlt) -> Void
     let send: (PluginEvent, String) -> Void
     @Environment(\.popups) private var popups
     @Environment(\.theme) private var theme
@@ -891,8 +894,9 @@ public struct PluginPillView: View {
     @Environment(\.timeZone) private var timeZone
     @Environment(\.agentBorder) private var agentBorder
     public init(pill: PluginPill, small: Bool, notes: [GzymsNotification] = [], onOpen: @escaping (String) -> Void = { _ in },
-                onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
-        self.pill = pill; self.small = small; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
+                onRemove: @escaping (String) -> Void = { _ in }, onAlt: @escaping (RowAlt) -> Void = { _ in },
+                send: @escaping (PluginEvent, String) -> Void) {
+        self.pill = pill; self.small = small; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.onAlt = onAlt; self.send = send
     }
     var popupID: String { "plugin:\(pill.plugin):\(pill.item.id)" }
 
@@ -937,7 +941,8 @@ public struct PluginPillView: View {
         }
         .onDisappear { popups.clears[popupID] = nil }
         .popover(isPresented: popups.binding(popupID), arrowEdge: .bottom) {
-            PluginMenuView(rows: i.menu ?? [], notes: notes, failure: failure, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove) { e, id in
+            PluginMenuView(rows: i.menu ?? [], notes: notes, failure: failure, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove,
+                           onAlt: { popups.open = nil; onAlt($0) }) { e, id in
                 popups.open = nil; send(e, id)
             }.environment(\.theme, theme).environment(\.popups, popups)
         }

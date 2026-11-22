@@ -63,6 +63,17 @@ public struct RowAgent: Equatable, Sendable {
 /// Needs you first: waits, then working, done, idle.
 private let needsYou: [AgentState] = [.waits, .working, .done, .idle]
 
+/// A note about a branch with an agent on it: its second action opens that agent (the one that needs you most).
+/// No branch or no agent there: the note as the plugin sent it.
+public func withAgent(_ n: GzymsNotification, agents: [Agent]) -> GzymsNotification {
+    guard let br = n.branch,
+          let a = agents.filter({ $0.branch == br }).min(by: { needsYou.firstIndex(of: $0.state)! < needsYou.firstIndex(of: $1.state)! })
+    else { return n }
+    var out = n
+    out.agentKey = a.key; out.altLabel = "Open agent"; out.altLink = nil
+    return out
+}
+
 /// The state of the agent that needs you most among a pill's rows; nil = no agent on any of them.
 public func pillAgent(_ item: PluginItem) -> AgentState? {
     (item.menu ?? []).flatMap(\.agents).map(\.state).min { needsYou.firstIndex(of: $0)! < needsYou.firstIndex(of: $1)! }

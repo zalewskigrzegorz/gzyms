@@ -23,6 +23,8 @@ final class AgentsHost {
     /// nil = no source on, no pill.
     var onPill: (PluginPill?) -> Void = { _ in }
     var onNotify: (GzymsNotification) -> Void = { _ in }
+    /// A folder's branch was read: plugin rows may link to other agents now.
+    var onBranches: () -> Void = {}
     var onDismiss: (String) -> Void = { _ in }
     var onStatus: ([AgentSource: AgentSourceStatus]) -> Void = { _ in }
 
@@ -245,6 +247,7 @@ final class AgentsHost {
                     for (c, b) in got { self.branchCache[c] = (Date(), b); self.resolving.remove(c) }
                     for (s, l) in self.looks { self.looks[s]?.agents = self.withBranches(l.agents) }
                     self.publish()
+                    self.onBranches()
                 }
             }
         }

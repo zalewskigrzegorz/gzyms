@@ -43,6 +43,23 @@ private func agentsPillOf(_ agents: [Agent]) -> PluginPill { pill(agentsPill, ag
     #expect(pillAgent(PluginItem(id: "p", text: "", menu: [PluginRow(id: "x", text: "c")])) == nil)
 }
 
+@Test func noteGetsTheAgentOnItsBranch() {
+    var n = GzymsNotification(id: "plugin:gh-prs:ci", app: nil, level: .warning, title: "r#1 CI failed", subtitle: nil, body: nil,
+                              link: "https://x", altLink: nil, sound: nil, at: Date())
+    n.branch = b
+    let out = withAgent(n, agents: [agent("w", .working, b), agent("q", .waits, b)])
+    #expect(out.agentKey == agent("q", .waits, b).key && out.altLabel == "Open agent" && out.altLink == nil && out.link == "https://x")
+}
+
+@Test func noteWithoutAgentKeepsPluginAlt() {
+    var n = GzymsNotification(id: "plugin:gh-prs:ci", app: nil, level: .info, title: "t", subtitle: nil, body: nil,
+                              link: nil, altLink: "https://alt", sound: nil, at: Date())
+    n.altLabel = "Logs"; n.branch = b
+    #expect(withAgent(n, agents: [agent("x", .working, RepoBranch(ref: "o/r@other"))]) == n)
+    n.branch = nil
+    #expect(withAgent(n, agents: [agent("q", .waits, b)]) == n)
+}
+
 @Test func refParses() {
     #expect(RepoBranch(ref: "O/R@feat/x") == RepoBranch(repo: "o/r", branch: "feat/x"))
     #expect(RepoBranch(ref: "O/R@feat/x")?.ref == "o/r@feat/x")

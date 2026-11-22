@@ -676,7 +676,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func wasHandled(_ id: String) -> Bool { handled[id].map { Date().timeIntervalSince($0) < 120 } ?? false }
 
     /// From `gzyms notify` or from another app through Notification Center.
-    private func post(_ n: GzymsNotification) {
+    private func post(_ incoming: GzymsNotification) {
+        let n = withAgent(incoming, agents: agents.current)
         if let app = n.app, !n.compact { remember(app) }
         // Off in Settings → Apps: no armageddon sound either (the store drops it too).
         guard !notes.appRules.rule(for: n).skip else { return }
@@ -952,6 +953,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleSettings(.debug)
         } else if b.id == awayNoticeID {
             openMissedList()
+        } else if alt, let key = b.agentKey {
+            agents.focus(key)
         } else if let target = alt ? b.altLink : b.link {
             // Any process in the session can post, sandboxed ones too: a file: link would launch whatever it points at.
             let opened = URL(string: target).map { $0.scheme != nil && !$0.isFileURL && NSWorkspace.shared.open($0) } ?? false
@@ -1927,6 +1930,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pluginsStarted = true
         pluginHost.onItems = { [weak self] pills in self?.hostPills = pills; self?.pillsChanged() }
         agents.onPill = { [weak self] pill in self?.agentPill = pill; self?.pillsChanged() }
+        agents.onBranches = { [weak self] in self?.pillsChanged() }  // a folder's branch was read: the links may change
         pluginHost.onStatus = { [weak self] s in self?.hostPlugins = s; self?.pillsChanged() }
         pluginHost.onNotify = { [weak self] n in self?.post(n) }
         agents.onNotify = { [weak self] n in self?.post(n) }
@@ -1942,6 +1946,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard plugin == agentsPill else { self?.pluginHost.send(plugin: plugin, e, id: id); return }
             if e == .click || e == .rightClick, id != agentsPill { self?.agents.focus(id) }
         }
+        model.onRowAlt = { [weak self] alt in
+            switch alt {
+            case .agent(let key): self?.agents.focus(key)
+            case .row(let plugin, let id): self?.pluginHost.send(plugin: plugin, .click, id: id)
+            }
+        }
         pluginHost.start(disabled: disabled, options: options)
         // Plugins get EOF and a SIGTERM when Gzyms quits, so none outlives it. tuios subscribe neither.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
@@ -1950,14 +1960,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func pillsChanged() {
-        let pills = hostPills + (agentPill.map { [$0] } ?? [])
+        let raw = hostPills + (agentPill.map { [$0] } ?? [])
+        let pills = linkAgents(raw, agents: agents.current)
         // Agents sits in Settings' plugin list too, for its slot in the layout and its rule in Apps.
         let statuses = hostPlugins + (agentPill == nil ? [] : [PluginStatus(folder: agentsPill, name: "Agents",
             description: "Your coding agents. Tells you when one waits for you or ends a long run.", enabled: true, running: true, icon: "sparkles")])
         if model.plugins != statuses { model.plugins = statuses }
         guard model.pluginPills != pills else { return }
         model.pluginPills = pills
-        let gone = goneRowNotes(notes.inboxes, pills: pills)
+        let gone = goneRowNotes(notes.inboxes, pills: raw)
         guard !gone.isEmpty else { return }
         for id in gone { notes.remove(id, now: ProcessInfo.processInfo.systemUptime) }
         log("plugins: \(gone.count) notifications left with their rows")
