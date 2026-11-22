@@ -30,6 +30,22 @@ public func remoteSlug(_ url: String) -> String? {
     return nil
 }
 
+/// The branch a folder is on, from git's answers: the origin URL and `branch --show-current` (empty when detached).
+public func gitBranch(remote: String, head: String) -> RepoBranch? {
+    let h = head.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !h.isEmpty, let slug = remoteSlug(remote) else { return nil }
+    return RepoBranch(repo: slug, branch: h)
+}
+
+/// Asks git in `cwd`. The runner owns the timeout; a non-zero status from either call is no branch.
+public func resolveBranch(cwd: String, git: String = "/usr/bin/git", run: CommandRunner) -> RepoBranch? {
+    let remote = run(git, ["-C", cwd, "remote", "get-url", "origin"])
+    guard remote.status == 0 else { return nil }
+    let head = run(git, ["-C", cwd, "branch", "--show-current"])
+    guard head.status == 0 else { return nil }
+    return gitBranch(remote: remote.out, head: head.out)
+}
+
 /// What `a` does on a row Gzyms linked: open an agent, or click a row of another plugin (the PR an agent works on).
 public enum RowAlt: Equatable, Sendable {
     case agent(String)

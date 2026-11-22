@@ -9,6 +9,32 @@ private func agent(_ id: String, _ state: AgentState, _ branch: RepoBranch?, nam
 private func pill(_ plugin: String, _ rows: [PluginRow]) -> PluginPill { PluginPill(plugin: plugin, item: PluginItem(id: plugin, text: "", menu: rows)) }
 private func agentsPillOf(_ agents: [Agent]) -> PluginPill { pill(agentsPill, agents.map { PluginRow(id: $0.key, text: $0.name) }) }
 
+@Test func gitBranchNeedsBoth() {
+    #expect(gitBranch(remote: "git@github.com:O/R.git\n", head: "feat/x\n") == RepoBranch(repo: "o/r", branch: "feat/x"))
+    #expect(gitBranch(remote: "git@github.com:o/r.git", head: "\n") == nil)  // detached HEAD
+    #expect(gitBranch(remote: "https://gitlab.com/o/r", head: "main") == nil)
+}
+
+@Test func resolveBranchAsksGitInTheFolder() {
+    var asked: [[String]] = []
+    let run: CommandRunner = { _, args in
+        asked.append(args)
+        return args.contains("remote") ? CommandOutput(0, out: "https://github.com/o/r.git\n") : CommandOutput(0, out: "b\n")
+    }
+    #expect(resolveBranch(cwd: "/w", run: run) == b)
+    #expect(asked.allSatisfy { $0.starts(with: ["-C", "/w"]) })
+    // git failed or timed out (the runner gives a non-zero status): no branch
+    #expect(resolveBranch(cwd: "/w", run: { _, _ in CommandOutput(-1, err: "killed") }) == nil)
+}
+
+@Test func agentsKeepTheirFolder() throws {
+    let json = #"{"agents":[{"window_id":"w1","session":"s","state":"working","name":"n","cwd":"/code/r"}]}"#
+    #expect(try tuiosAgents(stdout: Data(json.utf8)).get().first?.cwd == "/code/r")
+    let s = ClaudeSession(id: "c", state: .working, since: Date(), pid: 0, transcript: "", cwd: "/code/q", name: "q", message: "",
+                          tuiosPane: "", term: "", entry: "")
+    #expect(claudeAgents([s], tuiosOn: false, alive: { _ in true }, modified: { _ in nil }).agents.first?.cwd == "/code/q")
+}
+
 @Test func refParses() {
     #expect(RepoBranch(ref: "O/R@feat/x") == RepoBranch(repo: "o/r", branch: "feat/x"))
     #expect(RepoBranch(ref: "O/R@feat/x")?.ref == "o/r@feat/x")

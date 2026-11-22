@@ -39,12 +39,14 @@ public struct Agent: Equatable, Sendable {
     public var since: Date?
     /// Where a click goes: the tuios session, or the app a Claude session runs in (nil = unknown).
     public var target: String?
+    /// The folder it works in; empty = unknown.
+    public var cwd: String
     /// The repo and branch its folder is on; nil = not a GitHub repo, no branch, or not read yet.
     public var branch: RepoBranch?
     public init(source: AgentSource, id: String, name: String, place: String, state: AgentState, message: String = "",
-                since: Date? = nil, target: String? = nil, branch: RepoBranch? = nil) {
+                since: Date? = nil, target: String? = nil, cwd: String = "", branch: RepoBranch? = nil) {
         self.source = source; self.id = id; self.name = name; self.place = place; self.state = state; self.message = message
-        self.since = since; self.target = target; self.branch = branch
+        self.since = since; self.target = target; self.cwd = cwd; self.branch = branch
     }
     /// Its row's id and its notification's: unique across sources.
     public var key: String { "\(source.rawValue):\(id)" }
@@ -66,7 +68,7 @@ public func tuiosBinary(path: String?, exists: (String) -> Bool) -> String? {
 public func tuiosAgents(stdout: Data, stderr: Data = Data()) -> Result<[Agent], AgentsError> {
     struct Meta: Decodable { var prompt: String? }
     struct Row: Decodable {
-        var window_id: String?, session: String?, state: String?, needs_you: Bool?, name: String?, message: String?
+        var window_id: String?, session: String?, state: String?, needs_you: Bool?, name: String?, message: String?, cwd: String?
         var meta: Meta?
     }
     struct Raw: Decodable { var agents: [Row]?; var error: String? }
@@ -78,7 +80,7 @@ public func tuiosAgents(stdout: Data, stderr: Data = Data()) -> Result<[Agent], 
             guard let id = r.window_id, !id.isEmpty else { return nil }
             let state: AgentState = r.needs_you == true ? .waits : r.state == "working" ? .working : r.state == "done" ? .done : .idle
             let message = (r.message ?? "").isEmpty ? r.meta?.prompt ?? "" : r.message ?? ""
-            return Agent(source: .tuios, id: id, name: r.name ?? id, place: r.session ?? "", state: state, message: message, target: r.session)
+            return Agent(source: .tuios, id: id, name: r.name ?? id, place: r.session ?? "", state: state, message: message, target: r.session, cwd: r.cwd ?? "")
         })
     }
     let said = String(decoding: stderr.isEmpty ? stdout : stderr, as: UTF8.self).split(separator: "\n").first.map(String.init) ?? ""
@@ -147,7 +149,7 @@ public func claudeAgents(_ sessions: [ClaudeSession], tuiosOn: Bool, alive: (Int
         // Claude Desktop works in a scratch folder with a made-up name: where it runs says more.
         let place = s.entry.localizedCaseInsensitiveContains("desktop") ? "Claude Desktop" : (s.cwd as NSString).lastPathComponent
         agents.append(Agent(source: .claude, id: s.id, name: s.name, place: place, state: state,
-                            message: s.message, since: s.since, target: claudeApp(term: s.term, entry: s.entry)))
+                            message: s.message, since: s.since, target: claudeApp(term: s.term, entry: s.entry), cwd: s.cwd))
     }
     return (agents, dead)
 }
