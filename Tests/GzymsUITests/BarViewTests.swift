@@ -256,6 +256,26 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         PluginRow(id: "zalewskigrzegorz/tuios", text: "zalewskigrzegorz/tuios", detail: ":star.fill@gold: 3"),
         PluginRow(text: "Not found: zalewskigrzegorz/gone"),
     ]) { _, _ in }, "star-watcher-popup")
+    // Popup blocks: a headline with changes, a chart with a threshold and stat tiles (pln-usd), meters per level (pollen).
+    let usd: [Double] = [3.9022, 3.9211, 3.9177, 3.9042, 3.8952, 3.8827, 3.8974, 3.8959, 3.8889, 3.8886, 3.9247, 3.9293, 3.9542, 3.9624, 3.9473, 3.9251, 3.9389, 3.9526, 3.9097, 3.9101, 3.9321, 3.9199, 3.9099, 3.9676, 3.9852, 4.0007, 4.0022, 4.017, 4.0176, 4.0613]
+    let days = ["9 Oct", "12 Oct", "13 Oct", "14 Oct", "15 Oct", "16 Oct", "19 Oct", "20 Oct", "21 Oct", "22 Oct", "23 Oct", "26 Oct", "27 Oct", "28 Oct", "29 Oct", "30 Oct", "2 Nov", "3 Nov", "4 Nov", "5 Nov", "6 Nov", "9 Nov", "10 Nov", "12 Nov", "13 Nov", "16 Nov", "17 Nov", "18 Nov", "19 Nov", "20 Nov"]
+    preview(PluginMenuView(rows: [
+        PluginRow(color: "green", headline: RowHeadline(value: "4.0613", unit: "PLN per USD · NBP, 20 Nov",
+                                                        deltas: [RowChip(label: "1 d", text: "+0.0437", color: "green"), RowChip(label: "7 d", text: "+0.0761", color: "green"),
+                                                                 RowChip(label: "30 d", text: "+0.1591", color: "green")])),
+        PluginRow(chart: RowChart(values: usd, labels: days, line: RowRule(value: 4.0, label: "threshold"), color: "sky")),
+        PluginRow(stats: [RowStat(label: "min", value: "3.8827"), RowStat(label: "max", value: "4.0613"), RowStat(label: "avg", value: "3.9387")]),
+    ]) { _, _ in }, "plugin-blocks-usd")
+    func level(_ n: String, _ v: Int, _ c: String, _ w: String) -> PluginRow { PluginRow(text: n, color: c, detail: w, meter: RowMeter(value: v, max: 5)) }
+    preview(PluginMenuView(rows: [
+        PluginRow(color: "peach", headline: RowHeadline(value: "wysokie", unit: "najwyżej: trawy · Homey, Pylenie")),
+        PluginRow(text: "Pyłki"),
+        level("trawy", 4, "peach", "wysokie"), level("pokrzywa", 4, "peach", "wysokie"), level("babka", 2, "green", "niskie"),
+        level("szczaw", 3, "gold", "średnie"), level("sosna", 1, "green", "bardzo niskie"),
+        PluginRow(separator: true),
+        PluginRow(text: "Pleśnie"),
+        level("alternaria", 5, "red", "bardzo wysokie"), level("cladosporium", 5, "red", "bardzo wysokie"),
+    ]) { _, _ in }, "plugin-blocks-pollen")
     // An agent's notification sits on the agents pill and tops its list, not in the bell (#50).
     var waits = older
     waits.id = "plugin:agents:agent-1"
