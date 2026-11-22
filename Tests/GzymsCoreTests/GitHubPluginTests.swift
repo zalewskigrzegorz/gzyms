@@ -367,9 +367,15 @@ private func humanGateIsNotRunning() throws {
 
 // MARK: star-watcher
 
-private func starAnswer(_ repos: [(n: Int, who: [String])]) -> String {
+/// `days`: how many days ago each of `who` starred, newest first; without it the stars are years old.
+private func starAnswer(_ repos: [(n: Int, who: [String])], days: [[Double]] = []) -> String {
+    let iso = ISO8601DateFormatter()
     let rs = repos.enumerated().map { i, r in
-        "\"r\(i)\":{\"stargazerCount\":\(r.n),\"stargazers\":{\"nodes\":[\(r.who.map { "{\"login\":\"\($0)\"}" }.joined(separator: ","))]}}"
+        let edges = r.who.enumerated().map { j, w in
+            let ago = i < days.count && j < days[i].count ? days[i][j] : 2000
+            return "{\"starredAt\":\"\(iso.string(from: Date().addingTimeInterval(-ago * 86400)))\",\"node\":{\"login\":\"\(w)\"}}"
+        }
+        return "\"r\(i)\":{\"stargazerCount\":\(r.n),\"stargazers\":{\"edges\":[\(edges.joined(separator: ","))]}}"
     }
     return "{\"data\":{\(rs.joined(separator: ","))}}"
 }
@@ -394,7 +400,7 @@ private func cacheDir() throws -> URL {
     let pill = try #require(first.pills.last)
     #expect(pill.text == "15" && pill.icon == "star.fill" && pill.color == "gold" && pill.error == nil && pill.expect == 1)
     #expect(pill.menu?.compactMap(\.id) == ["o/a", "o/b"])
-    #expect(pill.menu?.first?.detail == ":star.fill@gold: 12")
+    #expect(pill.menu?.first { $0.id == "o/a" }?.detail == ":star.fill@gold: 12")
     #expect(pill.menu?.last?.text == "Skipped, not owner/name: not a repo")
     #expect(try String(contentsOf: cache.appending(path: "gzyms/star-watcher.json"), encoding: .utf8).contains("\"o/a\":12"))
 
@@ -404,10 +410,33 @@ private func cacheDir() throws -> URL {
     #expect(second.notes.first?.body == "dave starred it. 4 in total.")
 }
 
+/// The list opens with the total, how it changed in 7 and 30 days, and a bar per day for the last 30, then the repo rows.
+@Test func starWatcherShowsTotalDeltasAndBars() throws {
+    let cache = try cacheDir(); defer { try? FileManager.default.removeItem(at: cache) }
+    let answer = starAnswer([(12, ["a", "b", "c"]), (3, ["d"])], days: [[3.2, 3.5, 20.1], [400]])
+    let r = try runGH("star-watcher", values: ["repos": .strings(["o/a", "o/b"])], answers: [answer], env: ["XDG_CACHE_HOME": cache.path])
+    let menu = try #require(r.pills.last?.menu)
+    #expect(menu[0].headline == RowHeadline(value: "15", unit: "2 repos",
+                                            deltas: [RowChip(label: "7 d", text: "+2", color: "green"), RowChip(label: "30 d", text: "+3", color: "green")]))
+    #expect(menu[0].color == "gold")
+    let chart = try #require(menu[1].chart)
+    #expect(chart.kind == .bars && chart.color == "gold" && chart.values.count == 30)
+    #expect(chart.values[26] == 2 && chart.values[9] == 1 && chart.values.reduce(0, +) == 3)
+    let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "d MMM"
+    #expect(chart.labels?.last == f.string(from: Date()))
+    #expect(menu[2].separator)
+    #expect(menu.compactMap(\.id) == ["o/a", "o/b"])
+
+    // One repo: its name is the unit. No star this month: the changes say 0, in grey.
+    let one = try runGH("star-watcher", values: ["repos": .strings(["o/a"])], answers: [starAnswer([(5, ["x"])])], env: ["XDG_CACHE_HOME": cache.path])
+    #expect(one.pills.last?.menu?.first?.headline == RowHeadline(value: "5", unit: "o/a",
+                                                                deltas: [RowChip(label: "7 d", text: "0", color: "overlay"), RowChip(label: "30 d", text: "0", color: "overlay")]))
+}
+
 @Test func starWatcherSaysWhenAReposIsGoneOrGhIsLoggedOut() throws {
     let cache = try cacheDir(); defer { try? FileManager.default.removeItem(at: cache) }
     // The second repo is not there: GitHub answers with the data it has, the row says so.
-    let r = try runGH("star-watcher", values: ["repos": .strings(["o/a", "o/gone"])], answers: ["{\"data\":{\"r0\":{\"stargazerCount\":5,\"stargazers\":{\"nodes\":[]}},\"r1\":null}}"],
+    let r = try runGH("star-watcher", values: ["repos": .strings(["o/a", "o/gone"])], answers: ["{\"data\":{\"r0\":{\"stargazerCount\":5,\"stargazers\":{\"edges\":[]}},\"r1\":null}}"],
                       env: ["XDG_CACHE_HOME": cache.path])
     #expect(r.pills.last?.text == "5" && r.pills.last?.error == nil)
     #expect(r.pills.last?.menu?.last?.text == "Not found: o/gone")

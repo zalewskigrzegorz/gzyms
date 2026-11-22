@@ -17,8 +17,10 @@ private func number(_ v: Double, digits: ClosedRange<Int> = 0...4) -> String {
 }
 
 /// Digits for the axis, from how wide the range is, so every tick has the same number of them.
-func axisDigits(_ d: ClosedRange<Double>) -> Int {
+/// `whole`: every value is a whole number (counts), so the ticks need no digits after the dot.
+func axisDigits(_ d: ClosedRange<Double>, whole: Bool = false) -> Int {
     let span = d.upperBound - d.lowerBound
+    if whole && span >= 2 { return 0 }
     return span < 0.1 ? 3 : span < 1 ? 2 : span < 10 ? 1 : 0
 }
 
@@ -63,19 +65,10 @@ struct ChartBlock: View {
         let domain = chartDomain(chart)
         let points = Array(chart.values.enumerated())
         let n = chart.values.count
-        let digits = axisDigits(domain)
+        let digits = axisDigits(domain, whole: chart.values.allSatisfy { $0 == $0.rounded() } && (chart.line?.value ?? 0) == (chart.line?.value ?? 0).rounded())
         let ticks = chart.labels == nil ? [] : Array(Set([0, (n - 1) / 2, n - 1])).sorted()
         Chart {
-            ForEach(points, id: \.offset) { i, v in
-                if chart.kind == .bars {
-                    BarMark(x: .value("i", i), y: .value("v", v), width: .ratio(0.6)).foregroundStyle(tint).cornerRadius(2)
-                } else {
-                    AreaMark(x: .value("i", i), yStart: .value("lo", domain.lowerBound), yEnd: .value("v", v))
-                        .foregroundStyle(LinearGradient(colors: [tint.opacity(0.32), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
-                    LineMark(x: .value("i", i), y: .value("v", v))
-                        .foregroundStyle(tint).lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                }
-            }
+            if chart.kind == .bars { bars(points, tint) } else { line(points, tint, domain) }
             if chart.kind == .line, let last = points.last {
                 PointMark(x: .value("i", last.offset), y: .value("v", last.element)).foregroundStyle(tint).symbolSize(40)
             }
@@ -128,8 +121,33 @@ struct ChartBlock: View {
         }
     }
 
+    @ChartContentBuilder private func bars(_ points: [(offset: Int, element: Double)], _ tint: Color) -> some ChartContent {
+        // an explicit start and end: on a number axis a ratio width has no unit to take a share of
+        ForEach(points.filter { $0.element != 0 }.map { Bar(id: $0.offset, value: $0.element) }) { b in
+            RectangleMark(xStart: .value("from", b.from), xEnd: .value("to", b.to), yStart: .value("zero", 0.0), yEnd: .value("v", b.value))
+                .foregroundStyle(tint).cornerRadius(2)
+        }
+    }
+
+    @ChartContentBuilder private func line(_ points: [(offset: Int, element: Double)], _ tint: Color, _ domain: ClosedRange<Double>) -> some ChartContent {
+        ForEach(points, id: \.offset) { p in
+            AreaMark(x: .value("i", p.offset), yStart: .value("lo", domain.lowerBound), yEnd: .value("v", p.element))
+                .foregroundStyle(LinearGradient(colors: [tint.opacity(0.32), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
+            LineMark(x: .value("i", p.offset), y: .value("v", p.element))
+                .foregroundStyle(tint).lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+        }
+    }
+
     /// The first label starts at its point and the last ends there, so neither leaves the chart.
     private func anchor(_ i: Int?, _ n: Int) -> UnitPoint { i == 0 ? .topLeading : i == n - 1 ? .topTrailing : .top }
+}
+
+/// One bar, 0.6 of its slot wide around its index.
+private struct Bar: Identifiable {
+    let id: Int
+    let value: Double
+    var from: Double { Double(id) - 0.3 }
+    var to: Double { Double(id) + 0.3 }
 }
 
 /// Tiles of label and value, side by side in equal widths.

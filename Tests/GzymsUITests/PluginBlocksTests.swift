@@ -16,6 +16,7 @@ import Testing
     #expect(axisDigits(3.87...4.08) == 2)
     #expect(axisDigits(0...30) == 0)
     #expect(axisDigits(3.99...4.01) == 3)
+    #expect(axisDigits(0...3.3, whole: true) == 0)  // counts per day: no "1.0"
 }
 
 @Test func barsStartAtZero() {

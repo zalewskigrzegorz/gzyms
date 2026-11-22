@@ -251,7 +251,12 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         .environment(\.timeZone, utc), "plugin-popup-failed-alone")
     // The star watcher: a gold star with the total, a row per repo.
     preview(pill("star-watcher", "15", "star.fill", "gold"), "star-watcher-pill")
+    let perDay: [Double] = [0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0, 3, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1]
     preview(PluginMenuView(rows: [
+        PluginRow(color: "gold", headline: RowHeadline(value: "15", unit: "2 repos",
+                                                       deltas: [RowChip(label: "7 d", text: "+2", color: "green"), RowChip(label: "30 d", text: "+10", color: "green")])),
+        PluginRow(chart: RowChart(values: perDay, labels: (0..<30).map { "\($0 + 1) Oct" }, kind: .bars, color: "gold")),
+        PluginRow(separator: true),
         PluginRow(id: "zalewskigrzegorz/gzyms", text: "zalewskigrzegorz/gzyms", detail: ":star.fill@gold: 12"),
         PluginRow(id: "zalewskigrzegorz/tuios", text: "zalewskigrzegorz/tuios", detail: ":star.fill@gold: 3"),
         PluginRow(text: "Not found: zalewskigrzegorz/gone"),
