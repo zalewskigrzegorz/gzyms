@@ -211,6 +211,10 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
     preview(pill("gh-prs", ":xmark.circle@red: 2 :checkmark.circle@green: 1 :bubble.left@sky: 3 :square.and.pencil@mauve: 1", "arrow.triangle.branch", "red"), "gh-prs-pill")
     // Every row says its state and what its CI did, a draft too. Green passed, red failed, gold waiting.
     preview(PluginMenuView(rows: [
+        PluginRow(headline: RowHeadline(value: "9", unit: "open pull requests")),
+        PluginRow(stats: [RowStat(label: "fix", value: "3", color: "red"), RowStat(label: "merge", value: "1", color: "green"),
+                          RowStat(label: "comments", value: "2", color: "sky"), RowStat(label: "draft", value: "1", color: "mauve")]),
+        PluginRow(separator: true),
         PluginRow(id: "pr:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: fix", color: "red",
                   detail: ":xmark.circle@red: failed  :bubble.left@sky: comments"),
         PluginRow(id: "pr:o/r#30", text: "r#30  fix(login): show a clear error when sign-in is down", tag: ":xmark.circle: fix", color: "red",

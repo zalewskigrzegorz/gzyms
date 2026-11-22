@@ -266,7 +266,12 @@ let ghPRs = CatalogPlugin(
             else {item: ({id: "prs", text: ($parts | join(" ")), icon: "arrow.triangle.branch",
               color: (if $n.fix then "red" elif $n.comments or $u != [] then "sky" elif $n.merge then "green" else "overlay" end),
               tooltip: (if $cnt == [] then "\($prs | length) open pull requests" else ($cnt | map("\(.s) \(.n)") | join(", ")) end),
-              menu: ([$ev | to_entries[] | .key as $i | .value
+              menu: ((if $prs == [] then [] else
+                   [{value: "\($prs | length)", unit: "open pull requests"}]
+                   + (if $cnt == [] then [] else [{stats: [$cnt[] | {label: .s, value: "\(.n)",
+                        color: {fix: "red", merge: "green", comments: "sky", draft: "mauve"}[.s]}]}] end)
+                   + [{separator: true}] end)
+                + [$ev | to_entries[] | .key as $i | .value
                    | {id: "ev\($i)", tag: kind[0], color: kind[1], text: "\(short($multi)) \(what)  \(.title)", detail: .at}]
                 + (if $ev != [] then [{separator: true}] else [] end)
                 + (if $prs == [] then [{text: "No open pull requests."}] else

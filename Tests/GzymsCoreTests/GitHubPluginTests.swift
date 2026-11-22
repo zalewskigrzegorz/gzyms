@@ -136,6 +136,21 @@ private func last(_ name: String, _ answer: String, values: [String: TOMLValue] 
     #expect(try #require(it.menu?.first { $0.id == "pr:o/r#2" }).tag == ":hourglass: review?")
 }
 
+/// The list opens with how many PRs are open and a tile per state the pill counts, in the pill's order and colours.
+@Test func ghPrsMenuStartsWithCountAndTiles() throws {
+    let it = try last("gh-prs", search([pr(1, checks: [check("build", "FAILURE")]), pr(2, review: "APPROVED"), pr(3, draft: true)]))
+    let menu = try #require(it.menu)
+    #expect(menu[0].headline == RowHeadline(value: "3", unit: "open pull requests"))
+    #expect(menu[1].stats == [RowStat(label: "fix", value: "1", color: "red"), RowStat(label: "merge", value: "1", color: "green"),
+                              RowStat(label: "draft", value: "1", color: "mauve")])
+    #expect(menu[2].separator)
+    #expect(menu.compactMap(\.id) == ["pr:o/r#2", "pr:o/r#1", "pr:o/r#3"])
+
+    // No open PR: no count, the sentence as before.
+    let none = try last("gh-prs", search([]))
+    #expect(none.menu?.map(\.text) == ["No open pull requests."])
+}
+
 @Test func ghBuildsCountsARunOnceByItsState() throws {
     func target(_ n: Int, _ checks: [String]) -> String {
         "{\"number\":\(n),\"title\":\"PR \(n)\",\"url\":\"https://github.com/o/r/pull/\(n)\",\"repository\":{\"nameWithOwner\":\"o/r\"},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{\"contexts\":{\"nodes\":[\(checks.joined(separator: ","))]}}}}]}}"
