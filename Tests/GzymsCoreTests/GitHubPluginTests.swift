@@ -53,7 +53,7 @@ private func check(_ name: String, _ conclusion: String?, status: String = "COMP
     return "{\"__typename\":\"CheckRun\",\"name\":\"\(name)\",\"status\":\"\(status)\",\"conclusion\":\(c),\"detailsUrl\":\"\(url)\"}"
 }
 
-private func pr(_ n: Int, repo: String = "o/r", draft: Bool = false, mergeable: String = "MERGEABLE", review: String? = nil,
+private func pr(_ n: Int, repo: String = "o/r", head: String? = nil, draft: Bool = false, mergeable: String = "MERGEABLE", review: String? = nil,
                 perm: String = "WRITE", approvers: [String] = [], threads: [(resolved: Bool, last: String, bot: Bool)] = [],
                 conv: [(at: String, by: String)] = [], checks: [String]? = []) -> String {
     let reviews = approvers.map { "{\"state\":\"APPROVED\",\"author\":{\"login\":\"\($0)\"}}" }.joined(separator: ",")
@@ -63,7 +63,8 @@ private func pr(_ n: Int, repo: String = "o/r", draft: Bool = false, mergeable: 
     let roll = checks.map { "{\"contexts\":{\"nodes\":[\($0.joined(separator: ","))]}}" } ?? "null"
     return """
     {"number":\(n),"title":"PR \(n)","url":"https://github.com/\(repo)/pull/\(n)","isDraft":\(draft),"mergeable":"\(mergeable)",
-     "reviewDecision":\(review.map { "\"\($0)\"" } ?? "null"),"headRefName":"b\(n)","repository":{"nameWithOwner":"\(repo)","viewerPermission":"\(perm)"},
+     "reviewDecision":\(review.map { "\"\($0)\"" } ?? "null"),"headRefName":"b\(n)","headRepository":{"nameWithOwner":"\(head ?? repo)"},
+     "repository":{"nameWithOwner":"\(repo)","viewerPermission":"\(perm)"},
      "latestReviews":{"nodes":[\(reviews)]},"reviewThreads":{"nodes":[\(th)]},"comments":{"nodes":[\(cv)]},
      "commits":{"nodes":[{"commit":{"statusCheckRollup":\(roll)}}]}}
     """
@@ -155,6 +156,9 @@ private func last(_ name: String, _ answer: String, values: [String: TOMLValue] 
     let it = try last("gh-prs", search([pr(1), pr(2, repo: "O/x")]))
     #expect(it.menu?.first { $0.id == "pr:o/r#1" }?.branch == RepoBranch(ref: "o/r@b1"))
     #expect(it.menu?.first { $0.id == "pr:O/x#2" }?.branch == RepoBranch(ref: "o/x@b2"))
+    // A PR from a fork is on the fork's branch: an agent in the upstream clone on a branch of that name is not on it.
+    let fork = try last("gh-prs", search([pr(3, head: "me/r")]))
+    #expect(fork.menu?.first { $0.id == "pr:o/r#3" }?.branch == RepoBranch(ref: "me/r@b3"))
 }
 
 /// CI notes come only when asked for: off by default, then failed, finished (failed and green) or all (started too).

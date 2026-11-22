@@ -184,7 +184,7 @@ let ghPRs = CatalogPlugin(
       exec cat >/dev/null
     fi
     ARGS=(-f "q=$query" -f 'query=query($q:String!){viewer{login} search(query:$q,type:ISSUE,first:25){nodes{... on PullRequest{
-      number title url isDraft mergeable reviewDecision headRefName repository{nameWithOwner viewerPermission}
+      number title url isDraft mergeable reviewDecision headRefName headRepository{nameWithOwner} repository{nameWithOwner viewerPermission}
       latestReviews(first:10){nodes{state author{login}}}
       reviewThreads(last:100){nodes{isResolved comments(last:1){nodes{author{login __typename}}}}}
       comments(last:10){nodes{createdAt author{login __typename}}}
@@ -224,6 +224,8 @@ let ghPRs = CatalogPlugin(
          elif ($c | all((.conclusion // "" | IN("SUCCESS", "NEUTRAL", "SKIPPED", "CANCELLED")) or .state == "SUCCESS")) then "passed" else "done" end) as $ci
       | ([$c[] | select((.conclusion // "" | IN("FAILURE", "TIMED_OUT", "STARTUP_FAILURE")) or (.state // "" | IN("FAILURE", "ERROR"))) | .name // .context] | unique) as $fails
       | {key: "\(.repository.nameWithOwner)#\(.number)", repo: .repository.nameWithOwner, number, title, url, branch: .headRefName, fails: $fails,
+         # the branch lives in the head repo: a fork's PR is on the fork, not on the upstream branch of that name
+         head: (.headRepository.nameWithOwner // .repository.nameWithOwner),
          draft: .isDraft, base: $base, action: (if .isDraft then "draft" else $base end),
          ci: $ci, conflict: (.mergeable == "CONFLICTING"), changes: (.reviewDecision == "CHANGES_REQUESTED"),
          e2e: ($expected > 0 and $e2e == 0 and .reviewDecision != "REVIEW_REQUIRED"),
@@ -269,7 +271,7 @@ let ghPRs = CatalogPlugin(
         elif $c.outstanding > ($p.outstanding // 0) then {kind: "comment", text: ""} else empty end;
     def notify: {notify: ({id: "\(.kind)-\(.key)-\(now | floor)", title: "\(short(true)) \(what)", body: .title, link: .url,
       level: kind[3], sound: ($snd[.kind] // kind[2])}
-      + (if .kind | startswith("ci_") then {branch: "\(.repo)@\(.branch)", row: "pr:\(.key)"} else {} end))};
+      + (if .kind | startswith("ci_") then {branch: "\(.head)@\(.branch)", row: "pr:\(.key)"} else {} end))};
     \#(ghStat)
     def render($st):
       ($st.prs // null) as $prs | ($st.unseen // []) as $u | ($u + ($st.shown // [])) as $ev
@@ -297,7 +299,7 @@ let ghPRs = CatalogPlugin(
                 + (if $prs == [] then [{text: "No open pull requests."}] else
                    [$prs | sort_by([(if (.draft | not) and (fixing or (.action | IN("MERGE", "resolve"))) then 0 else 1 end), -.number])[]
                     | tag as $t | {id: "pr:\(.key)", tag: $t[0], color: $t[1], text: "\(short($multi))  \(.title)", detail: detail,
-                      branch: "\(.repo)@\(.branch)"}] end))} + stat($st))}
+                      branch: "\(.head)@\(.branch)"}] end))} + stat($st))}
             end
         end;
     if $mode == "poll" then
@@ -305,7 +307,7 @@ let ghPRs = CatalogPlugin(
       | [.data.search.nodes[]? | select(.number != null) | pr($me)] as $prs
       # the first answer after a start is the baseline: a restart tells nothing again
       | [if $st.prs == null then empty else $prs[] as $c | ($st.prs[] | select(.key == $c.key)) as $p
-         | (event($p; $c), (ciEvent($p; $c) | select(wanted))) + ($c | {key, repo, branch, number, title, url}) + {at: (now | strflocaltime("%H:%M"))} end] as $new
+         | (event($p; $c), (ciEvent($p; $c) | select(wanted))) + ($c | {key, repo, head, branch, number, title, url}) + {at: (now | strflocaltime("%H:%M"))} end] as $new
       | ($st + {prs: $prs, err: null,
           unseen: ($new + [($st.unseen // [])[] | select(.key as $k | $new | all(.key != $k))])[:10]}) as $s
       | $s, ($new[] | notify), render($s)
