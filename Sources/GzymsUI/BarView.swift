@@ -1066,7 +1066,10 @@ private struct PluginRowView: View {
         }
     }
 
-    private var hasSub: Bool { !row.agents.isEmpty || row.gitLine != nil }
+    /// Only plain rows draw the line under them; a block row keeps its one click.
+    private var hasSub: Bool {
+        row.headline == nil && row.chart == nil && row.stats == nil && (!row.agents.isEmpty || row.gitLine != nil)
+    }
 
     private var line: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -1075,7 +1078,11 @@ private struct PluginRowView: View {
             if hasSub {
                 sub
                     .padding(.leading, row.tag == nil ? 0 : 92)
-                    .overlay { if let a = row.alt { Clicks(left: { onAlt(a) }, right: { onAlt(a) }) } }
+                    // the line opens what it names; without a link (an agent with no PR) it is part of the row
+                    .overlay {
+                        Clicks(left: { if let a = row.alt { onAlt(a) } else if let id = row.id { send(.click, id) } },
+                               right: { if let id = row.id { send(.rightClick, id) } })
+                    }
             }
         }
     }

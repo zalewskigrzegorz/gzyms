@@ -953,7 +953,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleSettings(.debug)
         } else if b.id == awayNoticeID {
             openMissedList()
-        } else if alt, let key = b.agentKey {
+        } else if alt, let key = b.agentKey, agents.current.contains(where: { $0.key == key }) {
             agents.focus(key)
         } else if let target = alt ? b.altLink : b.link {
             // Any process in the session can post, sandboxed ones too: a file: link would launch whatever it points at.

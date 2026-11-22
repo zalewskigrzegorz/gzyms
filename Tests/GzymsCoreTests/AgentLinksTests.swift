@@ -60,6 +60,12 @@ private func agentsPillOf(_ agents: [Agent]) -> PluginPill { pill(agentsPill, ag
     #expect(withAgent(n, agents: [agent("q", .waits, b)]) == n)
 }
 
+@Test(arguments: AgentState.allCases) func thePillGlyphFollowsEveryState(_ s: AgentState) {
+    var r = PluginRow(id: "pr:1", text: "a")
+    r.agents = [RowAgent(key: "k", name: "n", state: s)]
+    #expect(pillAgent(PluginItem(id: "p", text: "", menu: [r])) == s)
+}
+
 @Test func refParses() {
     #expect(RepoBranch(ref: "O/R@feat/x") == RepoBranch(repo: "o/r", branch: "feat/x"))
     #expect(RepoBranch(ref: "O/R@feat/x")?.ref == "o/r@feat/x")
