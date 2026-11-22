@@ -291,17 +291,32 @@ public enum PluginMessage: Equatable, Sendable {
 
 /// nil = not a message (a half line, garbage, a field missing); the host logs it.
 public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMessage? {
-    struct Chip: Decodable { var label, text, color: String? }
+    /// Text that a plugin may well send as a number ("value": 15): taken as written.
+    struct Loose: Decodable {
+        var s: String
+        init(from d: Decoder) throws {
+            let c = try d.singleValueContainer()
+            if let s = try? c.decode(String.self) { self.s = s }
+            else if let i = try? c.decode(Int.self) { s = String(i) }
+            else { s = String(try c.decode(Double.self)) }
+        }
+    }
+    /// A menu row that does not decode is left out alone, not the whole line.
+    struct Lossy<T: Decodable>: Decodable {
+        var value: T?
+        init(from d: Decoder) throws { value = try? T(from: d) }
+    }
+    struct Chip: Decodable { var label: String?; var text: Loose?; var color: String? }
     struct Rule: Decodable { var value: Double?; var label: String? }
-    struct Chart: Decodable { var values: [Double?]?; var labels: [String]?; var kind: String?; var line: Rule?; var color: String? }
+    struct Chart: Decodable { var values: [Double?]?; var labels: [Loose]?; var kind: String?; var line: Rule?; var color: String? }
     struct Meter: Decodable { var value: Int?; var max: Int? }
-    struct Stat: Decodable { var label, value, color: String? }
+    struct Stat: Decodable { var label: String?; var value: Loose?; var color: String? }
     struct Row: Decodable {
         var id, text, tag, color, detail: String?; var separator: Bool?
-        var value, unit: String?; var deltas: [Chip]?; var chart: Chart?; var stats: [Stat]?; var meter: Meter?
+        var value: Loose?; var unit: String?; var deltas: [Chip]?; var chart: Chart?; var stats: [Stat]?; var meter: Meter?
     }
     struct Item: Decodable {
-        var id: String?; var text: String?; var icon: String?; var color: String?; var tooltip: String?; var remove: Bool?; var menu: [Row]?
+        var id: String?; var text: String?; var icon: String?; var color: String?; var tooltip: String?; var remove: Bool?; var menu: [Lossy<Row>]?
         var error: String?; var expect: Int?
     }
     struct Notify: Decodable {
@@ -314,23 +329,23 @@ public func pluginMessage(_ line: String, plugin: String, now: Date) -> PluginMe
         if i.remove == true { return .removeItem(id) }
         guard let text = i.text else { return nil }
         let menu = i.menu.map { rows in
-            rows.compactMap { r -> PluginRow? in
+            rows.compactMap(\.value).compactMap { r -> PluginRow? in
                 var row = PluginRow(id: r.id, text: r.text ?? "", tag: r.tag, color: r.color, detail: r.detail, separator: r.separator ?? false)
                 if let v = r.value {
-                    row.headline = RowHeadline(value: v, unit: r.unit,
-                                               deltas: (r.deltas ?? []).map { RowChip(label: $0.label ?? "", text: $0.text ?? "", color: $0.color) })
+                    row.headline = RowHeadline(value: v.s, unit: r.unit,
+                                               deltas: (r.deltas ?? []).map { RowChip(label: $0.label ?? "", text: $0.text?.s ?? "", color: $0.color) })
                 }
                 if let c = r.chart {
                     let raw = c.values ?? []
                     // a label goes with its value, so a dropped null takes its label along
-                    let paired = c.labels.flatMap { $0.count == raw.count ? $0 : nil }
+                    let paired = c.labels.flatMap { $0.count == raw.count ? $0.map(\.s) : nil }
                     let kept = Array(raw.indices.filter { raw[$0] != nil }.suffix(chartPointLimit))
                     guard kept.count >= 2 else { return nil }
                     row.chart = RowChart(values: kept.map { raw[$0]! }, labels: paired.map { l in kept.map { l[$0] } },
                                          kind: c.kind.flatMap(ChartKind.init(rawValue:)) ?? .line,
                                          line: c.line?.value.map { RowRule(value: $0, label: c.line?.label) }, color: c.color)
                 }
-                if let s = r.stats { row.stats = s.map { RowStat(label: $0.label ?? "", value: $0.value ?? "", color: $0.color) } }
+                if let s = r.stats { row.stats = s.map { RowStat(label: $0.label ?? "", value: $0.value?.s ?? "", color: $0.color) } }
                 if let m = r.meter {
                     let mx = Swift.min(12, Swift.max(1, m.max ?? 5))
                     row.meter = RowMeter(value: Swift.min(mx, Swift.max(0, m.value ?? 0)), max: mx)

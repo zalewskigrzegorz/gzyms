@@ -186,6 +186,18 @@ private func menu(_ rows: String) -> [PluginRow] {
     #expect(menu(#"{"chart":{"values":[1,2],"kind":"bars"}}"#).first?.chart?.kind == .bars)
 }
 
+@Test func numbersWhereTextIsExpectedAreTakenAsText() {
+    let rows = menu(#"{"value":15,"deltas":[{"label":"7 d","text":2}]},{"stats":[{"label":"min","value":3.88}]}"#)
+    #expect(rows.first?.headline == RowHeadline(value: "15", deltas: [RowChip(label: "7 d", text: "2")]))
+    #expect(rows.last?.stats == [RowStat(label: "min", value: "3.88")])
+}
+
+@Test func aBadBlockDropsOnlyItsRow() {
+    let rows = menu(#"{"text":"a"},{"text":"m","meter":{"value":"x","max":5}},{"text":"b"}"#)
+    #expect(rows.map(\.text) == ["a", "b"])
+    #expect(menu(#"{"chart":{"values":[1,2],"labels":[2025,2026]}}"#).first?.chart?.labels == ["2025", "2026"])
+}
+
 @Test func aLongChartKeepsTheNewestPoints() {
     let vs = (1...500).map(String.init).joined(separator: ",")
     let c = menu(#"{"chart":{"values":["# + vs + #"]}}"#).first?.chart
