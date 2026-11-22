@@ -156,6 +156,14 @@ let ghPRs = CatalogPlugin(
     note = "a shell command, e.g. one that opens gh dash. Empty = github.com/pulls in the browser."
 
     [[option]]
+    key = "notify"
+    title = "CI notifications"
+    type = "choice"
+    default = "off"
+    choices = ["off", "finished", "failed", "all"]
+    note = "finished: a run fails or ends green. failed: only failures. all: also when a run starts. gh-builds sends the same ones, so turn them on in one of the two."
+
+    [[option]]
     key = "sounds"
     title = "Sound folder"
     type = "text"
@@ -214,7 +222,8 @@ let ghPRs = CatalogPlugin(
       # the CI on its own, shown on every row: the checks of the last commit
       | (if $failed > 0 then "failed" elif $pending > 0 then "running" elif ($c | length) == 0 then "none"
          elif ($c | all((.conclusion // "" | IN("SUCCESS", "NEUTRAL", "SKIPPED", "CANCELLED")) or .state == "SUCCESS")) then "passed" else "done" end) as $ci
-      | {key: "\(.repository.nameWithOwner)#\(.number)", repo: .repository.nameWithOwner, number, title, url, branch: .headRefName,
+      | ([$c[] | select((.conclusion // "" | IN("FAILURE", "TIMED_OUT", "STARTUP_FAILURE")) or (.state // "" | IN("FAILURE", "ERROR"))) | .name // .context] | unique) as $fails
+      | {key: "\(.repository.nameWithOwner)#\(.number)", repo: .repository.nameWithOwner, number, title, url, branch: .headRefName, fails: $fails,
          draft: .isDraft, base: $base, action: (if .isDraft then "draft" else $base end),
          ci: $ci, conflict: (.mergeable == "CONFLICTING"), changes: (.reviewDecision == "CHANGES_REQUESTED"),
          e2e: ($expected > 0 and $e2e == 0 and .reviewDecision != "REVIEW_REQUIRED"),
@@ -241,15 +250,26 @@ let ghPRs = CatalogPlugin(
       "CI…": [":arrow.triangle.2.circlepath: CI runs", "gold"], MERGE: [":checkmark.circle: merge", "green"],
       draft: [":square.and.pencil: draft", "mauve"], "needs review": [":hourglass: review?", "gold"],
       blocked: [":lock.circle: blocked", "peach"]}[.action] // [.action, "overlay"];
-    def kind: {approval: [":hand.thumbsup: review", "green", "success"], comment: [":bubble.left: new", "sky", "message"]}[.kind];
-    def what: if .kind == "approval" then "approved by \(.text)" else "new comment" end;
+    def kind: {approval: [":hand.thumbsup: review", "green", "success", "info"], comment: [":bubble.left: new", "sky", "message", "info"],
+      ci_fail: [":xmark.circle: CI", "red", "fail", "warning"], ci_success: [":checkmark.circle: CI", "green", "success", "info"],
+      ci_start: [":arrow.triangle.2.circlepath: CI", "gold", "message", "info"]}[.kind];
+    def what: {approval: "approved by \(.text)", comment: "new comment", ci_fail: "CI failed: \(.text)", ci_success: "CI green",
+      ci_start: "CI started"}[.kind];
+    # CI notes as gh-builds sends them, only when the notify option asks (off by default: gh-builds may send them already)
+    def ciEvent($p; $c):
+      if $c.ci == "failed" and $p.ci != "failed" then {kind: "ci_fail", text: ($c.fails | join(", "))}
+      elif $c.ci == "passed" and $p.ci == "running" then {kind: "ci_success", text: ""}
+      elif $c.ci == "running" and $p.ci != "running" then {kind: "ci_start", text: ""} else empty end;
+    def wanted: ($ENV.GZYMS_OPT_NOTIFY // "off") as $n
+      | $n != "off" and ($n == "all" or .kind == "ci_fail" or ($n != "failed" and .kind == "ci_success"));
     def short($multi): (if $multi then .repo | split("/") | last else "" end) + "#\(.number)";
     def event($p; $c):
       ($c.approvers - ($p.approvers // [])) as $a
       | if $a != [] then {kind: "approval", text: ($a | join(", "))}
         elif $c.outstanding > ($p.outstanding // 0) then {kind: "comment", text: ""} else empty end;
-    def notify: {notify: {id: "\(.kind)-\(.key)-\(now | floor)", title: "\(short(true)) \(what)", body: .title, link: .url,
-      level: "info", sound: ($snd[.kind] // kind[2])}};
+    def notify: {notify: ({id: "\(.kind)-\(.key)-\(now | floor)", title: "\(short(true)) \(what)", body: .title, link: .url,
+      level: kind[3], sound: ($snd[.kind] // kind[2])}
+      + (if .kind | startswith("ci_") then {branch: "\(.repo)@\(.branch)", row: "pr:\(.key)"} else {} end))};
     \#(ghStat)
     def render($st):
       ($st.prs // null) as $prs | ($st.unseen // []) as $u | ($u + ($st.shown // [])) as $ev
@@ -276,7 +296,8 @@ let ghPRs = CatalogPlugin(
                 + (if $ev != [] then [{separator: true}] else [] end)
                 + (if $prs == [] then [{text: "No open pull requests."}] else
                    [$prs | sort_by([(if (.draft | not) and (fixing or (.action | IN("MERGE", "resolve"))) then 0 else 1 end), -.number])[]
-                    | tag as $t | {id: "pr:\(.key)", tag: $t[0], color: $t[1], text: "\(short($multi))  \(.title)", detail: detail}] end))} + stat($st))}
+                    | tag as $t | {id: "pr:\(.key)", tag: $t[0], color: $t[1], text: "\(short($multi))  \(.title)", detail: detail,
+                      branch: "\(.repo)@\(.branch)"}] end))} + stat($st))}
             end
         end;
     if $mode == "poll" then
@@ -284,7 +305,7 @@ let ghPRs = CatalogPlugin(
       | [.data.search.nodes[]? | select(.number != null) | pr($me)] as $prs
       # the first answer after a start is the baseline: a restart tells nothing again
       | [if $st.prs == null then empty else $prs[] as $c | ($st.prs[] | select(.key == $c.key)) as $p
-         | event($p; $c) + ($c | {key, repo, branch, number, title, url}) + {at: (now | strflocaltime("%H:%M"))} end] as $new
+         | (event($p; $c), (ciEvent($p; $c) | select(wanted))) + ($c | {key, repo, branch, number, title, url}) + {at: (now | strflocaltime("%H:%M"))} end] as $new
       | ($st + {prs: $prs, err: null,
           unseen: ($new + [($st.unseen // [])[] | select(.key as $k | $new | all(.key != $k))])[:10]}) as $s
       | $s, ($new[] | notify), render($s)

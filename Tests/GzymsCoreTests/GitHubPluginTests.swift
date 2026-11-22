@@ -151,6 +151,30 @@ private func last(_ name: String, _ answer: String, values: [String: TOMLValue] 
     #expect(none.menu?.map(\.text) == ["No open pull requests."])
 }
 
+@Test func ghPrsRowsCarryTheirBranch() throws {
+    let it = try last("gh-prs", search([pr(1), pr(2, repo: "O/x")]))
+    #expect(it.menu?.first { $0.id == "pr:o/r#1" }?.branch == RepoBranch(ref: "o/r@b1"))
+    #expect(it.menu?.first { $0.id == "pr:O/x#2" }?.branch == RepoBranch(ref: "o/x@b2"))
+}
+
+/// CI notes come only when asked for: off by default, then failed, finished (failed and green) or all (started too).
+@Test func ghPrsCINotesFollowTheOption() throws {
+    let running = check("build", nil, status: "IN_PROGRESS")
+    let before = search([pr(1, checks: [running]), pr(2, checks: [running]), pr(3, checks: [check("build", "SUCCESS")])])
+    let after = search([pr(1, checks: [check("build", "FAILURE")]), pr(2, checks: [check("build", "SUCCESS")]), pr(3, checks: [running])])
+    func notes(_ notify: String?) throws -> [GzymsNotification] {
+        let r = try runGH("gh-prs", values: notify.map { ["notify": .string($0)] } ?? [:], answers: [before, after])
+        return r.notes.filter { $0.title.contains("CI") }
+    }
+    #expect(try notes(nil).isEmpty)
+    #expect(try notes("failed").map(\.title) == ["r#1 CI failed: build"])
+    let finished = try notes("finished")
+    #expect(Set(finished.map(\.title)) == ["r#1 CI failed: build", "r#2 CI green"])
+    #expect(Set(try notes("all").map(\.title)) == ["r#1 CI failed: build", "r#2 CI green", "r#3 CI started"])
+    let fail = try #require(finished.first { $0.title.contains("failed") })
+    #expect(fail.branch == RepoBranch(ref: "o/r@b1") && fail.row == "pr:o/r#1" && fail.level == .warning)
+}
+
 @Test func ghBuildsCountsARunOnceByItsState() throws {
     func target(_ n: Int, _ checks: [String]) -> String {
         "{\"number\":\(n),\"title\":\"PR \(n)\",\"url\":\"https://github.com/o/r/pull/\(n)\",\"repository\":{\"nameWithOwner\":\"o/r\"},\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{\"contexts\":{\"nodes\":[\(checks.joined(separator: ","))]}}}}]}}"
