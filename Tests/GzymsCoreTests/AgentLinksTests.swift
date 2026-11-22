@@ -35,6 +35,14 @@ private func agentsPillOf(_ agents: [Agent]) -> PluginPill { pill(agentsPill, ag
     #expect(claudeAgents([s], tuiosOn: false, alive: { _ in true }, modified: { _ in nil }).agents.first?.cwd == "/code/q")
 }
 
+@Test func thePillTakesTheAgentThatNeedsYou() {
+    var r1 = PluginRow(id: "pr:1", text: "a"), r2 = PluginRow(id: "pr:2", text: "b")
+    r1.agents = [RowAgent(key: "k1", name: "w", state: .working)]
+    r2.agents = [RowAgent(key: "k2", name: "d", state: .done), RowAgent(key: "k3", name: "q", state: .waits)]
+    #expect(pillAgent(PluginItem(id: "p", text: "", menu: [r1, r2])) == .waits)
+    #expect(pillAgent(PluginItem(id: "p", text: "", menu: [PluginRow(id: "x", text: "c")])) == nil)
+}
+
 @Test func refParses() {
     #expect(RepoBranch(ref: "O/R@feat/x") == RepoBranch(repo: "o/r", branch: "feat/x"))
     #expect(RepoBranch(ref: "O/R@feat/x")?.ref == "o/r@feat/x")

@@ -229,6 +229,35 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         PluginRow(id: "pr:o/r#25", text: "r#25  wip: move the prompt to a theme", tag: ":square.and.pencil: draft", color: "mauve",
                   detail: ":checkmark.circle@green: passed  :bubble.left@sky: comments"),
     ]) { _, _ in }, "gh-prs-popup")
+    // A PR row with the agents on its branch (a dot per agent, needs-you first), and an agent row with its branch and PR.
+    func withAgents(_ r: PluginRow, _ a: [RowAgent]) -> PluginRow { var r = r; r.agents = a; r.alt = a.first.map { .agent($0.key) }; return r }
+    func withGit(_ r: PluginRow, _ g: String, pr: Bool) -> PluginRow { var r = r; r.gitLine = g; r.alt = pr ? .row(plugin: "gh-prs", id: "pr:1") : nil; return r }
+    let agentItem = PluginItem(id: "prs", text: ":xmark.circle@red: 1 :checkmark.circle@green: 2", icon: "arrow.triangle.branch", color: "red",
+                               menu: [withAgents(PluginRow(id: "pr:1", text: "r"), [RowAgent(key: "k", name: "n", state: .waits)])])
+    preview(VStack(alignment: .leading, spacing: 8) {
+        PluginPillView(pill: PluginPill(plugin: "gh-prs", item: agentItem), small: true) { _, _ in }
+        PluginPillView(pill: PluginPill(plugin: "gh-prs", item: agentItem), small: false) { _, _ in }
+    }.padding(8), "gh-prs-pill-agent")
+    preview(PluginMenuView(rows: [
+        PluginRow(headline: RowHeadline(value: "4", unit: "open pull requests")),
+        PluginRow(separator: true),
+        withAgents(PluginRow(id: "pr:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: fix", color: "red",
+                             detail: ":checkmark.circle@green: passed  :exclamationmark.circle@peach: changes requested"),
+                   [RowAgent(key: "a", name: "coupon-split", state: .working)]),
+        PluginRow(id: "pr:o/r#28", text: "r#28  chore(deps): bump the router", tag: ":checkmark.circle: merge", color: "green", detail: ":checkmark.circle@green: passed"),
+        withAgents(PluginRow(id: "pr:o/r#27", text: "r#27  feat(search): rank by recency", tag: ":hourglass: review?", color: "gold", detail: ":circle.dashed: no CI"),
+                   [RowAgent(key: "b", name: "search: ranking", state: .waits), RowAgent(key: "c", name: "review ranking", state: .done)]),
+        PluginRow(id: "pr:o/r#25", text: "r#25  wip: move the prompt to a theme", tag: ":square.and.pencil: draft", color: "mauve", detail: ":xmark.circle@red: failed"),
+    ]) { _, _ in }, "gh-prs-popup-agents")
+    preview(PluginMenuView(rows: [
+        withGit(PluginRow(id: "tuios:1", text: "search: ranking · approve AskUserQuestion", tag: "waits", color: "peach", detail: "gzyms"),
+                "feat/rank  :checkmark.circle@green: passed", pr: true),
+        withGit(PluginRow(id: "tuios:2", text: "coupon-split", tag: "working", color: "sky", detail: "Wintermute"),
+                "fix/coupon  :checkmark.circle@green: passed  :exclamationmark.circle@peach: changes requested", pr: true),
+        withGit(PluginRow(id: "tuios:3", text: "Lepsze widgety", tag: "working", color: "sky", detail: "gzyms"), "feat/plugin-blocks", pr: false),
+        withGit(PluginRow(id: "tuios:4", text: "dotfiles cleanup", tag: "done", color: "green", detail: "dotfiles"), "master", pr: false),
+        PluginRow(id: "tuios:5", text: "Bon Empik", tag: "idle", color: "overlay", detail: "bazgroly", dim: true),
+    ]) { _, _ in }, "agents-popup-branches")
     preview(pill("gh-builds", ":xmark.circle@red: 1 :arrow.triangle.2.circlepath@gold: 2 :checkmark.circle@green: 5", "hammer", "red"), "gh-builds-pill")
     preview(PluginMenuView(rows: [
         PluginRow(id: "t:o/r#31", text: "r#31  fix(cart): keep the coupon when the basket is split", tag: ":xmark.circle: failed", color: "red", detail: "unit, lint"),

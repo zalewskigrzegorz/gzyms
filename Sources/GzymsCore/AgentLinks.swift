@@ -63,6 +63,11 @@ public struct RowAgent: Equatable, Sendable {
 /// Needs you first: waits, then working, done, idle.
 private let needsYou: [AgentState] = [.waits, .working, .done, .idle]
 
+/// The state of the agent that needs you most among a pill's rows; nil = no agent on any of them.
+public func pillAgent(_ item: PluginItem) -> AgentState? {
+    (item.menu ?? []).flatMap(\.agents).map(\.state).min { needsYou.firstIndex(of: $0)! < needsYou.firstIndex(of: $1)! }
+}
+
 /// Ties agents to plugin rows by repo and branch. A row with a `branch` gets the agents on it (needs-you first) and
 /// `a` opens the first. A row of the agents pill gets its agent's branch as a line, with the detail of the row on that
 /// branch (a PR row, `pr:`, wins over others, then plugins by name), and `a` clicks that row.

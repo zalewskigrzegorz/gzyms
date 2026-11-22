@@ -901,6 +901,8 @@ public struct PluginPillView: View {
         HStack(spacing: small ? 4 : 5) {
             if let icon = i.icon { Image(systemName: icon).font(.system(size: small ? 9 : 10)) }
             pillText(i.text, theme, size: small ? 10 : 11, color: theme.tint(i.color)).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 160)
+            // an agent works on one of its rows: in the colour of the one that needs you most
+            if let s = pillAgent(i) { Image(systemName: "sparkles").font(.system(size: small ? 8 : 9)).foregroundStyle(theme.tint(s.color)) }
             if failure != nil { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: small ? 8 : 9)).foregroundStyle(theme[\.peach]) }
         }
         .font(.system(size: small ? 10 : 11))
@@ -992,12 +994,15 @@ public struct PluginMenuView: View {
     let failure: PluginFailure?
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
+    /// `a` on a row Gzyms linked to an agent or a PR.
+    let onAlt: (RowAlt) -> Void
     let send: (PluginEvent, String) -> Void
     @Environment(\.theme) private var theme
     @Environment(\.timeZone) private var timeZone
     public init(rows: [PluginRow], notes: [GzymsNotification] = [], failure: PluginFailure? = nil, onOpen: @escaping (String) -> Void = { _ in },
-                onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
-        self.rows = rows; self.notes = notes; self.failure = failure; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
+                onRemove: @escaping (String) -> Void = { _ in }, onAlt: @escaping (RowAlt) -> Void = { _ in },
+                send: @escaping (PluginEvent, String) -> Void) {
+        self.rows = rows; self.notes = notes; self.failure = failure; self.onOpen = onOpen; self.onRemove = onRemove; self.onAlt = onAlt; self.send = send
     }
 
     public var body: some View {
@@ -1020,7 +1025,7 @@ public struct PluginMenuView: View {
             let live = rows.indices.filter { rows[$0].id != nil && !rows[$0].separator }
             ForEach(Array(rows.enumerated()), id: \.offset) { n, r in
                 if r.separator { Divider().padding(.vertical, 3) }
-                else { PluginRowView(row: r, index: live.firstIndex(of: n).map { $0 + notes.count }, send: send) }
+                else { PluginRowView(row: r, index: live.firstIndex(of: n).map { $0 + notes.count }, onAlt: onAlt, send: send) }
             }
             .opacity(failure == nil ? 1 : 0.5)
         }
@@ -1031,6 +1036,7 @@ public struct PluginMenuView: View {
 private struct PluginRowView: View {
     let row: PluginRow
     let index: Int?
+    var onAlt: (RowAlt) -> Void = { _ in }
     let send: (PluginEvent, String) -> Void
     @State private var hover = false
     @Environment(\.theme) private var theme
@@ -1046,14 +1052,46 @@ private struct PluginRowView: View {
         .font(.system(size: 12))
         .padding(.horizontal, 6).padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 6).fill(hover && row.id != nil ? theme[\.surface] : .clear))
-        .modifier(OptionalNavRow(index: index, choose: { if let id = row.id { send(.click, id) } }, remove: nil))
+        .modifier(OptionalNavRow(index: index, choose: { if let id = row.id { send(.click, id) } }, remove: nil,
+                                 alt: row.alt.map { a in { onAlt(a) } }))
         .onHover { hover = $0 }
         .overlay {
-            if let id = row.id { Clicks(left: { send(.click, id) }, right: { send(.rightClick, id) }) }
+            // a row with a line under it takes clicks per part (main line, line under it), see `line`
+            if let id = row.id, !hasSub { Clicks(left: { send(.click, id) }, right: { send(.rightClick, id) }) }
         }
     }
 
+    private var hasSub: Bool { !row.agents.isEmpty || row.gitLine != nil }
+
     private var line: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            main
+                .overlay { if hasSub, let id = row.id { Clicks(left: { send(.click, id) }, right: { send(.rightClick, id) }) } }
+            if hasSub {
+                sub
+                    .padding(.leading, row.tag == nil ? 0 : 92)
+                    .overlay { if let a = row.alt { Clicks(left: { onAlt(a) }, right: { onAlt(a) }) } }
+            }
+        }
+    }
+
+    /// The agents on this PR's branch (E), or the branch and PR under an agent (F).
+    private var sub: some View {
+        HStack(spacing: 8) {
+            ForEach(row.agents, id: \.key) { a in
+                HStack(spacing: 4) {
+                    Circle().fill(theme.tint(a.state.color)).frame(width: 7, height: 7)
+                    Text(a.name).lineLimit(1)
+                }
+            }
+            if let g = row.gitLine { pluginText(g, theme).lineLimit(1) }
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(theme[\.overlay])
+    }
+
+    private var main: some View {
         HStack(spacing: 10) {
             if let tag = row.tag {
                 pluginText(tag, theme).font(.system(size: 11, weight: .semibold).monospaced()).foregroundStyle(theme.tint(row.color))
