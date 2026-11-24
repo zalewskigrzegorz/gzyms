@@ -58,8 +58,8 @@ public struct GzymsConfig: Equatable, Sendable {
     /// `[updates] automatic`: only what the user chose against the default (`automaticUpdates`). nil: the default.
     public var updatesAutomatic: Bool?
     public var anomalies = true
-    /// `[debug] marks`: "Mark: …" in the palette saves a note with the logs around it. Greg's only for now, not in Settings.
-    public var marks = false
+    /// `[debug] marks`: "Flag this moment: …" in the palette saves a note with the logs around it (Settings → Debug, Flag a moment).
+    public var marks = true
     /// Global, in every app (`[shortcuts] mic_mute`, "off" = none).
     public var micShortcut = Shortcut("ctrl+alt+m")
     /// The keyboard mode (`[keys]`): its leader ("off" = none, `gzyms keys on` still works), how long it waits for a

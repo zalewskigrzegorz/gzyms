@@ -27,6 +27,8 @@ import Testing
 
         """)
     #expect(Marks.fileName(opened) == "2027-01-15T08-00-00Z.txt")
-    #expect(loadConfig(toml: "[debug]\nmarks = true").config.marks)
-    #expect(!GzymsConfig.defaults.marks)
+    // On for everyone since 0.3.0; the old key still reads, and is not reported as unknown.
+    #expect(GzymsConfig.defaults.marks)
+    let off = loadConfig(toml: "[debug]\nmarks = false")
+    #expect(!off.config.marks && off.problems.isEmpty)
 }

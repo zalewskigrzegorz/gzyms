@@ -108,6 +108,19 @@ final class BarModel {
     var sourceState: HyprMacState?
     @ObservationIgnored var onSelectWorkspace: (Int) -> Void = { _ in }
 
+    /// A click on a workspace, or the palette's "Workspace …": HyprMac through its URL, the other sources through theirs.
+    func selectWorkspace(_ n: Int) {
+        guard source == .hyprmac else { onSelectWorkspace(n); return }
+        // Release and Debug both claim hyprmac://; a bare open launched the idle Debug next to the running release.
+        let ids: Set<String> = ["com.zachgray.HyprMac", "com.zachgray.HyprMac.debug"]
+        guard let url = URL(string: "hyprmac://workspace?n=\(n)"),
+              let app = NSWorkspace.shared.runningApplications.first(where: { ids.contains($0.bundleIdentifier ?? "") })?.bundleURL
+        else { return }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = false
+        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: config)
+    }
+
     /// The live state of the source in use; nil = none (HyprMac's last file while it is gone does not count).
     var activeState: HyprMacState? { source == .hyprmac ? (stale ? nil : state) : sourceState }
 
@@ -154,7 +167,7 @@ struct PanelRoot: View {
                     battery: model.battery, batteryWarning: model.batteryWarning,
                     audio: model.audio, onAudioChange: model.onAudioChange, onTestSound: { model.onTestSound() },
                     micLevel: model.micLevel, onMicMute: model.onMicMute, onMicPopup: model.onMicPopup,
-                    icon: AppIcons.icon(for:), onSelect: { model.source == .hyprmac ? switchWorkspace($0) : model.onSelectWorkspace($0) }, onCPUPopup: model.onCPUPopup,
+                    icon: AppIcons.icon(for:), onSelect: { model.selectWorkspace($0) }, onCPUPopup: model.onCPUPopup,
                     // Read when called: the left side sits in an equatable Redraw that keeps its first closures, and a bar drawn
                     // before the app delegate set them stayed dead (the logo did nothing for a whole session).
                     inboxes: model.inboxes, missed: model.missed, onOpenNote: { model.onOpenNote($0) }, onRemoveNote: { model.onRemoveNote($0) },
@@ -179,17 +192,6 @@ struct PanelRoot: View {
         .environment(\.hiddenCounts, Set(model.config.appRules.filter { !$0.value.count }.keys))
         .environment(\.hiddenWidgets, model.config.hiddenWidgets)
         .environment(\.barLayout, model.barLayout)
-    }
-
-    private func switchWorkspace(_ n: Int) {
-        // Release and Debug both claim hyprmac://; a bare open launched the idle Debug next to the running release.
-        let ids: Set<String> = ["com.zachgray.HyprMac", "com.zachgray.HyprMac.debug"]
-        guard let url = URL(string: "hyprmac://workspace?n=\(n)"),
-              let app = NSWorkspace.shared.runningApplications.first(where: { ids.contains($0.bundleIdentifier ?? "") })?.bundleURL
-        else { return }
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = false
-        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: config)
     }
 }
 

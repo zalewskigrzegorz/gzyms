@@ -36,6 +36,7 @@ final class PalettePanel: NSPanel {
         case 53: orderOut(nil)
         case 125: state.move(1)
         case 126: state.move(-1)
+        case 48: state.move(event.modifierFlags.contains(.shift) ? -1 : 1)  // Tab
         case 36, 76: if let item = state.current { run(item, alt: event.modifierFlags.contains(.command)) }
         default: super.sendEvent(event)
         }

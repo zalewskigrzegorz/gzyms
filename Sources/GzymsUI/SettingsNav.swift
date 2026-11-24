@@ -6,6 +6,9 @@ import SwiftUI
 @Observable @MainActor
 public final class SettingsNav {
     public var current: UUID?
+    /// Where the palette sends the keyboard: a row's title ("Stop on battery under"), or "app:<id>" for an app's drawer on
+    /// Apps. The first control of that row takes `current` when it draws, then this goes back to nil.
+    public var target: String?
     /// A letter recorder listens: every key is its.
     @ObservationIgnored public var paused = false
     /// What Esc does before it closes the panel: a tab with something open sets it (a drawer), nil = close the panel.
@@ -41,6 +44,8 @@ public final class SettingsNav {
 extension EnvironmentValues {
     /// Set by the Settings panel; nil elsewhere (pictures, previews), where nothing registers.
     @Entry public var settingsNav: SettingsNav?
+    /// The title of the row a control sits in, so `SettingsNav.target` can find it.
+    @Entry var settingsRow: String?
 }
 
 /// A control the keyboard can land on in Settings: Enter runs `choose`, the highlight shows where j/k are.
@@ -48,6 +53,7 @@ struct SettingsSlot: ViewModifier {
     let choose: () -> Void
     @State private var me = UUID()
     @Environment(\.settingsNav) private var nav
+    @Environment(\.settingsRow) private var row
     @Environment(\.theme) private var theme
     @Environment(\.isEnabled) private var enabled
 
@@ -61,6 +67,11 @@ struct SettingsSlot: ViewModifier {
             .id(me)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { nav?.frames[me] = $0 }
             .onDisappear { nav?.forget(me) }
+            .onChange(of: nav?.target, initial: true) { _, t in
+                guard let nav, let t, t == row else { return }
+                nav.current = me
+                nav.target = nil
+            }
     }
 }
 

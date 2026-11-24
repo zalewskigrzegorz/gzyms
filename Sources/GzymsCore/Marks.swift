@@ -1,6 +1,6 @@
 import Foundation
 
-/// A mark: a note typed in the palette when something looked off, with the log lines around it copied in,
+/// A mark ("Flag this moment" in the palette): a note typed when something looked off, with the log lines around it copied in,
 /// because `gzyms.log` rotates and those lines would be gone by the time someone looks.
 public enum Marks {
     /// Seconds of log before the palette opened.

@@ -315,7 +315,7 @@ private struct Row<Control: View>: View {
                 if let note { Text(note).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).fixedSize(horizontal: false, vertical: true) }
             }
             Spacer(minLength: 16)
-            control
+            control.environment(\.settingsRow, title)
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
     }
@@ -1626,9 +1626,12 @@ private struct DebugTab: View {
                 }
                 Row(title: "Usage HUD", note: "CPU, memory and lag of Gzyms itself") { Button("Show", action: actions.showHUD) }
                 Row(title: "Event log") { Button("Open log", action: actions.openLog) }
+                Row(title: "Flag a moment", note: "Type a note in the palette to save it with the logs around it") {
+                    Switch(on: config.marks) { actions.write("marks", $0 ? nil : .bool(false), .table(["debug"])) }
+                }
             }
             Section(title: "Something wrong?") {
-                Row(title: "Report a problem", note: reported ?? "One zip on the Desktop: log, anomalies, config and versions. No notification text, tokens or personal names.") {
+                Row(title: "Report a problem", note: reported ?? "One zip on the Desktop: log, anomalies, flagged moments, config and versions. No notification text, tokens or personal names.") {
                     Button("Make report…") {
                         reported = actions.report().map { "Saved as \($0.lastPathComponent) on the Desktop. Attach it to the GitHub discussion that opens." }
                             ?? "Could not make the report. The log says why."
@@ -1980,6 +1983,7 @@ private struct AppsTab: View {
     @State private var showOK = false
     @State private var dropping = false
     @Environment(\.theme) private var theme
+    @Environment(\.settingsNav) private var nav
 
     var body: some View {
         Columns {
@@ -2032,6 +2036,13 @@ private struct AppsTab: View {
                           forget: { selected = nil; actions.forgetApp(app.id) })
             }
         }
+        }
+        // The palette opens an app's drawer: "app:<id>".
+        .onChange(of: nav?.target, initial: true) { _, t in
+            guard let t, t.hasPrefix("app:") else { return }
+            selected = String(t.dropFirst(4))
+            showOK = true
+            nav?.target = nil
         }
     }
 
