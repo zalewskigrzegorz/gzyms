@@ -134,6 +134,7 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 - The palette (leader, then Space) finds almost everything: single settings, plugin rows (⌘Enter opens the agent on a PR), audio devices, apps, meetings to join, agents, workspaces, music and mic.
 - `caffeine 45m` in the palette keeps the Mac awake that long, like `dnd 30` for Do Not Disturb.
 - Something looked off? Type a note in the palette, arrow down to Flag this moment, Enter. Gzyms saves it with the logs around it, and Report a problem takes it along.
+- The light around the agents pill keeps running while any agent works, also when another one waits for you.
 
 """##,
 ]
