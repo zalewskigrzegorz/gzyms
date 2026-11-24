@@ -62,6 +62,14 @@ private func rank(_ q: String) -> [String] { paletteRank(q, rows) { $0 } }
     #expect(paletteRank("deploy", [("Open deploy log", 0), ("Deploy staging", 2)], tier: { $0.1 }) { $0.0 }.map(\.0) == ["Deploy staging", "Open deploy log"])
 }
 
+/// Greg's live test: "battery" is only a keyword of the General tab but in the title of the setting.
+@Test func aTitleFitBeatsAKeywordOnlyFitWhateverTheTier() {
+    let rows = [("General", "workspaces caffeine display awake battery config", 0), ("Stop on battery under", "Caffeine awake settings", 1)]
+    #expect(paletteRank("battery", rows, tier: { $0.2 }, words: { $0.1 }) { $0.0 }.map(\.0) == ["Stop on battery under", "General"])
+    // Same kind of fit (both keywords only): the tab goes first.
+    #expect(paletteRank("caffeine", rows, tier: { $0.2 }, words: { $0.1 }) { $0.0 }.map(\.0) == ["General", "Stop on battery under"])
+}
+
 @Test func pluginRowsWithAnIdBecomePaletteRows() {
     let menu = [PluginRow(headline: RowHeadline(value: "42")),
                 PluginRow(id: "chart", text: "chart", chart: RowChart(values: [1, 2])),

@@ -44,8 +44,9 @@ private func flag(_ q: String) -> [PaletteItem] { [PaletteItem(id: "mark", title
                PaletteItem(id: "x", title: "Sounds", kind: "Settings", tier: 0) {}]
     s.last = flag
     s.query = "sound"
-    #expect(s.shown.first?.id == "x")
-    s.move(3)
+    // Titles first, then the device that has "sound" only as a keyword.
+    #expect(s.shown.map(\.id) == ["x", "r", "p", "o", "mark"])
+    s.move(2)
     preview(PaletteView(state: s) { _ in }.themed(.mochaNeon), "palette-mixed")
 }
 

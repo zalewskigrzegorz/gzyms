@@ -63,7 +63,7 @@ public final class PaletteState {
 
     public var shown: [PaletteItem] {
         let end = last(query)
-        return Array((extra(query) + paletteRank(query, items, tier: \.tier) { $0.title + " " + $0.words }).prefix(Self.limit - end.count)) + end
+        return Array((extra(query) + paletteRank(query, items, tier: \.tier, words: \.words) { $0.title }).prefix(Self.limit - end.count)) + end
     }
     public var current: PaletteItem? { let s = shown; return s.indices.contains(selected) ? s[selected] : nil }
     public func move(_ by: Int) { selected = min(max(selected + by, 0), max(shown.count - 1, 0)) }

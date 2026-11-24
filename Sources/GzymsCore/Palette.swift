@@ -1,19 +1,24 @@
-/// How well a palette query fits a row's text (title first, then its keywords, app, body); nil = it does not.
-/// Every word of the query must fit one word of the text: as its start (best), inside it, or as letters in order
-/// that begin with the same letter ("tst" fits "test"). A fit in the first word (the title) counts more, so a tab
-/// beats a notification that only mentions it, but a word start anywhere still beats letters in order in the first word.
-public func paletteScore(_ query: String, _ text: String) -> Int? {
-    let words = text.lowercased().split { !$0.isLetter && !$0.isNumber }
+/// How well a palette query fits a row: its title, then its keywords (app, body); nil = it does not.
+/// Every word of the query must fit one word: as its start (best), inside it, or as letters in order that begin with the
+/// same letter ("tst" fits "test"). A fit in the title beats any fit only in the keywords (Greg, 2026-11-24: "battery"
+/// puts "Stop on battery under" above the General tab, which has it only as a keyword). In the title the first word
+/// counts more, so a tab beats a notification that only mentions it.
+public func paletteScore(_ query: String, _ title: String, words: String = "") -> Int? {
+    func split(_ s: String) -> [Substring] { s.lowercased().split { !$0.isLetter && !$0.isNumber } }
+    let t = split(title), w = split(words)
     var score = 0
     for q in query.lowercased().split(separator: " ") {
-        let fits = words.enumerated().compactMap { i, w -> Int? in
-            let s = w.hasPrefix(q) ? 4 : w.contains(q) ? 2 : (w.first == q.first && isSubsequence(q, of: w)) ? 1 : 0
-            return s == 0 ? nil : s + (i == 0 ? 2 : 0)
-        }
-        guard let best = fits.max() else { return nil }
+        // Title fits sit above the best keyword fit (4): +3, and +2 more in the first word.
+        let inTitle = t.enumerated().compactMap { i, word in wordFit(q, word).map { $0 + 3 + (i == 0 ? 2 : 0) } }
+        guard let best = (inTitle + w.compactMap { wordFit(q, $0) }).max() else { return nil }
         score += best
     }
     return score
+}
+
+/// 4 = the word starts with it, 2 = inside it, 1 = its letters in order from the first one, nil = no fit.
+private func wordFit(_ q: Substring, _ w: Substring) -> Int? {
+    w.hasPrefix(q) ? 4 : w.contains(q) ? 2 : (w.first == q.first && isSubsequence(q, of: w)) ? 1 : nil
 }
 
 private func isSubsequence(_ q: Substring, of w: Substring) -> Bool {
@@ -26,11 +31,12 @@ private func isSubsequence(_ q: Substring, of w: Substring) -> Bool {
 }
 
 /// The rows that fit, best first. On an equal score the lower `tier` goes first (Settings and actions before plugin
-/// rows), then the order they came in. An empty query keeps them all.
-public func paletteRank<T>(_ query: String, _ items: [T], tier: (T) -> Int = { _ in 0 }, text: (T) -> String) -> [T] {
+/// rows), then the order they came in. An empty query keeps them all. `text` is the title, `words` the keywords.
+public func paletteRank<T>(_ query: String, _ items: [T], tier: (T) -> Int = { _ in 0 }, words: (T) -> String = { _ in "" },
+                           text: (T) -> String) -> [T] {
     guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return items }
     typealias Fit = (order: Int, score: Int, tier: Int, item: T)
-    let fits: [Fit] = items.enumerated().compactMap { i, item in paletteScore(query, text(item)).map { (i, $0, tier(item), item) } }
+    let fits: [Fit] = items.enumerated().compactMap { i, item in paletteScore(query, text(item), words: words(item)).map { (i, $0, tier(item), item) } }
     return fits.sorted { a, b in
         if a.score != b.score { return a.score > b.score }
         if a.tier != b.tier { return a.tier < b.tier }
