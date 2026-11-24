@@ -168,7 +168,12 @@ public struct SettingsView: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0; actions.height(headerHeight + $0) }
             }
             // The keyboard's setting stays in view on a tab longer than the panel.
-            .onChange(of: nav?.current) { _, id in if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } } }
+            .onChange(of: nav?.current) { _, id in
+                guard let id else { return }
+                let top = nav?.landed == true
+                nav?.landed = false
+                withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id, anchor: top ? .top : nil) }
+            }
             }
         }
         .foregroundStyle(theme[\.text])
@@ -1982,12 +1987,19 @@ private struct AppsTab: View {
     @State private var hovered: String?
     @State private var showOK = false
     @State private var dropping = false
+    /// Where each row and the list's card start, so the drawer can sit next to the open row (Greg's live test: the palette
+    /// scrolled to a row far down and the drawer, at the top of its column, went off screen).
+    @State private var rowTops: [String: CGFloat] = [:]
+    @State private var listTop: CGFloat = 0
     @Environment(\.theme) private var theme
     @Environment(\.settingsNav) private var nav
+    @Environment(\.settingsColumns) private var columns
 
     var body: some View {
         Columns {
         Section(title: "Apps") {
+            Color.clear.frame(height: 0)
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.space)).minY } action: { listTop = $0 }
             if !needing.isEmpty {
                 HStack {
                     Text("\(needing.count) \(needing.count == 1 ? "app needs" : "apps need") a change in macOS.").foregroundStyle(theme[\.peach])
@@ -2035,8 +2047,11 @@ private struct AppsTab: View {
                           macOS: app.id.hasPrefix("plugin:") ? nil : { actions.openAppNotifications(app.id) },
                           forget: { selected = nil; actions.forgetApp(app.id) })
             }
+            // Side by side: level with its row. In one column the drawer is under the list anyway.
+            .padding(.top, columns > 1 ? max(0, (rowTops[app.id] ?? listTop) - listTop) : 0)
         }
         }
+        .coordinateSpace(name: Self.space)
         // The palette opens an app's drawer ("app:<id>"), then hands the keyboard to the app's row in the list, which may
         // only draw once the folded OK apps are shown.
         .onChange(of: nav?.target, initial: true) { _, t in
@@ -2046,6 +2061,8 @@ private struct AppsTab: View {
             nav?.target = "app-row:\(t.dropFirst(4))"
         }
     }
+
+    private static let space = "apps-tab"
 
     /// Read from macOS and nothing to change. Apps not read (no Full Disk Access) stay in the list.
     private func isOK(_ a: SeenApp) -> Bool { a.mac?.problems.isEmpty == true }
@@ -2086,6 +2103,7 @@ private struct AppsTab: View {
         .onTapGesture(perform: pick)
         .settingsSlot(choose: pick)
         .environment(\.settingsRow, "app-row:\(app.id)")
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.space)).minY } action: { rowTops[app.id] = $0 }
         .help(app.mac?.warning ?? "")
     }
 

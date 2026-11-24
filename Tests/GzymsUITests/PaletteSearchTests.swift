@@ -88,6 +88,8 @@ private func flag(_ q: String) -> [PaletteItem] { [PaletteItem(id: "mark", title
     for _ in 0..<20 where nav.current == nil { try? await Task.sleep(for: .milliseconds(20)); host.layoutSubtreeIfNeeded() }
     #expect(nav.target == nil)
     #expect(nav.current != nil)
+    // The panel took the landing for its scroll to the top (and reset it, so j/k scroll the plain way again).
+    #expect(!nav.landed)
     nav.choose()
     #expect(written == ["battery_below"])
 }

@@ -9,6 +9,8 @@ public final class SettingsNav {
     /// Where the palette sends the keyboard: a row's title ("Stop on battery under"), or "app:<id>" for an app's drawer on
     /// Apps (Apps turns it into "app-row:<id>", its row in the list). The first control of that row takes `current` when it draws, then this goes back to nil.
     public var target: String?
+    /// `current` came from `target`: the panel scrolls that row to the top, so what opens next to it (an app's drawer) shows too.
+    @ObservationIgnored public var landed = false
     /// A letter recorder listens: every key is its.
     @ObservationIgnored public var paused = false
     /// What Esc does before it closes the panel: a tab with something open sets it (a drawer), nil = close the panel.
@@ -69,6 +71,7 @@ struct SettingsSlot: ViewModifier {
             .onDisappear { nav?.forget(me) }
             .onChange(of: nav?.target, initial: true) { _, t in
                 guard let nav, let t, t == row else { return }
+                nav.landed = true
                 nav.current = me
                 nav.target = nil
             }
