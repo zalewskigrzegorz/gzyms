@@ -95,12 +95,14 @@ public struct PaletteView: View {
                 VStack(spacing: 2) {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { i, item in
                         HStack {
+                            // One line per row: a long PR or build title ends in "…".
                             Text(item.title).font(.system(size: 13, weight: i == state.selected ? .semibold : .regular))
-                            Spacer()
+                                .lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 12)
                             if i == state.selected, item.alt != nil {
-                                Text("⌘↩ second action").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+                                Text("⌘↩ second action").font(.system(size: 11)).foregroundStyle(theme[\.overlay]).fixedSize()
                             }
-                            Text(item.kind).font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+                            Text(item.kind).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).fixedSize()
                         }
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 7).fill(i == state.selected ? theme[\.mauve].opacity(0.3) : .clear))

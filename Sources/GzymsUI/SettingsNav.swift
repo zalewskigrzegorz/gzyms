@@ -7,7 +7,7 @@ import SwiftUI
 public final class SettingsNav {
     public var current: UUID?
     /// Where the palette sends the keyboard: a row's title ("Stop on battery under"), or "app:<id>" for an app's drawer on
-    /// Apps. The first control of that row takes `current` when it draws, then this goes back to nil.
+    /// Apps (Apps turns it into "app-row:<id>", its row in the list). The first control of that row takes `current` when it draws, then this goes back to nil.
     public var target: String?
     /// A letter recorder listens: every key is its.
     @ObservationIgnored public var paused = false

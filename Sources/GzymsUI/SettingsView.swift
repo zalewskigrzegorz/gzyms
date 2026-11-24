@@ -2037,12 +2037,13 @@ private struct AppsTab: View {
             }
         }
         }
-        // The palette opens an app's drawer: "app:<id>".
+        // The palette opens an app's drawer ("app:<id>"), then hands the keyboard to the app's row in the list, which may
+        // only draw once the folded OK apps are shown.
         .onChange(of: nav?.target, initial: true) { _, t in
             guard let t, t.hasPrefix("app:") else { return }
             selected = String(t.dropFirst(4))
             showOK = true
-            nav?.target = nil
+            nav?.target = "app-row:\(t.dropFirst(4))"
         }
     }
 
@@ -2084,6 +2085,7 @@ private struct AppsTab: View {
         .onHover { hovered = $0 ? app.id : (hovered == app.id ? nil : hovered) }
         .onTapGesture(perform: pick)
         .settingsSlot(choose: pick)
+        .environment(\.settingsRow, "app-row:\(app.id)")
         .help(app.mac?.warning ?? "")
     }
 

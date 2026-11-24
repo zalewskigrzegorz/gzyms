@@ -1741,8 +1741,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for input in [false, true] {
                 for d in audio.pickable(input: input) {
                     let side = input ? "Input" : "Output"
-                    items.append(PaletteItem(id: "audio:\(side):\(d.id)", title: "\(side): \(d.name)", kind: "Audio",
+                    let current = d.id == (input ? audio.input : audio.output)
+                    items.append(PaletteItem(id: "audio:\(side):\(d.id)", title: "\(side): \(d.name)", kind: current ? "Audio, current" : "Audio",
                                              words: input ? "mic microphone device" : "speaker headphones sound device") { [weak self] in
+                        guard !current else { return }
                         Audio.setDefaultAsync(d.id, input: input) { _ in self?.model.onAudioChange() }
                     })
                 }
@@ -1758,10 +1760,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.agents.focus(ag.key)
             })
         }
-        // The single desktop without a tiler has nowhere to switch to.
-        if model.activeState != nil {
+        // The single desktop without a tiler has nowhere to switch to, and the one you are on gets no row.
+        if let state = model.activeState {
+            let wsNames = Dictionary(state.workspaces.compactMap { w in w.name.map { (w.id, $0) } }) { a, _ in a }
             for w in model.workspaces where !w.isActive {
-                items.append(PaletteItem(id: "workspace:\(w.number)", title: "Workspace \(w.label)", kind: "Workspace", words: "space desktop \(w.number)") { [weak self] in
+                let name = wsNames[w.number] ?? (w.label == "\(w.number)" ? nil : w.label)
+                items.append(PaletteItem(id: "workspace:\(w.number)", title: "Workspace \(w.number)" + (name.map { " \($0)" } ?? ""), kind: "Workspace",
+                                         words: "space desktop") { [weak self] in
                     self?.model.selectWorkspace(w.number)
                 })
             }

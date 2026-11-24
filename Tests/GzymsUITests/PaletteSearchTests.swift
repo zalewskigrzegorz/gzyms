@@ -37,8 +37,8 @@ private func flag(_ q: String) -> [PaletteItem] { [PaletteItem(id: "mark", title
     let s = PaletteState()
     s.items = [PaletteItem(id: "t", title: "Notifications", kind: "Settings", tier: 0) {},
                PaletteItem(id: "r", title: "Sound at once", kind: "Notifications", words: "Sound banner priority settings") {},
-               PaletteItem(id: "o", title: "Output: AirPods Pro", kind: "Audio", words: "speaker sound") {},
-               PaletteItem(id: "p", title: "Fix banner sound on wake", kind: "GitHub PRs", words: "#31 CI passed", tier: 2, alt: {}) {},
+               PaletteItem(id: "o", title: "Output: AirPods Pro", kind: "Audio, current", words: "speaker sound") {},
+               PaletteItem(id: "p", title: "Fix banner sound on wake when the Mac comes back from sleep with a second screen attached and Focus on", kind: "GitHub PRs", words: "#31 CI passed", tier: 2, alt: {}) {},
                PaletteItem(id: "m", title: "Join Standup in 25 min", kind: "Meeting", words: "meeting call") {},
                PaletteItem(id: "g", title: "gzyms-palette", kind: "Agent", words: "gzyms tuios") {},
                PaletteItem(id: "x", title: "Sounds", kind: "Settings", tier: 0) {}]
@@ -104,6 +104,7 @@ private func flag(_ q: String) -> [PaletteItem] { [PaletteItem(id: "mark", title
     host.layoutSubtreeIfNeeded()
     for _ in 0..<20 where nav.target != nil { try? await Task.sleep(for: .milliseconds(20)); host.layoutSubtreeIfNeeded() }
     #expect(nav.target == nil)
-    // The drawer's controls registered next to the list's one row.
+    // The keyboard is on the app's row, and the drawer's controls registered next to it.
+    #expect(nav.current != nil)
     #expect(nav.frames.count > before + 1)
 }
