@@ -70,6 +70,19 @@ private func rank(_ q: String) -> [String] { paletteRank(q, rows) { $0 } }
     #expect(paletteRank("caffeine", rows, tier: { $0.2 }, words: { $0.1 }) { $0.0 }.map(\.0) == ["General", "Stop on battery under"])
 }
 
+/// The rows come from the pills after `linkAgents`: a PR row with an agent on its branch opens it on ⌘Enter, like `a`.
+@Test func aRowWithAnAgentOnItsBranchOpensTheAgentOnAlt() {
+    let br = RepoBranch(repo: "greg/gzyms", branch: "feat/marks")
+    let pr = PluginPill(plugin: "gh-prs", item: PluginItem(id: "prs", text: "PRs", menu: [PluginRow(id: "pr:29", text: "Palette", branch: br),
+                                                                                         PluginRow(id: "pr:30", text: "Other")]))
+    let agent = Agent(source: .tuios, id: "42a9cdac", name: "palette", place: "gzyms", state: .working, branch: br)
+    let rows = palettePluginRows(linkAgents([pr], agents: [agent]), skip: agentsPill)
+    #expect(rows[0].alt == .agent(agent.key) && rows[0].opensAgent)
+    #expect(rows[1].alt == nil && !rows[1].opensAgent)
+    // Another second action (a row of another plugin) keeps it and the plain kind.
+    #expect(!PalettePluginRow(plugin: "gh-builds", id: "b", title: "b", words: "", alt: .row(plugin: "gh-prs", id: "pr:29")).opensAgent)
+}
+
 @Test func pluginRowsWithAnIdBecomePaletteRows() {
     let menu = [PluginRow(headline: RowHeadline(value: "42")),
                 PluginRow(id: "chart", text: "chart", chart: RowChart(values: [1, 2])),

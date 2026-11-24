@@ -1786,7 +1786,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pluginNames = Dictionary(model.plugins.map { ($0.folder, $0.name) }) { a, _ in a }
         for r in palettePluginRows(model.pluginPills, skip: agentsPill) {
             let alt: (() -> Void)? = r.alt.map { alt in { [weak self] in self?.model.onRowAlt(alt) } }
-            items.append(PaletteItem(id: "row:\(r.plugin)/\(r.id)", title: r.title, kind: pluginNames[r.plugin] ?? r.plugin, words: r.words, tier: 2,
+            let kind = (pluginNames[r.plugin] ?? r.plugin) + (r.opensAgent ? " · agent" : "")
+            items.append(PaletteItem(id: "row:\(r.plugin)/\(r.id)", title: r.title, kind: kind, words: r.words, tier: 2,
                                      alt: alt) { [weak self] in self?.model.onPluginEvent(r.plugin, .click, r.id) })
         }
         // A notification is found by its app, title and text; Enter opens it like a click, ⌘Enter takes its second action.

@@ -77,7 +77,10 @@ public func paletteWhen(start: Double, now: Double) -> String {
 /// (headline, chart, stats). The agents pill is left out, its agents get their own rows.
 public struct PalettePluginRow: Equatable, Sendable {
     public var plugin: String, id: String, title: String, words: String
+    /// ⌘Enter: what `a` does on the row in the popup.
     public var alt: RowAlt?
+    /// ⌘Enter opens an agent on the row's branch (`linkAgents`), so its kind says "· agent". Another alt keeps the kind plain.
+    public var opensAgent: Bool { if case .agent = alt { true } else { false } }
 }
 
 public func palettePluginRows(_ pills: [PluginPill], skip: String) -> [PalettePluginRow] {

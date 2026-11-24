@@ -122,7 +122,6 @@ While an agent works, the agents pill shows it on its border: `appearance.agent_
 - No leader needed: Enter or the `open` letter opens an armageddon (no key dismisses it); in the meeting preview `c` `m` `s` step camera, mic, speakers, `t` plays a test sound, Enter or `o` joins, Esc closes.
 - `[audio] banned` lists audio devices by exact name (`banned = ["Alex iPhone  Microphone"]`, or Hide in Settings → Audio). The bar's sound and mic popups and the meeting preview leave them out, `m` and `s` skip them, and a banned iPhone takes its Continuity camera with it. One that macOS picked by itself still shows, dimmed. Meeting apps follow it only when they use the system default device.
 - `[audio.icons]` sets the icon a device's pill shows, by exact device name. A kind: `laptop`, `phone`, `headphones`, `headset`, `airpods`, `speaker`, `stereo`, `homepod`, `homepod-mini`, `airplay`, `car`, `mic`, `studio-mic`, `interface`, `monitor`, `tv`, `apple-tv`, `camera`, `console`, `external`. Or any SF Symbol name (`"Amp" = "guitars.fill"`): a name macOS has no symbol for falls back to the kind Gzyms guesses. `[audio.tags]` puts up to 3 letters next to the icon (`"Kitchen" = "K"`), so two HomePods or two AirPlay speakers look different. From the shell: `gzyms set 'audio.icons."MacBook Pro Microphone"' mic`, `gzyms set 'audio.tags."Kitchen"' K`. In Settings → Audio, a click on a device opens its icons with a preview, the custom field, the tag and Hide.
-- Leader, then Space opens the command palette: one search over Settings tabs and single settings (Enter opens the tab with the keyboard on that row), actions, every plugin popup row with an id (Enter sends what Enter in the popup sends, ⌘Enter the row's second action), audio devices (`Output: …`, `Input: …`), apps (Enter opens their drawer in Settings → Apps), meetings of the next 12 h (`Join …`), agents, workspaces, music (play or pause, next, previous), mic mute, themes and the notifications on the lists. `dnd 30`, `dnd 1h30`, `caffeine 45m` make a timed row. Typed text also offers `Flag this moment: <text>` under the matches: an arrow or Tab onto it, then Enter, saves the note with the last 5 min of `gzyms.log` and `anomalies.jsonl` to `~/Library/Logs/Gzyms/marks/`, and a "Moment flagged" banner shows the file on click. `[debug] marks = false` (Settings → Debug → "Flag a moment") turns it off. The list is read once when the palette opens.
 - `[keys] idle_timeout` (seconds, `0` = never) ends a forgotten mode, `[keys] hint_chars` sets the hint letters.
 - `gzyms hud` opens the system HUD, a second call closes it.
 - The bar logs to `~/Library/Logs/Gzyms/gzyms.log`. Past 5 MB it moves to `gzyms.log.1`, checked at start and once a day. CLI commands print in the terminal, not into that file.
@@ -133,6 +132,15 @@ While an agent works, the agents pill shows it on its border: `appearance.agent_
 - `gzyms agents install claude` installs that plugin through Claude Code's own CLI: `claude plugin marketplace add zalewskigrzegorz/gzyms-claude-plugin`, then `claude plugin install gzyms@gzyms` (and `claude plugin enable gzyms@gzyms` when it was off). It prints one line per step. A second run is safe. New Claude sessions pick it up, open ones need a restart or `/reload-plugins`. `gzyms agents remove claude` runs `claude plugin uninstall gzyms@gzyms` and leaves the marketplace. A failed step exits 1 with Claude's own line. Without Claude Code it says so and does nothing. Settings → Agents → Claude Code has the same Install or Remove button.
 - `gzyms skill` prints this guide. `gzyms skill plugins` prints the plugin guide.
 - `gzyms skill install` puts a short SKILL.md for Claude Code (and Codex when `~/.agents` exists, or with `--agents`) that points here. It lists the paths and asks first, `--yes` skips the question.
+
+## Command palette
+
+- Leader, then Space opens it: one search over everything Gzyms knows, read once when it opens. Arrows or Tab move, Enter runs the row, ⌘Enter runs its second action, Esc closes.
+- It finds Settings tabs and single settings (Enter opens the tab with the keyboard on that row, "battery", "banner sound"), actions (Do Not Disturb, Caffeine, Test banner, Clear all notifications, Keyboard mode, Report a problem, Restart), audio devices (`Output: …`, `Input: …`, the one in use says `Audio, current`), apps (Enter opens their drawer in Settings → Apps), meetings of the next 12 h (`Join …`), agents by name, workspaces (`Workspace 9 mail`), music (play or pause, next, previous), mic mute, themes and the notifications on the lists.
+- Every plugin popup row with an id is there too, found by its text, tag and detail. Enter sends what Enter in the popup sends. ⌘Enter does what `a` does in the popup: on a PR row with an agent on its branch it opens that agent, and the kind on the right reads `GitHub PRs · agent`.
+- A title match beats a match only in keywords. On an equal match Settings and actions come before plugin rows and notifications.
+- `dnd 30`, `dnd 1h30`, `caffeine 45m` make a timed row.
+- Flag this moment: typed text also offers `Flag this moment: <text>` under the matches. It never runs from the default selection: an arrow or Tab onto it, then Enter. It saves the note with the last 5 min of `gzyms.log` and `anomalies.jsonl` to `~/Library/Logs/Gzyms/marks/`, and a "Moment flagged" banner shows the file on click. `gzyms report` takes the last 7 days of them. `[debug] marks = false` (Settings → Debug → "Flag a moment") turns it off.
 
 ## After the task: offer a short retro
 
@@ -220,7 +228,7 @@ A plugin that polls promises how often with `"expect"`, in seconds, on every ite
 {"item":{"id":"prs","text":"3","expect":120}}
 ```
 
-A pill with `"menu"` opens a list on click. A row with an `"id"` can be clicked, a row without one is a label, `"separator":true` draws a line. `"tag"` is a coloured tag on the left, `"detail"` sits on the right.
+A pill with `"menu"` opens a list on click. A row with an `"id"` can be clicked, a row without one is a label, `"separator":true` draws a line. `"tag"` is a coloured tag on the left, `"detail"` sits on the right. Every row with an `"id"` is also found in the command palette (leader, then Space) by its text, tag and detail: Enter sends the same `click` with its id, ⌘Enter opens the agent on the row's `"branch"` when there is one.
 
 ```json
 {"item":{"id":"prs","text":"3 open","menu":[{"id":"pr:12","tag":"review","color":"peach","text":"#12 fix login","detail":"2h"},{"separator":true},{"text":"updated just now"}]}}

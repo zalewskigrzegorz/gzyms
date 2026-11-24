@@ -73,7 +73,7 @@ A plugin that polls promises how often with `"expect"`, in seconds, on every ite
 {"item":{"id":"prs","text":"3","expect":120}}
 ```
 
-A pill with `"menu"` opens a list on click. A row with an `"id"` can be clicked, a row without one is a label, `"separator":true` draws a line. `"tag"` is a coloured tag on the left, `"detail"` sits on the right.
+A pill with `"menu"` opens a list on click. A row with an `"id"` can be clicked, a row without one is a label, `"separator":true` draws a line. `"tag"` is a coloured tag on the left, `"detail"` sits on the right. Every row with an `"id"` is also found in the command palette (leader, then Space) by its text, tag and detail: Enter sends the same `click` with its id, ⌘Enter opens the agent on the row's `"branch"` when there is one.
 
 ```json
 {"item":{"id":"prs","text":"3 open","menu":[{"id":"pr:12","tag":"review","color":"peach","text":"#12 fix login","detail":"2h"},{"separator":true},{"text":"updated just now"}]}}
