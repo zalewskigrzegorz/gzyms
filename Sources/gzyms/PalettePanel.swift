@@ -36,6 +36,7 @@ final class PalettePanel: NSPanel {
         case 53: orderOut(nil)
         case 125: state.move(1)
         case 126: state.move(-1)
+        case 48: state.move(event.modifierFlags.contains(.shift) ? -1 : 1)  // Tab
         case 36, 76: if let item = state.current { run(item, alt: event.modifierFlags.contains(.command)) }
         default: super.sendEvent(event)
         }
@@ -50,9 +51,11 @@ final class PalettePanel: NSPanel {
         return super.performKeyEquivalent(with: event)
     }
 
-    func show(items: [PaletteItem], extra: @escaping (String) -> [PaletteItem], on screen: NSScreen?) {
+    func show(items: [PaletteItem], extra: @escaping (String) -> [PaletteItem], last: @escaping (String) -> [PaletteItem] = { _ in [] },
+              on screen: NSScreen?) {
         state.items = items
         state.extra = extra
+        state.last = last
         state.query = ""
         guard let f = (screen ?? NSScreen.main)?.visibleFrame else { return }
         top = f.maxY - f.height * 0.2

@@ -1,7 +1,8 @@
 import GzymsCore
 import SwiftUI
 
-/// One row of the command palette: a Settings tab, an action, a theme or a notification still on a list.
+/// One row of the command palette: a Settings tab or setting, an action, a plugin's row, a device, a meeting, an agent,
+/// a workspace, a theme or a notification still on a list.
 public struct PaletteItem: Identifiable {
     public let id: String
     public let title: String
@@ -12,8 +13,10 @@ public struct PaletteItem: Identifiable {
     public let run: () -> Void
     /// ⌘Enter: a notification's second action, as on its banner.
     public let alt: (() -> Void)?
-    public init(id: String, title: String, kind: String, words: String = "", alt: (() -> Void)? = nil, run: @escaping () -> Void) {
-        self.id = id; self.title = title; self.kind = kind; self.words = words; self.alt = alt; self.run = run
+    /// On an equal score the lower one goes first: 0 Settings tabs and actions, 1 the rest of Gzyms, 2 plugin rows and notifications.
+    public let tier: Int
+    public init(id: String, title: String, kind: String, words: String = "", tier: Int = 1, alt: (() -> Void)? = nil, run: @escaping () -> Void) {
+        self.id = id; self.title = title; self.kind = kind; self.words = words; self.tier = tier; self.alt = alt; self.run = run
     }
 }
 
@@ -45,16 +48,23 @@ extension SettingsTab {
 /// What the palette shows: the typed query, the rows that fit it and the highlighted one.
 @Observable @MainActor
 public final class PaletteState {
-    public var query = "" { didSet { selected = 0 } }
+    /// A new query selects the best match. The rows from `last` ("Flag this moment: …") are never selected by default, only by a
+    /// key that moves onto them: with nothing else shown, nothing is selected and Enter does nothing (Greg, 2026-11-24).
+    public var query = "" { didSet { selected = shown.count > last(query).count ? 0 : -1 } }
     public var selected = 0
     public var items: [PaletteItem] = []
     /// Rows made from the query itself ("dnd 1h").
     @ObservationIgnored public var extra: (String) -> [PaletteItem] = { _ in [] }
+    /// Rows made from the query that go under every match, so Enter never picks them by accident ("Flag this moment: …").
+    @ObservationIgnored public var last: (String) -> [PaletteItem] = { _ in [] }
     public static let limit = 8
 
     public init() {}
 
-    public var shown: [PaletteItem] { Array((extra(query) + paletteRank(query, items) { $0.title + " " + $0.words }).prefix(Self.limit)) }
+    public var shown: [PaletteItem] {
+        let end = last(query)
+        return Array((extra(query) + paletteRank(query, items, tier: \.tier, words: \.words) { $0.title }).prefix(Self.limit - end.count)) + end
+    }
     public var current: PaletteItem? { let s = shown; return s.indices.contains(selected) ? s[selected] : nil }
     public func move(_ by: Int) { selected = min(max(selected + by, 0), max(shown.count - 1, 0)) }
 }
@@ -75,7 +85,7 @@ public struct PaletteView: View {
     public var body: some View {
         let shown = state.shown
         VStack(alignment: .leading, spacing: 0) {
-            TextField("Search settings, actions and notifications", text: $state.query)
+            TextField("Search settings, actions, plugins and more", text: $state.query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 17))
                 .padding(.horizontal, 16).padding(.vertical, 13)
@@ -85,12 +95,14 @@ public struct PaletteView: View {
                 VStack(spacing: 2) {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { i, item in
                         HStack {
+                            // One line per row: a long PR or build title ends in "…".
                             Text(item.title).font(.system(size: 13, weight: i == state.selected ? .semibold : .regular))
-                            Spacer()
+                                .lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 12)
                             if i == state.selected, item.alt != nil {
-                                Text("⌘↩ second action").font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+                                Text("⌘↩ second action").font(.system(size: 11)).foregroundStyle(theme[\.overlay]).fixedSize()
                             }
-                            Text(item.kind).font(.system(size: 11)).foregroundStyle(theme[\.overlay])
+                            Text(item.kind).font(.system(size: 11)).foregroundStyle(theme[\.overlay]).fixedSize()
                         }
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 7).fill(i == state.selected ? theme[\.mauve].opacity(0.3) : .clear))

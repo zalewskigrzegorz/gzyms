@@ -131,6 +131,9 @@ The notes Gzyms shows once after an update to this version. Only the "- " lines 
 - GitHub PRs shows the agents working on each pull request under it. `a` opens the agent, and the agents list shows each agent's branch and its pull request.
 - GitHub PRs can send CI notifications (Settings → Plugins → GitHub PRs → CI notifications). A CI banner opens the agent on that branch as its second action.
 - GitHub PRs opens with the number of open pull requests and a tile per state: fix, merge, comments, draft.
+- The palette (leader, then Space) finds almost everything: single settings, plugin rows (⌘Enter opens the agent on a PR), audio devices, apps, meetings to join, agents, workspaces, music and mic.
+- `caffeine 45m` in the palette keeps the Mac awake that long, like `dnd 30` for Do Not Disturb.
+- Something looked off? Type a note in the palette, arrow down to Flag this moment, Enter. Gzyms saves it with the logs around it, and Report a problem takes it along.
 
 """##,
 ]

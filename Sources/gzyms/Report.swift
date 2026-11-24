@@ -4,7 +4,7 @@ import GzymsCore
 let gzymsVersion = "0.2.1"
 
 /// `gzyms report` and Debug → Report a problem…: one zip on the Desktop with what an agent or Greg needs to look
-/// into a problem. The log never holds notification titles or bodies. The config loses its secrets and personal names,
+/// into a problem, with the marks of the last 7 days. The log never holds notification titles or bodies. The config loses its secrets and personal names,
 /// every file loses the home path (`ReportScrub`).
 @MainActor
 enum Report {
@@ -29,6 +29,16 @@ enum Report {
             if let config = try? String(contentsOf: ThemeCommand.configFile.resolvingSymlinksInPath(), encoding: .utf8) {
                 try ReportScrub.text(ReportScrub.config(config), home: home.path)
                     .write(to: dir.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+            }
+            // The marks of the last week: the user's own notes, made for exactly this, with the log lines around them.
+            let marks = logs.appendingPathComponent("marks")
+            let week = Date() - 7 * 86400
+            for f in (try? fm.contentsOfDirectory(at: marks, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+            where f.pathExtension == "txt" && ((try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) > week {
+                guard let text = try? String(contentsOf: f, encoding: .utf8) else { continue }
+                try fm.createDirectory(at: dir.appendingPathComponent("marks"), withIntermediateDirectories: true)
+                try ReportScrub.text(text, home: home.path).write(to: dir.appendingPathComponent("marks").appendingPathComponent(f.lastPathComponent),
+                                                                  atomically: true, encoding: .utf8)
             }
             try about(grants: grants).write(to: dir.appendingPathComponent("about.txt"), atomically: true, encoding: .utf8)
             let ditto = Process()

@@ -63,7 +63,7 @@ A wizard asks for both on first launch. It is an early release, so expect rough 
 - [System pills](https://gzyms.dev/docs/#pills). CPU with top processes, memory, network that warns about a stray proxy, a battery that says the charger is too weak, caffeine, now playing.
 - [The file shelf](https://gzyms.dev/docs/#shelf). Drop a file under the notch, it waits there. Drag it out where you need it.
 - [⌃⌥M mutes the mic](https://gzyms.dev/docs/#mic) in every app. The pill shows the level, so you know it worked.
-- [Command palette](https://gzyms.dev/docs/#palette). One search for settings, actions, themes and your notifications.
+- [Command palette](https://gzyms.dev/docs/#palette). One search for settings, actions, plugin rows, devices, meetings, agents, workspaces, themes and your notifications.
 - [105 themes](https://gzyms.dev/docs/#settings), from Mocha Neon to Gruvbox Light.
 - [No telemetry](https://gzyms.dev/docs/#telemetry). gzyms sends nothing home on its own.
 
@@ -76,7 +76,7 @@ Every banner shows its keys, so you never have to remember them.
 | <kbd>o</kbd> <kbd>x</kbd> <kbd>z</kbd> | Open, dismiss or snooze the banner |
 | <kbd>n</kbd> <kbd>p</kbd> | Walk through the banners that wait |
 | Leader, then <kbd>j</kbd> <kbd>k</kbd> <kbd>Enter</kbd> | A letter over every pill. Move, open, <kbd>x</kbd> clears, <kbd>Esc</kbd> leaves |
-| Leader, then <kbd>Space</kbd> | Command palette. `dnd 30` works too |
+| Leader, then <kbd>Space</kbd> | Command palette. `dnd 30` and `caffeine 45m` work too |
 | <kbd>⌃</kbd> <kbd>⌥</kbd> <kbd>M</kbd> | Mute the mic in every app |
 
 More in the [keyboard docs](https://gzyms.dev/docs/#keyboard).

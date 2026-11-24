@@ -1,6 +1,6 @@
 {
-  "count": 105,
-  "updated": "2026-11-22",
+  "count": 106,
+  "updated": "2026-11-24",
   "features": [
     "gzyms notify command",
     "gzyms notifications command (list, dismiss, clear, JSON)",
@@ -62,7 +62,8 @@
     "Mic mute shortcut",
     "macOS menu bar peek on holding Cmd",
     "Keyboard-driven Settings",
-    "Command palette (leader, then space)",
+    "Command palette (leader, then space): settings, actions, plugin rows, devices, meetings, agents, workspaces",
+    "Flag a moment from the palette (note plus the logs around it)",
     "Sound output pill with device switching",
     "Mic pill with input level",
     "Banned audio devices",

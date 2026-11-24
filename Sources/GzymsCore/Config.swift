@@ -58,6 +58,8 @@ public struct GzymsConfig: Equatable, Sendable {
     /// `[updates] automatic`: only what the user chose against the default (`automaticUpdates`). nil: the default.
     public var updatesAutomatic: Bool?
     public var anomalies = true
+    /// `[debug] marks`: "Flag this moment: …" in the palette saves a note with the logs around it (Settings → Debug, Flag a moment).
+    public var marks = true
     /// Global, in every app (`[shortcuts] mic_mute`, "off" = none).
     public var micShortcut = Shortcut("ctrl+alt+m")
     /// The keyboard mode (`[keys]`): its leader ("off" = none, `gzyms keys on` still works), how long it waits for a
@@ -255,6 +257,7 @@ public func loadConfig(toml: String?) -> ConfigLoad {
         else { problems.append("sounds.\(name): not an event (\(SoundEvent.allCases.map(\.rawValue).joined(separator: ", "))), ignored") }
     }
     if let v = raw.debug?.anomalies { config.anomalies = v }
+    if let v = raw.debug?.marks { config.marks = v }
     if let v = raw.calendar?.enabled { config.calendarEnabled = v }
     if let v = raw.calendar?.preview { config.meetingPreview = v }
     for (folder, values) in raw.plugins ?? [:] {
@@ -778,13 +781,14 @@ private struct RawKeys: Decodable {
 }
 
 private struct RawDebug: Decodable {
-    var anomalies: Bool?
+    var anomalies: Bool?, marks: Bool?
     var unknown: [String] = []
-    enum CodingKeys: String, CodingKey { case anomalies }
+    enum CodingKeys: String, CodingKey { case anomalies, marks }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         anomalies = lenient(c, .anomalies, "debug.anomalies", &unknown)
-        unknown += try unknownKeys(in: decoder, known: ["anomalies"], prefix: "debug.")
+        marks = lenient(c, .marks, "debug.marks", &unknown)
+        unknown += try unknownKeys(in: decoder, known: ["anomalies", "marks"], prefix: "debug.")
     }
 }
 

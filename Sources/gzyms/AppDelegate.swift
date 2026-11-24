@@ -466,8 +466,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { [weak self] in
                 guard let self, let arg else { return }
                 if arg == "clear" {
-                    for app in Array(notes.inboxes.keys) { notes.clearAll(app) }
-                    notes.clearMissed()
+                    clearAllNotes()
                 } else if arg.hasPrefix("dismiss:") {
                     notes.remove(String(arg.dropFirst("dismiss:".count)), now: ProcessInfo.processInfo.systemUptime)
                 } else { return }
@@ -937,6 +936,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         open(b.id, alt: alt)
     }
 
+    /// `gzyms notifications clear` and the palette's Clear all notifications: every list and the missed ones.
+    private func clearAllNotes() {
+        for app in Array(notes.inboxes.keys) { notes.clearAll(app) }
+        notes.clearMissed()
+    }
+
     /// From the banner or from a list: takes it out of the store and opens its link, or its app.
     /// `joining` skips the check before a meeting (it is the check's own Join).
     private func open(_ id: String, alt: Bool = false, joining: Bool = false) {
@@ -944,12 +949,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showMeetingPreview(m)
             return
         }
-        guard let b = notes.open(id, now: ProcessInfo.processInfo.systemUptime) else { return }
+        guard let b = notes.open(id, now: ProcessInfo.processInfo.systemUptime) else {
+            // A meeting from the palette that has no reminder up yet: its link, and no reminder for it later.
+            if let m = meetings.first(where: { "meeting-\($0.id)" == id }), let url = URL(string: m.link), url.scheme?.hasPrefix("http") == true {
+                NSWorkspace.shared.open(url)
+                meetingClock.finish(m.id)
+                saveMeetings()
+                meetingsChanged()
+                log("calendar: \(m.id) joined from the palette")
+            }
+            return
+        }
         logNote(b, alt ? "alt" : "opened")
         let uuid = ncRecordUUID(noteID: b.id)
         if uuid != nil { markHandled(b.id) }
         if b.meetingStart != nil { finishMeeting(b) }
-        if b.id == duplicateNoticeID {
+        if b.id.hasPrefix(Self.markPrefix) {
+            let file = Paths.logsDir(home: FileManager.default.homeDirectoryForCurrentUser).appendingPathComponent("marks")
+                .appendingPathComponent((String(b.id.dropFirst(Self.markPrefix.count)) as NSString).lastPathComponent)
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        } else if b.id == duplicateNoticeID {
             toggleSettings(.debug)
         } else if b.id == awayNoticeID {
             openMissedList()
@@ -1669,22 +1688,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         log("settings: open \(model.settingsTab.rawValue)")
     }
 
-    /// Leader, then space: the Settings tabs, the actions people look for, every theme and the notifications still on
-    /// the lists, in one search.
+    /// Leader, then space: Settings tabs and rows, actions, plugin rows, devices, meetings, agents, workspaces, themes
+    /// and the notifications still on the lists, in one search. Built once when it opens, so nothing moves under the
+    /// selection while it is up.
     private func showPalette() {
         let a = settingsActions()
         var items = SettingsTab.allCases.map { t in
-            PaletteItem(id: "tab:\(t.rawValue)", title: t.title, kind: "Settings", words: t.keywords) { [weak self] in self?.toggleSettings(t) }
+            PaletteItem(id: "tab:\(t.rawValue)", title: t.title, kind: "Settings", words: t.keywords, tier: 0) { [weak self] in self?.toggleSettings(t) }
         }
-        func action(_ title: String, _ words: String, _ run: @escaping () -> Void) {
-            items.append(PaletteItem(id: title, title: title, kind: "Action", words: words, run: run))
+        func action(_ title: String, _ words: String, kind: String = "Action", tier: Int = 0, _ run: @escaping () -> Void) {
+            items.append(PaletteItem(id: "\(kind):\(title)", title: title, kind: kind, words: words, tier: tier, run: run))
         }
         action("Do Not Disturb on", "dnd quiet silence") { [weak self] in self?.setDND(.distantFuture) }
         action("Do Not Disturb off", "dnd") { [weak self] in self?.setDND(nil) }
+        action("Caffeine on", "awake coffee sleep keep") { [weak self] in self?.model.onCaffeine(.some(nil)) }
+        action("Caffeine off", "awake coffee sleep") { [weak self] in self?.model.onCaffeine(nil) }
         action("Test banner", "notification try demo") { [weak self] in
             self?.post(GzymsNotification(id: "palette-test-\(Int(Date().timeIntervalSince1970))", app: nil, level: .info, title: "Gzyms test",
                                          subtitle: nil, body: "This is how a banner looks.", link: nil, altLink: nil, sound: nil, at: Date()))
         }
+        action("Clear all notifications", "lists dismiss empty") { [weak self] in
+            self?.clearAllNotes(); self?.notesChanged()
+            log("notifications: lists cleared from the palette")
+        }
+        action("Keyboard mode on", "keys hints letters jump") { [weak self] in self?.pushTargets(); self?.chords.nav(on: true) }
         action("Usage HUD", "cpu memory stats", a.showHUD)
         action("Report a problem", "bug zip issue") { _ = a.report() }
         if a.canCheckForUpdates { action("Check for updates", "update upgrade version", a.checkForUpdates) }
@@ -1695,26 +1722,131 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         action("Open the event log", "log debug", a.openLog)
         action("Restart Gzyms", "reload relaunch", a.restart)
         action("Quit Gzyms", "exit close", a.quit)
+        // Music and mic, as their popups and the mic shortcut do.
+        action("Play or pause", "music media song track", kind: "Music", tier: 1) { [weak self] in self?.model.onMusic(.key(.playPause)) }
+        action("Next track", "music media song skip", kind: "Music", tier: 1) { [weak self] in self?.model.onMusic(.key(.next)) }
+        action("Previous track", "music media song back", kind: "Music", tier: 1) { [weak self] in self?.model.onMusic(.key(.previous)) }
+        if model.audio?.input != nil {
+            action(model.audio?.inputMuted == true ? "Unmute the microphone" : "Mute the microphone", "mic microphone mute", kind: "Audio", tier: 1) { [weak self] in
+                self?.chords.onMute()
+            }
+        }
+        // One row per setting: Enter opens its tab with the keyboard on it.
+        for r in SettingsTab.rows {
+            items.append(PaletteItem(id: "setting:\(r.tab.rawValue):\(r.title)", title: r.title, kind: r.tab.title, words: "\(r.section) \(r.words) settings") { [weak self] in
+                self?.showSetting(r.tab, target: r.title)
+            })
+        }
+        if let audio = model.audio {
+            for input in [false, true] {
+                for d in audio.pickable(input: input) {
+                    let side = input ? "Input" : "Output"
+                    let current = d.id == (input ? audio.input : audio.output)
+                    items.append(PaletteItem(id: "audio:\(side):\(d.id)", title: "\(side): \(d.name)", kind: current ? "Audio, current" : "Audio",
+                                             words: input ? "mic microphone device" : "speaker headphones sound device") { [weak self] in
+                        guard !current else { return }
+                        Audio.setDefaultAsync(d.id, input: input) { _ in self?.model.onAudioChange() }
+                    })
+                }
+            }
+        }
+        let now = Date().timeIntervalSince1970
+        for m in meetings.sorted(by: { $0.start < $1.start }) where m.end > now {
+            items.append(PaletteItem(id: "meeting:\(m.id)", title: "Join \(m.title) \(paletteWhen(start: m.start, now: now))", kind: "Meeting",
+                                     words: "meeting call video") { [weak self] in self?.open("meeting-\(m.id)") })
+        }
+        for ag in agents.current {
+            items.append(PaletteItem(id: "agent:\(ag.key)", title: ag.name, kind: "Agent", words: "\(ag.place) \(ag.source.title) agent") { [weak self] in
+                self?.agents.focus(ag.key)
+            })
+        }
+        // The single desktop without a tiler has nowhere to switch to, and the one you are on gets no row.
+        if let state = model.activeState {
+            let wsNames = Dictionary(state.workspaces.compactMap { w in w.name.map { (w.id, $0) } }) { a, _ in a }
+            for w in model.workspaces where !w.isActive {
+                let name = wsNames[w.number] ?? (w.label == "\(w.number)" ? nil : w.label)
+                items.append(PaletteItem(id: "workspace:\(w.number)", title: "Workspace \(w.number)" + (name.map { " \($0)" } ?? ""), kind: "Workspace",
+                                         words: "space desktop") { [weak self] in
+                    self?.model.selectWorkspace(w.number)
+                })
+            }
+        }
         items += Theme.all.map { t in
             PaletteItem(id: "theme:\(t.name)", title: "Theme \(t.name)", kind: "Theme", words: "colors colours look") { [weak self] in
                 self?.writeSetting("theme", .string(t.name), .table([]))
             }
         }
-        // A notification is found by its app, title and text; Enter opens it like a click, ⌘Enter takes its second action.
         let names = Dictionary(model.seenApps.map { ($0.id, $0.name) }) { a, _ in a }
+        for app in model.seenApps {
+            items.append(PaletteItem(id: "app:\(app.id)", title: "\(app.name) notifications", kind: "App", words: "app rules banner mute skip count") { [weak self] in
+                self?.showSetting(.apps, target: "app:\(app.id)")
+            })
+        }
+        // A plugin popup's rows: Enter sends what Enter in the popup sends, ⌘Enter the row's second action.
+        let pluginNames = Dictionary(model.plugins.map { ($0.folder, $0.name) }) { a, _ in a }
+        for r in palettePluginRows(model.pluginPills, skip: agentsPill) {
+            let alt: (() -> Void)? = r.alt.map { alt in { [weak self] in self?.model.onRowAlt(alt) } }
+            let kind = (pluginNames[r.plugin] ?? r.plugin) + (r.opensAgent ? " · agent" : "")
+            items.append(PaletteItem(id: "row:\(r.plugin)/\(r.id)", title: r.title, kind: kind, words: r.words, tier: 2,
+                                     alt: alt) { [weak self] in self?.model.onPluginEvent(r.plugin, .click, r.id) })
+        }
+        // A notification is found by its app, title and text; Enter opens it like a click, ⌘Enter takes its second action.
         for n in notes.inboxes.values.joined().sorted(by: { $0.at > $1.at }) {
             let app = n.app.map { names[$0] ?? seenApp($0)?.name ?? $0 } ?? "Notification"
             let alt: (() -> Void)? = n.altLink == nil ? nil : { [weak self] in self?.open(n.id, alt: true) }
             items.append(PaletteItem(id: "note:\(n.id)", title: n.title, kind: app, words: [app, n.subtitle, n.body].compactMap { $0 }.joined(separator: " "),
-                                     alt: alt) { [weak self] in self?.open(n.id) })
+                                     tier: 2, alt: alt) { [weak self] in self?.open(n.id) })
         }
+        let openedAt = Date(), marks = model.config.marks
         palette.show(items: items, extra: { [weak self] q in
-            guard let m = paletteDNDMinutes(q) else { return [] }
-            let span = m % 60 == 0 ? "\(m / 60) h" : m > 60 ? "\(m / 60) h \(m % 60) min" : "\(m) min"
-            return [PaletteItem(id: "dnd:\(m)", title: "Do Not Disturb for \(span)", kind: "Action") { self?.setDND(Date() + Double(m) * 60) }]
+            if let m = paletteMinutes(q, after: "dnd") {
+                return [PaletteItem(id: "dnd:\(m)", title: "Do Not Disturb for \(paletteSpan(m))", kind: "Action") { self?.setDND(Date() + Double(m) * 60) }]
+            }
+            if let m = paletteMinutes(q, after: "caffeine") {
+                return [PaletteItem(id: "caffeine:\(m)", title: "Caffeine for \(paletteSpan(m))", kind: "Action") { self?.model.onCaffeine(.some(m)) }]
+            }
+            return []
+        }, last: { [weak self] q in
+            // The time is when the palette opened, so typing the note does not move it.
+            let note = q.trimmingCharacters(in: .whitespaces)
+            guard marks, !note.isEmpty else { return [] }
+            return [PaletteItem(id: "mark", title: "Flag this moment: \(note)", kind: "Action") { self?.saveMark(note, openedAt: openedAt) }]
         }, on: focusedScreen())
-        log("palette: open")
+        log("palette: open, \(items.count) rows")
     }
+
+    /// Settings on that tab, the keyboard on the row `target` names (an app's drawer for "app:<id>").
+    private func showSetting(_ tab: SettingsTab, target: String) {
+        settings.nav.target = target
+        toggleSettings(tab)
+        // A row that is not drawn now (its section is folded) must not grab the keyboard later.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            if self?.settings.nav.target == target { self?.settings.nav.target = nil }
+        }
+    }
+
+    /// `~/Library/Logs/Gzyms/marks/<time>.txt`: the note and the logs around it, for a later look. A banner says it
+    /// worked, a click on it shows the file in Finder.
+    private func saveMark(_ note: String, openedAt: Date) {
+        let dir = Paths.logsDir(home: FileManager.default.homeDirectoryForCurrentUser)
+        // shortcut: a log that rotated in the last 5 min loses its older half (gzyms.log.1), add it if a mark comes out short.
+        let logs = ["gzyms.log", "anomalies.jsonl"].map { ($0, (try? String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8)) ?? "") }
+        let file = dir.appendingPathComponent("marks").appendingPathComponent(Marks.fileName(openedAt))
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Marks.text(note: note, openedAt: openedAt, now: Date(), logs: logs).write(to: file, atomically: true, encoding: .utf8)
+            log("mark: saved \(file.lastPathComponent)")
+            post(GzymsNotification(id: "\(Self.markPrefix)\(file.lastPathComponent)", app: nil, level: .info, title: "Moment flagged", subtitle: nil,
+                                   body: "Click to show it in Finder.", link: nil, altLink: nil, sound: nil, at: Date()))
+        } catch {
+            log("mark: could not save \(file.lastPathComponent): \(error.localizedDescription)")
+            post(GzymsNotification(id: "mark-failed", app: nil, level: .warning, title: "Could not flag the moment", subtitle: nil,
+                                   body: error.localizedDescription, link: nil, altLink: nil, sound: nil, at: Date()))
+        }
+    }
+
+    /// A "Moment flagged" banner's id: this, then the file's name in `marks/`.
+    private static let markPrefix = "mark:"
 
     private func settingsActions() -> SettingsActions {
         var a = SettingsActions { [weak self] key, value, table in self?.writeSetting(key, value, table) }

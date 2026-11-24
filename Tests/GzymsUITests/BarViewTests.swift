@@ -605,6 +605,16 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         .themed(.mochaNeon), "gzyms-whats-new")
 }
 
+/// "Flag this moment: …" stays under every match, also when the matches fill the list, so Enter takes the match.
+@MainActor @Test func paletteLastRowsGoUnderTheMatches() {
+    let s = PaletteState()
+    s.items = (0..<20).map { PaletteItem(id: "\($0)", title: "Sound \($0)", kind: "Settings") {} }
+    s.last = { [PaletteItem(id: "mark", title: "Flag this moment: \($0)", kind: "Action") {}] }
+    s.query = "sound"
+    #expect(s.shown.count == PaletteState.limit)
+    #expect(s.shown.first?.id != "mark" && s.shown.last?.id == "mark")
+}
+
 @MainActor @Test func paletteShowsTheRowsThatFit() {
     let s = PaletteState()
     s.items = SettingsTab.allCases.map { PaletteItem(id: $0.rawValue, title: $0.title, kind: "Settings", words: $0.keywords) {} }
@@ -618,7 +628,7 @@ private func rgba(_ rep: NSBitmapImageRep) -> [UInt8] {
         #expect(s.shown.first?.title == "Agents", "\(q)")
     }
     s.query = "zzz"
-    #expect(s.shown.isEmpty && s.selected == 0)
+    #expect(s.shown.isEmpty && s.current == nil)
     preview(PaletteView(state: s) { _ in }.themed(.mochaNeon), "palette-empty")
 }
 
