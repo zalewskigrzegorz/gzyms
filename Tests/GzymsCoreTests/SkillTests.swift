@@ -24,7 +24,7 @@ private let allText = skillTopics.compactMap { skillText(topic: $0) }.joined(sep
 @Test func thePluginProtocolIsInTheSkill() {
     let json = ["item", "id", "text", "icon", "color", "tooltip", "remove", "menu", "tag", "detail", "separator",
                 "notify", "title", "subtitle", "body", "level", "sound", "link", "event",
-                "value", "unit", "deltas", "label", "chart", "values", "labels", "kind", "line", "stats", "meter", "max"]
+                "value", "unit", "deltas", "label", "chart", "values", "labels", "kind", "line", "stats", "meter", "max", "branch"]
         + PluginEvent.allCases.map(\.rawValue)
     for k in json { #expect(allText.contains("\"\(k)\""), "JSON key \"\(k)\" missing from skill/plugins.md") }
     let toml = ["name =", "command =", "description =", "icon =", "[[option]]", "key =", "title =", "type =", "default =",

@@ -181,6 +181,10 @@ public struct GzymsNotification: Codable, Equatable, Identifiable, Sendable {
     public var meetingEnd: Double?
     /// A plugin's: the id of the menu row it is about. It leaves the lists once no pill of that plugin has that row.
     public var row: String?
+    /// A plugin's: the repo and branch it is about. With an agent on it, the second action opens that agent.
+    public var branch: RepoBranch?
+    /// The agent the second action opens, found when the note came in.
+    public var agentKey: String?
 
     public init(id: String, app: String?, level: NotifyLevel, title: String, subtitle: String?, body: String?,
                 link: String?, altLink: String?, sound: String?, at: Date, reminder: Bool = false, screen: String? = nil) {

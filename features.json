@@ -1,5 +1,5 @@
 {
-  "count": 104,
+  "count": 105,
   "updated": "2026-11-22",
   "features": [
     "gzyms notify command",
@@ -18,6 +18,7 @@
     "gzyms plugin command (new, add, list, remove)",
     "Plugins in any language (pills, menus, notifications)",
     "Plugin popup blocks: headline, chart, stats and level meter rows",
+    "Agents linked to pull requests (agents under PR rows, branches under agents, Open agent on CI banners)",
     "A plugin's notifications wait on its pill, not in the bell",
     "Log watcher plugin",
     "GitHub pull requests plugin",

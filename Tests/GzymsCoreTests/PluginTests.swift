@@ -198,6 +198,14 @@ private func menu(_ rows: String) -> [PluginRow] {
     #expect(menu(#"{"chart":{"values":[1,2],"labels":[2025,2026]}}"#).first?.chart?.labels == ["2025", "2026"])
 }
 
+@Test func rowAndNoteCarryABranch() {
+    let rows = menu(#"{"id":"pr:1","text":"a","branch":"O/R@feat/x"},{"id":"pr:2","text":"b","branch":"nope"}"#)
+    #expect(rows.map(\.text) == ["a", "b"])
+    #expect(rows[0].branch == RepoBranch(repo: "o/r", branch: "feat/x") && rows[1].branch == nil)
+    guard case .notify(let n)? = pluginMessage(#"{"notify":{"title":"CI failed","branch":"o/r@b"}}"#, plugin: "p", now: Date()) else { Issue.record("no note"); return }
+    #expect(n.branch == RepoBranch(repo: "o/r", branch: "b"))
+}
+
 @Test func aLongChartKeepsTheNewestPoints() {
     let vs = (1...500).map(String.init).joined(separator: ",")
     let c = menu(#"{"chart":{"values":["# + vs + #"]}}"#).first?.chart

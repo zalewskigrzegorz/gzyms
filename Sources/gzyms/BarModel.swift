@@ -80,6 +80,7 @@ final class BarModel {
         GzymsCore.barLayout(left: config.layoutLeft, right: config.layoutRight, plugins: plugins.map(\.folder))
     }
     @ObservationIgnored var onPluginEvent: (String, PluginEvent, String) -> Void = { _, _, _ in }
+    @ObservationIgnored var onRowAlt: (RowAlt) -> Void = { _ in }
     /// The settings panel is on screen and not covered by other windows (it is only ordered out when closed, never torn down).
     var settingsVisible = false { didSet { onSettingsVisible() } }
     @ObservationIgnored var onSettingsVisible: () -> Void = {}
@@ -160,7 +161,7 @@ struct PanelRoot: View {
                     onLogo: { model.onLogo() }, grantWarning: model.grantWarning, onGrantWarning: model.onGrantWarning, secureInput: model.secureInput,
                     meetingPill: model.meetingPill, onMeetingPill: model.onMeetingPill, logo: model.customLogo,
                     media: mediaItems(model.nowPlaying, tabs: model.tabs, now: context.date.timeIntervalSince1970), onMusic: model.onMusic,
-                    pluginPills: model.pluginPills, onPluginEvent: model.onPluginEvent,
+                    pluginPills: model.pluginPills, onPluginEvent: model.onPluginEvent, onRowAlt: { model.onRowAlt($0) },
                     caffeine: model.caffeine, onCaffeine: model.onCaffeine, dnd: model.dnd, dndByFocus: model.dndByFocus, onDND: model.onDND, shelf: model.shelf, onShelf: model.onShelf,
                     cameras: model.cameras, cameraApps: model.cameraApps, micApps: model.micApps)
         }

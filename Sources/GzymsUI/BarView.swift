@@ -145,6 +145,7 @@ public struct BarView: View {
     /// Files are being dragged over the bar: the shelf shows, even empty, to say it takes them.
     @State private var dropping = false
     var onPluginEvent: (String, PluginEvent, String) -> Void = { _, _, _ in }
+    var onRowAlt: (RowAlt) -> Void = { _ in }
     @Environment(\.theme) private var theme
     @Environment(\.hiddenWidgets) private var hidden
     @Environment(\.barLayout) private var layout
@@ -171,7 +172,7 @@ public struct BarView: View {
                     ForEach(pills, id: \.key) { p in
                         // The plugin's notifications sit on its first pill, not in the bell.
                         let own = p.key == pills.first?.key ? notes : []
-                        PluginPillView(pill: p, small: small, notes: own, onOpen: onOpenNote, onRemove: onRemoveNote) { e, id in onPluginEvent(p.plugin, e, id) }
+                        PluginPillView(pill: p, small: small, notes: own, onOpen: onOpenNote, onRemove: onRemoveNote, onAlt: onRowAlt) { e, id in onPluginEvent(p.plugin, e, id) }
                             .hintTarget("plugin:\(p.plugin):\(p.item.id)", popup: p.item.menu != nil || !own.isEmpty) { onPluginEvent(p.plugin, .click, p.item.id) }
                     }
                 }
@@ -220,6 +221,7 @@ public struct BarView: View {
                 meetingPill: String? = nil, onMeetingPill: @escaping () -> Void = {}, logo: NSImage? = nil,
                 media: [MediaItem] = [], onMusic: @escaping (MusicAction) -> Void = { _ in },
                 pluginPills: [PluginPill] = [], onPluginEvent: @escaping (String, PluginEvent, String) -> Void = { _, _, _ in },
+                onRowAlt: @escaping (RowAlt) -> Void = { _ in },
                 caffeine: CaffeineState? = nil, onCaffeine: @escaping (Int??) -> Void = { _ in },
                 dnd: Date? = nil, dndByFocus: Bool = false, onDND: @escaping (Date?) -> Void = { _ in },
                 shelf: [URL] = [], onShelf: @escaping (ShelfChange) -> Void = { _ in }, cameras: [String] = [],
@@ -227,7 +229,7 @@ public struct BarView: View {
         self.shelf = shelf; self.onShelf = onShelf; self.cameras = cameras; self.cameraApps = cameraApps; self.micApps = micApps
         self.dnd = dnd; self.dndByFocus = dndByFocus; self.onDND = onDND
         self.logo = logo; self.media = media; self.onMusic = onMusic
-        self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent
+        self.pluginPills = pluginPills; self.onPluginEvent = onPluginEvent; self.onRowAlt = onRowAlt
         self.caffeine = caffeine; self.onCaffeine = onCaffeine
         self.workspaces = workspaces; self.small = small; self.notch = notch; self.stale = stale
         self.now = now; self.cpu = cpu; self.cpuSeries = cpuSeries; self.cpuChart = cpuChart; self.topProcesses = topProcesses
@@ -883,6 +885,7 @@ public struct PluginPillView: View {
     let notes: [GzymsNotification]
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
+    let onAlt: (RowAlt) -> Void
     let send: (PluginEvent, String) -> Void
     @Environment(\.popups) private var popups
     @Environment(\.theme) private var theme
@@ -891,8 +894,9 @@ public struct PluginPillView: View {
     @Environment(\.timeZone) private var timeZone
     @Environment(\.agentBorder) private var agentBorder
     public init(pill: PluginPill, small: Bool, notes: [GzymsNotification] = [], onOpen: @escaping (String) -> Void = { _ in },
-                onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
-        self.pill = pill; self.small = small; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
+                onRemove: @escaping (String) -> Void = { _ in }, onAlt: @escaping (RowAlt) -> Void = { _ in },
+                send: @escaping (PluginEvent, String) -> Void) {
+        self.pill = pill; self.small = small; self.notes = notes; self.onOpen = onOpen; self.onRemove = onRemove; self.onAlt = onAlt; self.send = send
     }
     var popupID: String { "plugin:\(pill.plugin):\(pill.item.id)" }
 
@@ -901,6 +905,8 @@ public struct PluginPillView: View {
         HStack(spacing: small ? 4 : 5) {
             if let icon = i.icon { Image(systemName: icon).font(.system(size: small ? 9 : 10)) }
             pillText(i.text, theme, size: small ? 10 : 11, color: theme.tint(i.color)).lineLimit(1).truncationMode(.tail).frame(maxWidth: small ? 110 : 160)
+            // an agent works on one of its rows: in the colour of the one that needs you most
+            if let s = pillAgent(i) { Image(systemName: "sparkles").font(.system(size: small ? 8 : 9)).foregroundStyle(theme.tint(s.color)) }
             if failure != nil { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: small ? 8 : 9)).foregroundStyle(theme[\.peach]) }
         }
         .font(.system(size: small ? 10 : 11))
@@ -935,7 +941,8 @@ public struct PluginPillView: View {
         }
         .onDisappear { popups.clears[popupID] = nil }
         .popover(isPresented: popups.binding(popupID), arrowEdge: .bottom) {
-            PluginMenuView(rows: i.menu ?? [], notes: notes, failure: failure, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove) { e, id in
+            PluginMenuView(rows: i.menu ?? [], notes: notes, failure: failure, onOpen: { popups.open = nil; onOpen($0) }, onRemove: onRemove,
+                           onAlt: { popups.open = nil; onAlt($0) }) { e, id in
                 popups.open = nil; send(e, id)
             }.environment(\.theme, theme).environment(\.popups, popups)
         }
@@ -992,12 +999,15 @@ public struct PluginMenuView: View {
     let failure: PluginFailure?
     let onOpen: (String) -> Void
     let onRemove: (String) -> Void
+    /// `a` on a row Gzyms linked to an agent or a PR.
+    let onAlt: (RowAlt) -> Void
     let send: (PluginEvent, String) -> Void
     @Environment(\.theme) private var theme
     @Environment(\.timeZone) private var timeZone
     public init(rows: [PluginRow], notes: [GzymsNotification] = [], failure: PluginFailure? = nil, onOpen: @escaping (String) -> Void = { _ in },
-                onRemove: @escaping (String) -> Void = { _ in }, send: @escaping (PluginEvent, String) -> Void) {
-        self.rows = rows; self.notes = notes; self.failure = failure; self.onOpen = onOpen; self.onRemove = onRemove; self.send = send
+                onRemove: @escaping (String) -> Void = { _ in }, onAlt: @escaping (RowAlt) -> Void = { _ in },
+                send: @escaping (PluginEvent, String) -> Void) {
+        self.rows = rows; self.notes = notes; self.failure = failure; self.onOpen = onOpen; self.onRemove = onRemove; self.onAlt = onAlt; self.send = send
     }
 
     public var body: some View {
@@ -1020,7 +1030,7 @@ public struct PluginMenuView: View {
             let live = rows.indices.filter { rows[$0].id != nil && !rows[$0].separator }
             ForEach(Array(rows.enumerated()), id: \.offset) { n, r in
                 if r.separator { Divider().padding(.vertical, 3) }
-                else { PluginRowView(row: r, index: live.firstIndex(of: n).map { $0 + notes.count }, send: send) }
+                else { PluginRowView(row: r, index: live.firstIndex(of: n).map { $0 + notes.count }, onAlt: onAlt, send: send) }
             }
             .opacity(failure == nil ? 1 : 0.5)
         }
@@ -1031,6 +1041,7 @@ public struct PluginMenuView: View {
 private struct PluginRowView: View {
     let row: PluginRow
     let index: Int?
+    var onAlt: (RowAlt) -> Void = { _ in }
     let send: (PluginEvent, String) -> Void
     @State private var hover = false
     @Environment(\.theme) private var theme
@@ -1046,14 +1057,56 @@ private struct PluginRowView: View {
         .font(.system(size: 12))
         .padding(.horizontal, 6).padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 6).fill(hover && row.id != nil ? theme[\.surface] : .clear))
-        .modifier(OptionalNavRow(index: index, choose: { if let id = row.id { send(.click, id) } }, remove: nil))
+        .modifier(OptionalNavRow(index: index, choose: { if let id = row.id { send(.click, id) } }, remove: nil,
+                                 alt: row.alt.map { a in { onAlt(a) } }))
         .onHover { hover = $0 }
         .overlay {
-            if let id = row.id { Clicks(left: { send(.click, id) }, right: { send(.rightClick, id) }) }
+            // a row with a line under it takes clicks per part (main line, line under it), see `line`
+            if let id = row.id, !hasSub { Clicks(left: { send(.click, id) }, right: { send(.rightClick, id) }) }
         }
     }
 
+    /// Only plain rows draw the line under them; a block row keeps its one click.
+    private var hasSub: Bool {
+        row.headline == nil && row.chart == nil && row.stats == nil && (!row.agents.isEmpty || row.gitLine != nil)
+    }
+
     private var line: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            main
+                .overlay { if hasSub, let id = row.id { Clicks(left: { send(.click, id) }, right: { send(.rightClick, id) }) } }
+            if hasSub {
+                sub
+                    .padding(.leading, row.tag == nil ? 0 : 92)
+                    // the line opens what it names; without a link (an agent with no PR) it is part of the row
+                    .overlay {
+                        Clicks(left: { if let a = row.alt { onAlt(a) } else if let id = row.id { send(.click, id) } },
+                               right: { if let id = row.id { send(.rightClick, id) } })
+                    }
+            }
+        }
+    }
+
+    /// The agents on this PR's branch (E), or the branch and PR under an agent (F).
+    private var sub: some View {
+        HStack(spacing: 8) {
+            ForEach(row.agents, id: \.key) { a in
+                HStack(spacing: 4) {
+                    Circle().fill(theme.tint(a.state.color)).frame(width: 7, height: 7)
+                    Text(a.name).lineLimit(1)
+                }
+            }
+            if let g = row.gitLine {
+                Image(systemName: "arrow.triangle.branch").font(.system(size: 9))
+                pluginText(g, theme).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 10.5))
+        .foregroundStyle(theme[\.overlay])
+    }
+
+    private var main: some View {
         HStack(spacing: 10) {
             if let tag = row.tag {
                 pluginText(tag, theme).font(.system(size: 11, weight: .semibold).monospaced()).foregroundStyle(theme.tint(row.color))
@@ -1067,6 +1120,9 @@ private struct PluginRowView: View {
                 // a fixed column for the word, so the meters line up
                 MeterView(meter: m, color: row.color)
                 pluginText(row.detail ?? "", theme).foregroundStyle(theme[\.overlay]).lineLimit(1).frame(minWidth: 100, alignment: .leading)
+            } else if let d = row.detail, row.gitLine != nil {
+                // an agent's place (a worktree session can be long): the name comes first, the place gets cut in the middle
+                pluginText(d, theme).foregroundStyle(theme[\.overlay]).lineLimit(1).truncationMode(.middle).frame(maxWidth: 150, alignment: .trailing)
             } else if let d = row.detail { pluginText(d, theme).foregroundStyle(theme[\.overlay]).lineLimit(1).layoutPriority(1) }
         }
     }

@@ -23,6 +23,8 @@ final class AgentsHost {
     /// nil = no source on, no pill.
     var onPill: (PluginPill?) -> Void = { _ in }
     var onNotify: (GzymsNotification) -> Void = { _ in }
+    /// A folder's branch was read: plugin rows may link to other agents now.
+    var onBranches: () -> Void = {}
     var onDismiss: (String) -> Void = { _ in }
     var onStatus: ([AgentSource: AgentSourceStatus]) -> Void = { _ in }
 
@@ -187,7 +189,9 @@ final class AgentsHost {
         watch.forget(s).forEach(onDismiss)
     }
 
-    private func looked(_ s: AgentSource, _ agents: [Agent]) {
+    private func looked(_ s: AgentSource, _ seen: [Agent]) {
+        let agents = withBranches(seen)
+        refreshBranches(agents)
         let r = watch.look(s, agents, now: Date(), doneAfter: TimeInterval(settings.doneAfter * 60))
         r.dismiss.forEach(onDismiss)
         r.notify.forEach(onNotify)
@@ -213,6 +217,40 @@ final class AgentsHost {
         guard shown?.item != now.item || shown?.failure != now.failure else { return }
         shown = now
         onPill(PluginPill(plugin: agentsPill, item: now.item, failure: now.failure))
+    }
+
+    // MARK: - Branches
+
+    /// Every agent of the sources that answered, with its branch: what the plugin rows link to.
+    var current: [Agent] { looks.values.flatMap(\.agents) }
+
+    /// The branch of each folder, read at most every 30 s, off the main thread.
+    private var branchCache: [String: (at: Date, branch: RepoBranch?)] = [:]
+    private var resolving: Set<String> = []
+
+    private func withBranches(_ agents: [Agent]) -> [Agent] {
+        agents.map { var a = $0; a.branch = branchCache[a.cwd]?.branch; return a }
+    }
+
+    private func refreshBranches(_ agents: [Agent]) {
+        let now = Date()
+        let stale = Set(agents.map(\.cwd)).filter { c in
+            !c.isEmpty && !resolving.contains(c) && (branchCache[c].map { now.timeIntervalSince($0.at) > 30 } ?? true)
+        }
+        guard !stale.isEmpty else { return }
+        resolving.formUnion(stale)
+        DispatchQueue.global().async {
+            // 2 s per git call: a hung git costs a missing line, never the bar
+            let got = stale.map { ($0, resolveBranch(cwd: $0) { Self.runSync($0, $1, timeout: 2) }) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    for (c, b) in got { self.branchCache[c] = (Date(), b); self.resolving.remove(c) }
+                    for (s, l) in self.looks { self.looks[s]?.agents = self.withBranches(l.agents) }
+                    self.publish()
+                    self.onBranches()
+                }
+            }
+        }
     }
 
     // MARK: - Clicks
