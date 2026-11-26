@@ -28,7 +28,7 @@ final class BannerSource: @unchecked Sendable {
     private var filter = BannerFilter()
     private var live: [String: AXUIElement] = [:]  // uuid, upper case with dashes → its banner
     /// The host window's own position while Gzyms keeps it off screen, one record for banners and clicks alike.
-    private var host: (window: AXUIElement, home: CGPoint)?
+    private var host: (window: AXUIElement, home: CGPoint, size: CGSize?)?
     private var holdGeneration = 0
     private var restoreWork: DispatchWorkItem?
     private var attachWork: DispatchWorkItem?
@@ -87,7 +87,7 @@ final class BannerSource: @unchecked Sendable {
     /// `queue` only. Off screen at y −9999, remembering where it was unless it is already parked.
     func park(_ w: AXUIElement) {
         guard let p = w.point else { return }
-        if host == nil || !CFEqual(host!.window, w) { if !NCAX.isParked(p) { host = (w, p) } }
+        if host == nil || !CFEqual(host!.window, w) { if !NCAX.isParked(p) { host = (w, p, w.size) } }
         if !NCAX.isParked(p) { w.setPoint(CGPoint(x: p.x, y: NCAX.parkedY)) }
     }
 
@@ -274,9 +274,19 @@ final class BannerSource: @unchecked Sendable {
         restoreWork?.cancel()
         restoreWork = nil
         guard let host else { return }
-        host.window.setPoint(host.home)
         self.host = nil
+        let w = host.window
+        guard let to = NCHome.target(parked: w.point.map(NCAX.isParked) ?? false, size: w.size, home: host.home, homeSize: host.size,
+                                     screens: Self.axScreens()) else { log("banners: host window already moved by Notification Center"); return }
+        w.setPoint(to)
         log("banners: host window back home")
+    }
+
+    /// The displays in Accessibility coordinates (top-left origin). Not NSScreen: `stopNow` holds the main thread.
+    private static func axScreens() -> [CGRect] {
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16), n: UInt32 = 0
+        CGGetActiveDisplayList(16, &ids, &n)
+        return ids.prefix(Int(n)).map(CGDisplayBounds)
     }
 }
 
