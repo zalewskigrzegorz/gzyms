@@ -256,6 +256,8 @@ public struct NotificationStore: Sendable {
     public private(set) var away = false
     /// What came during a quiet period, newest first. Never in an app's list or count, and opened or cleared it is gone.
     public private(set) var missed: [GzymsNotification] = []
+    /// How many came into `missed` since the quiet period began: the notice at its end counts these, not older unread ones.
+    public private(set) var missedThisPeriod = 0
 
     public init() {}
 
@@ -275,18 +277,21 @@ public struct NotificationStore: Sendable {
 
     /// Turning it on files what is on screen and waiting; turning it off brings nothing back, the lists keep it.
     public mutating func setDND(_ until: Date?, now: Double) {
+        if until != nil, !quietPeriod { missedThisPeriod = 0 }
         dnd = until
         if until != nil { fileQuiet(now: now) }
     }
 
     /// Like Do Not Disturb: turning it on files what is on screen and waiting, turning it off brings nothing back.
     public mutating func setSharing(_ on: Bool, now: Double) {
+        if on, !quietPeriod { missedThisPeriod = 0 }
         sharing = on
         if on { fileQuiet(now: now) }
     }
 
     /// Like Do Not Disturb, for a locked or sleeping screen.
     public mutating func setAway(_ on: Bool, now: Double) {
+        if on, !quietPeriod { missedThisPeriod = 0 }
         away = on
         if on { fileQuiet(now: now) }
     }
@@ -595,6 +600,7 @@ public struct NotificationStore: Sendable {
         var n = n
         n.reminder = false
         missed.insert(n, at: 0)
+        missedThisPeriod += 1
     }
 }
 

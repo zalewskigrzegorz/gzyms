@@ -28,6 +28,24 @@ private let wall = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(s.banner?.id == "c")
 }
 
+@Test func theNoticeCountsOnlyWhatCameThisPeriod() {
+    var s = NotificationStore()
+    s.setAway(true, now: 0)
+    s.post(note("old"), now: 0)
+    s.setAway(false, now: 1)
+    #expect(s.missedThisPeriod == 1)
+    s.setSharing(true, now: 2)  // a screenshot: sharing for a second, nothing new
+    s.setSharing(false, now: 3)
+    #expect(s.missedThisPeriod == 0 && s.missed.count == 1)
+    s.setSharing(true, now: 4)
+    s.setDND(.distantFuture, now: 5)  // a second reason inside the same period keeps the count
+    s.post(note("new"), now: 5)
+    s.setSharing(false, now: 6)
+    s.post(note("newer"), now: 6)
+    s.setDND(nil, now: 7)
+    #expect(s.missedThisPeriod == 2 && s.missed.count == 3)
+}
+
 @Test func armageddonStillBreaksThroughALock() {
     var s = NotificationStore()
     s.setAway(true, now: 0)

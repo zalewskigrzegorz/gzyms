@@ -782,7 +782,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func quietChange(_ change: () -> Void) {
         let was = notes.quietPeriod
         change()
-        guard was, !notes.quietPeriod, let title = awayNotice(missed: notes.missed.count) else { return }
+        guard was, !notes.quietPeriod, let title = awayNotice(missed: min(notes.missedThisPeriod, notes.missed.count)) else { return }
         log("away: \(title)")
         post(GzymsNotification(id: awayNoticeID, app: nil, level: .info, title: title, subtitle: nil, body: nil,
                                link: nil, altLink: nil, sound: nil, at: Date()))
